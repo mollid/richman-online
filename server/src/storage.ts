@@ -37,15 +37,19 @@ export async function initStorage(): Promise<void> {
           player_count INT NOT NULL,
           turns INT NOT NULL,
           rounds INT NOT NULL,
+          actions JSONB NOT NULL DEFAULT '[]'::jsonb,
           finished_at TIMESTAMPTZ NOT NULL DEFAULT now()
         );
+        ALTER TABLE game_records ADD COLUMN IF NOT EXISTS actions JSONB NOT NULL DEFAULT '[]'::jsonb;
         CREATE TABLE IF NOT EXISTS game_record_players (
           record_id UUID NOT NULL REFERENCES game_records(id) ON DELETE CASCADE,
           user_id UUID REFERENCES users(id),
           player_name VARCHAR(16) NOT NULL,
+          color INT NOT NULL DEFAULT 16777215,
           cash INT NOT NULL,
           bankrupt BOOLEAN NOT NULL
         );
+        ALTER TABLE game_record_players ADD COLUMN IF NOT EXISTS color INT NOT NULL DEFAULT 16777215;
         CREATE INDEX IF NOT EXISTS idx_records_finished ON game_records(finished_at DESC);
         CREATE INDEX IF NOT EXISTS idx_record_players_user ON game_record_players(user_id);
       `);
@@ -129,7 +133,9 @@ export interface GameRecordInput {
   winnerName: string | null;
   turns: number;
   rounds: number;
-  players: Array<{ userId: string | null; playerName: string; cash: number; bankrupt: boolean }>;
+  /** 回放动作日志（含 START_GAME），引擎确定性回放用 */
+  actions: Array<{ turn: number; action: unknown }>;
+  players: Array<{ userId: string | null; playerName: string; color: number; cash: number; bankrupt: boolean }>;
 }
 
 export async function saveGameRecord(input: GameRecordInput): Promise<void> {
@@ -138,16 +144,16 @@ export async function saveGameRecord(input: GameRecordInput): Promise<void> {
   try {
     await client.query('BEGIN');
     const recordRes = await client.query<{ id: string }>(
-      `INSERT INTO game_records (room_id, seed, winner_name, player_count, turns, rounds)
-       VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
-      [input.roomId, input.seed, input.winnerName, input.players.length, input.turns, input.rounds],
+      `INSERT INTO game_records (room_id, seed, winner_name, player_count, turns, rounds, actions)
+       VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb) RETURNING id`,
+      [input.roomId, input.seed, input.winnerName, input.players.length, input.turns, input.rounds, JSON.stringify(input.actions)],
     );
     const recordId = recordRes.rows[0]!.id;
     for (const p of input.players) {
       await client.query(
-        `INSERT INTO game_record_players (record_id, user_id, player_name, cash, bankrupt)
-         VALUES ($1, $2, $3, $4, $5)`,
-        [recordId, p.userId, p.playerName, p.cash, p.bankrupt],
+        `INSERT INTO game_record_players (record_id, user_id, player_name, color, cash, bankrupt)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [recordId, p.userId, p.playerName, p.color, p.cash, p.bankrupt],
       );
     }
     await client.query('COMMIT');
@@ -157,6 +163,60 @@ export async function saveGameRecord(input: GameRecordInput): Promise<void> {
   } finally {
     client.release();
   }
+}
+
+export interface ReplayRecordSummary {
+  id: string;
+  room_id: string;
+  winner_name: string | null;
+  player_count: number;
+  turns: number;
+  rounds: number;
+  finished_at: Date;
+  players: Array<{ player_name: string; color: number; cash: number; bankrupt: boolean }>;
+}
+
+export interface ReplayRecord extends ReplayRecordSummary {
+  seed: number;
+  actions: Array<{ turn: number; action: unknown }>;
+}
+
+export async function listRecentRecords(limit = 20): Promise<ReplayRecordSummary[]> {
+  if (!pool || !storageReady.pg) return [];
+  const res = await pool.query(
+    `SELECT gr.id, gr.room_id, gr.winner_name, gr.player_count, gr.turns, gr.rounds, gr.finished_at,
+            COALESCE(
+              json_agg(json_build_object('player_name', rp.player_name, 'color', rp.color, 'cash', rp.cash, 'bankrupt', rp.bankrupt)
+                       ORDER BY rp.player_name)
+              FILTER (WHERE rp.player_name IS NOT NULL), '[]'::json
+            ) AS players
+     FROM game_records gr
+     LEFT JOIN game_record_players rp ON rp.record_id = gr.id
+     GROUP BY gr.id
+     ORDER BY gr.finished_at DESC
+     LIMIT $1`,
+    [limit],
+  );
+  return res.rows as ReplayRecordSummary[];
+}
+
+export async function getRecord(id: string): Promise<ReplayRecord | null> {
+  if (!pool || !storageReady.pg) return null;
+  if (!/^[0-9a-f-]{36}$/i.test(id)) return null;
+  const res = await pool.query<ReplayRecord>(
+    `SELECT gr.id, gr.room_id, gr.seed, gr.winner_name, gr.player_count, gr.turns, gr.rounds, gr.actions, gr.finished_at,
+            COALESCE(
+              json_agg(json_build_object('player_name', rp.player_name, 'color', rp.color, 'cash', rp.cash, 'bankrupt', rp.bankrupt)
+                       ORDER BY rp.player_name)
+              FILTER (WHERE rp.player_name IS NOT NULL), '[]'::json
+            ) AS players
+     FROM game_records gr
+     LEFT JOIN game_record_players rp ON rp.record_id = gr.id
+     WHERE gr.id = $1
+     GROUP BY gr.id`,
+    [id],
+  );
+  return res.rows[0] ?? null;
 }
 
 export interface LeaderboardRow {
@@ -181,3 +241,4 @@ export async function getLeaderboard(limit = 20): Promise<LeaderboardRow[]> {
   );
   return res.rows;
 }
+

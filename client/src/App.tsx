@@ -1,16 +1,20 @@
 import { useEffect, useRef, useState } from 'react';
 import type { GameState, PlayerAction } from '@richman/shared';
 import { BoardRenderer } from './game/BoardRenderer.js';
+import { sfx } from './game/sfx.js';
 import { LocalHotseatSession, type GameSession } from './net/session.js';
 import { ColyseusSession, hasSavedSession, type RoomSummary } from './net/remote.js';
 import {
   fetchLeaderboard,
+  fetchRecentRecords,
+  fetchRecord,
   login as apiLogin,
   logout as apiLogout,
   register as apiRegister,
-  getToken,
   type AuthUser,
   type LeaderboardEntry,
+  type ReplayRecord,
+  type ReplayRecordSummary,
 } from './net/auth.js';
 import { PlayerList } from './ui/PlayerList.js';
 import { ControlPanel } from './ui/ControlPanel.js';
@@ -19,9 +23,14 @@ import { HandPanel } from './ui/HandPanel.js';
 import { StockPanel } from './ui/StockPanel.js';
 import { ShopPanel } from './ui/ShopPanel.js';
 import { ChatPanel } from './ui/ChatPanel.js';
+import { ReplayScreen } from './ui/ReplayScreen.js';
+import { useGameSfx } from './ui/useGameSfx.js';
+
+type SetupMode = 'local' | 'online' | 'replay';
 
 export default function App() {
   const [session, setSession] = useState<GameSession | null>(null);
+  const [replayRecord, setReplayRecord] = useState<ReplayRecord | null>(null);
   const [connecting, setConnecting] = useState(false);
   const [connectError, setConnectError] = useState('');
 
@@ -68,12 +77,24 @@ export default function App() {
     setSession(null);
   };
 
+  if (replayRecord) {
+    return <ReplayScreen record={replayRecord} onExit={() => setReplayRecord(null)} />;
+  }
+
   if (!session) {
     return (
       <SetupScreen
         onStartLocal={startLocal}
         onConnect={connectRemote}
         onResume={resumeLast}
+        onWatchReplay={async (id) => {
+          setConnectError('');
+          try {
+            setReplayRecord(await fetchRecord(id));
+          } catch (e) {
+            setConnectError(e instanceof Error ? e.message : '获取回放失败');
+          }
+        }}
         connecting={connecting}
         error={connectError}
       />
@@ -93,16 +114,18 @@ function SetupScreen({
   onStartLocal,
   onConnect,
   onResume,
+  onWatchReplay,
   connecting,
   error,
 }: {
   onStartLocal: (playerCount: number) => void;
   onConnect: (playerName: string, roomId?: string) => void;
   onResume: () => void;
+  onWatchReplay: (recordId: string) => void;
   connecting: boolean;
   error: string;
 }) {
-  const [mode, setMode] = useState<'local' | 'online'>('local');
+  const [mode, setMode] = useState<SetupMode>('local');
   const [playerCount, setPlayerCount] = useState(2);
   const [playerName, setPlayerName] = useState('');
   const [roomId, setRoomId] = useState('');
@@ -114,12 +137,29 @@ function SetupScreen({
   const [authError, setAuthError] = useState('');
   const [authBusy, setAuthBusy] = useState(false);
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
+  const [records, setRecords] = useState<ReplayRecordSummary[]>([]);
+
+  const refreshRooms = async () => {
+    try {
+      setRooms(await ColyseusSession.listRooms());
+    } catch {
+      setRooms([]);
+    }
+  };
 
   const refreshLeaderboard = async () => {
     try {
       setLeaderboard(await fetchLeaderboard());
     } catch {
       setLeaderboard([]);
+    }
+  };
+
+  const refreshRecords = async () => {
+    try {
+      setRecords(await fetchRecentRecords(20));
+    } catch {
+      setRecords([]);
     }
   };
 
@@ -148,18 +188,7 @@ function SetupScreen({
       void refreshRooms();
       void refreshLeaderboard();
     }
-  }, [mode]);
-
-  const refreshRooms = async () => {
-    try {
-      setRooms(await ColyseusSession.listRooms());
-    } catch {
-      setRooms([]);
-    }
-  };
-
-  useEffect(() => {
-    if (mode === 'online') void refreshRooms();
+    if (mode === 'replay') void refreshRecords();
   }, [mode]);
 
   return (
@@ -173,6 +202,9 @@ function SetupScreen({
         </button>
         <button className={mode === 'online' ? 'active' : ''} onClick={() => setMode('online')}>
           联机对战
+        </button>
+        <button className={mode === 'replay' ? 'active' : ''} onClick={() => setMode('replay')}>
+          对局回放
         </button>
       </div>
 
@@ -190,7 +222,7 @@ function SetupScreen({
             开始游戏
           </button>
         </div>
-      ) : (
+      ) : mode === 'online' ? (
         <div className="setup-card">
           <div className="setup-title">联机对战模式</div>
           {user ? (
@@ -227,7 +259,7 @@ function SetupScreen({
           )}
           <input
             className="name-input"
-            placeholder="输入你的昵称（最多 8 字）"
+            placeholder="你的昵称（最多 8 字）"
             maxLength={8}
             value={playerName}
             onChange={(e) => setPlayerName(e.target.value)}
@@ -300,6 +332,29 @@ function SetupScreen({
           )}
           <p className="hint">创建房间后把房间码发给好友，2 人即可开局（最多 4 人）</p>
         </div>
+      ) : (
+        <div className="setup-card replay-card">
+          <div className="setup-title">已结束的对局</div>
+          <div className="replay-list">
+            {records.length === 0 ? (
+              <div className="room-empty">暂无已结束的对局记录</div>
+            ) : (
+              records.map((r) => (
+                <div key={r.id} className="record-row">
+                  <span className="record-winner">🏆 {r.winner_name ?? '-'}</span>
+                  <span className="record-meta">
+                    {r.players.map((p) => p.player_name).join(' vs ')} · {r.turns} 回合
+                  </span>
+                  <button onClick={() => onWatchReplay(r.id)}>观看回放</button>
+                </div>
+              ))
+            )}
+          </div>
+          <button className="small ghost" onClick={() => void refreshRecords()}>
+            刷新
+          </button>
+          <p className="hint">回放基于确定性引擎：同一 seed 与动作序列可完整复现整局</p>
+        </div>
       )}
     </div>
   );
@@ -309,8 +364,11 @@ function GameScreen({ session, onExit }: { session: GameSession; onExit: () => v
   const [game, setGame] = useState<GameState>(session.getGame());
   const [netError, setNetError] = useState('');
   const [connection, setConnection] = useState<'connected' | 'reconnecting' | 'closed'>('connected');
+  const [muted, setMuted] = useState(sfx.isMuted());
   const boardRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<BoardRenderer | null>(null);
+
+  useGameSfx(game);
 
   useEffect(() => {
     const unsubscribe = session.subscribe(setGame);
@@ -380,6 +438,13 @@ function GameScreen({ session, onExit }: { session: GameSession; onExit: () => v
         <div className="sidebar-header">
           <span className="logo">大富翁 Online</span>
           <span className="mode-tag">{isRemote ? '联机' : '热座'}</span>
+          <button
+            className="ghost small"
+            title={muted ? '开启音效' : '静音'}
+            onClick={() => setMuted(sfx.toggleMuted())}
+          >
+            {muted ? '🔇' : '🔊'}
+          </button>
           <button className="ghost small" onClick={onExit}>
             退出
           </button>
@@ -405,6 +470,3 @@ function GameScreen({ session, onExit }: { session: GameSession; onExit: () => v
     </div>
   );
 }
-
-
-

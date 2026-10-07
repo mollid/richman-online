@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { addPlayer, applyAction, availableActions, createGame, forceGameOver, removePlayer, rentOf, rollDie, upgradeCost } from '../src/index.js';
-import type { GameState, PlayerDef } from '../src/index.js';
+import { addPlayer, applyAction, availableActions, createGame, forceGameOver, removePlayer, rentOf, ReplayEngine, rollDie, upgradeCost } from '../src/index.js';
+import type { GameState, PlayerAction, PlayerDef } from '../src/index.js';
 
 const PLAYERS: PlayerDef[] = [
   { id: 'p1', name: '阿福', color: 0xef5350 },
@@ -360,4 +360,48 @@ describe('M5 forceGameOver（测试钩子）', () => {
     expect(finished.players[1]!.bankrupt).toBe(false);
   });
 });
+
+
+describe('M5 确定性回放（ReplayEngine）', () => {
+  it('重放动作序列与逐步应用引擎状态完全一致', () => {
+    const seed = 2024;
+    let state = applyAction(createGame(PLAYERS, seed), { type: 'START_GAME' });
+    const actions: Array<{ turn: number; action: PlayerAction }> = [
+      { turn: state.turn, action: { type: 'START_GAME' } },
+    ];
+    // 真实动作：掷骰 → 决策或自动流转，再掷一次
+    state = applyAction(state, { type: 'ROLL_DICE' });
+    actions.push({ turn: state.turn, action: { type: 'ROLL_DICE' } });
+    if (state.phase === 'awaiting_action') {
+      state = applyAction(state, { type: 'END_TURN' });
+      actions.push({ turn: state.turn, action: { type: 'END_TURN' } });
+    }
+    state = applyAction(state, { type: 'ROLL_DICE' });
+    actions.push({ turn: state.turn, action: { type: 'ROLL_DICE' } });
+
+    const engine = new ReplayEngine({ seed, players: PLAYERS.map((p) => ({ player_name: p.name, color: p.color })), actions });
+    expect(engine.totalSteps).toBe(actions.length - 1);
+    const final = engine.finalState;
+    expect(final.players.map((p) => [p.position, p.cash, p.properties])).toEqual(
+      state.players.map((p) => [p.position, p.cash, p.properties]),
+    );
+    expect(final.dice).toEqual(state.dice);
+    expect(final.rngState).toBe(state.rngState);
+    expect(final.phase).toBe(state.phase);
+  });
+
+  it('stateAt 支持任意步定位与越界钳制', () => {
+    const seed = 7;
+    const actions = [
+      { turn: 1, action: { type: 'START_GAME' } as PlayerAction },
+      { turn: 1, action: { type: 'ROLL_DICE' } as PlayerAction },
+    ];
+    const engine = new ReplayEngine({ seed, players: PLAYERS.map((p) => ({ player_name: p.name, color: p.color })), actions });
+    expect(engine.totalSteps).toBe(1);
+    expect(engine.stateAt(-5).phase).toBe('awaiting_roll');
+    expect(engine.stateAt(0).turn).toBe(1);
+    expect(engine.stateAt(99).turn).toBe(engine.finalState.turn);
+  });
+});
+
 

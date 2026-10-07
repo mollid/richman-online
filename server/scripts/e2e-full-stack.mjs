@@ -44,7 +44,29 @@ if (!state || state.players.length !== 2) throw new Error('未同步到双玩家
 
 roomA.send('start_game', {});
 while (state.phase === 'lobby') await new Promise((r) => setTimeout(r, 50));
-log('对局开始 → 触发 test_finish（走真实 game_over/战绩链路）');
+log('对局开始 → 先真实对弈 8 回合（生成动作日志）…');
+
+const meA = roomA.sessionId;
+const meB = roomB.sessionId;
+for (let i = 0; i < 64 && state.phase !== 'game_over'; i++) {
+  const currentId = state.players[state.currentPlayerIndex]?.id;
+  const room = currentId === meA ? roomA : roomB;
+  const acts = state.players[state.currentPlayerIndex];
+  const cell = state.board[acts?.position ?? 0];
+  const ownerInfo = state.players.find((p) => p.properties.some((q) => q.cellId === cell?.id));
+  const owned = !!ownerInfo;
+  const mine = ownerInfo?.id === currentId;
+  const price = cell?.price ?? Infinity;
+  let action = null;
+  if (state.phase === 'awaiting_roll') action = { type: 'ROLL_DICE' };
+  else if (state.phase === 'awaiting_action') {
+    if (cell?.type === 'property' && !owned && (acts?.cash ?? 0) >= price) action = { type: 'BUY_LAND' };
+    else action = { type: 'END_TURN' };
+  }
+  if (action) room.send('action', { action });
+  await new Promise((r) => setTimeout(r, 20));
+}
+log(`真实动作完成（当前回合 ${state.turn}）→ test_finish 触发终局`);
 
 roomB.send('test_finish', {}); // 乙获胜
 
@@ -65,3 +87,4 @@ if (!winnerEntry) throw new Error('排行榜中未找到胜者战绩');
 log(`战绩入库验证通过：${winnerEntry.username} ${winnerEntry.wins} 胜 / ${winnerEntry.games} 局`);
 log('FULL STACK PASS ✅');
 process.exit(0);
+

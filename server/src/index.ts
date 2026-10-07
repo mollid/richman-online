@@ -6,7 +6,7 @@ import { Server, matchMaker } from '@colyseus/core';
 import { WebSocketTransport } from '@colyseus/ws-transport';
 import { GameRoom } from './rooms/GameRoom.js';
 import { authRouter } from './auth.js';
-import { getLeaderboard, initStorage } from './storage.js';
+import { getLeaderboard, getRecord, initStorage, listRecentRecords } from './storage.js';
 
 const app = express();
 app.use(express.json());
@@ -40,6 +40,28 @@ app.get('/api/leaderboard', async (_req, res) => {
   }
 });
 
+app.get('/api/records/recent', async (req, res) => {
+  try {
+    const limit = Math.min(Math.max(Number(req.query.limit ?? 20) || 20, 1), 50);
+    res.json(await listRecentRecords(limit));
+  } catch {
+    res.status(500).json({ error: '获取对局列表失败' });
+  }
+});
+
+app.get('/api/records/:id', async (req, res) => {
+  try {
+    const record = await getRecord(req.params.id!);
+    if (!record) {
+      res.status(404).json({ error: '对局记录不存在' });
+      return;
+    }
+    res.json(record);
+  } catch {
+    res.status(500).json({ error: '获取回放失败' });
+  }
+});
+
 /** 大厅房间列表（0.16 的 matchmake 不支持 GET，走自定义接口） */
 app.get('/api/rooms', async (_req, res) => {
   try {
@@ -70,6 +92,7 @@ httpServer.listen(port, () => {
   console.log(`[server] Colyseus 对战服务已启动: ws://localhost:${port}`);
   console.log(`[server] 健康检查: http://localhost:${port}/healthz`);
 });
+
 
 
 

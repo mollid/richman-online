@@ -9,6 +9,8 @@ export interface LeaderboardEntry {
   games: number;
 }
 
+import type { PlayerAction } from '@richman/shared';
+
 const TOKEN_KEY = 'richman.token';
 
 export function httpBaseUrl(): string {
@@ -71,4 +73,35 @@ export async function logout(): Promise<void> {
 
 export async function fetchLeaderboard(): Promise<LeaderboardEntry[]> {
   return request<LeaderboardEntry[]>('/leaderboard');
+}
+
+export interface ReplayPlayer {
+  player_name: string;
+  color: number;
+  cash: number;
+  bankrupt: boolean;
+}
+
+export interface ReplayRecordSummary {
+  id: string;
+  room_id: string;
+  winner_name: string | null;
+  player_count: number;
+  turns: number;
+  rounds: number;
+  finished_at: string;
+  players: ReplayPlayer[];
+}
+
+export interface ReplayRecord extends ReplayRecordSummary {
+  seed: number;
+  actions: Array<{ turn: number; action: PlayerAction }>;
+}
+
+export async function fetchRecentRecords(limit = 20): Promise<ReplayRecordSummary[]> {
+  return request<ReplayRecordSummary[]>(`/records/recent?limit=${limit}`);
+}
+
+export async function fetchRecord(id: string): Promise<ReplayRecord> {
+  return request<ReplayRecord>(`/records/${id}`);
 }

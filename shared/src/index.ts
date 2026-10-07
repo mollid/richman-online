@@ -5,3 +5,5 @@ export * from './engine.js';
 
 export * from './cards.js';
 
+export * from './replay.js';
+

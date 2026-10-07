@@ -34,6 +34,7 @@ export class GameRoom extends Room {
   private seed = 0;
   private recordSaved = false;
   private userIds = new Map<string, string>();
+  private actionLog: Array<{ turn: number; action: PlayerAction }> = [];
 
   /** 携带 token 的玩家绑定账号，其余以游客身份进入 */
   async onAuth(_client: Client, options: { token?: string }): Promise<AuthResult | boolean> {
@@ -58,6 +59,7 @@ export class GameRoom extends Room {
     this.onMessage('start_game', (client) => {
       try {
         this.game = applyAction(this.game, { type: 'START_GAME' });
+        this.actionLog.push({ turn: this.game.turn, action: { type: 'START_GAME' } });
         this.updateMetadata('playing');
         this.broadcastState();
       } catch (e) {
@@ -94,6 +96,7 @@ export class GameRoom extends Room {
           this.assertCurrentPlayer(client);
         }
         this.game = applyAction(this.game, message.action);
+        this.actionLog.push({ turn: this.game.turn, action: message.action });
         this.broadcastState();
       } catch (e) {
         this.sendError(client, e);
@@ -222,9 +225,11 @@ export class GameRoom extends Room {
         winnerName: winner?.name ?? null,
         turns: this.game.turn,
         rounds: this.game.round,
+        actions: this.actionLog,
         players: this.game.players.map((p) => ({
           userId: this.userIds.get(p.id) ?? null,
           playerName: p.name,
+          color: p.color,
           cash: p.cash,
           bankrupt: p.bankrupt,
         })),
@@ -232,4 +237,5 @@ export class GameRoom extends Room {
     );
   }
 }
+
 
