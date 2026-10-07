@@ -279,8 +279,22 @@ export interface Player {
    * `skipTurns` 仍是真正的停留天数来源，本字段只做身份与剩余天数的记账。
    */
   custody: CustodyStatus | null;
+  /**
+   * 霉运状态（GOD-12 死神「一連串倒楣的事情」）：
+   * 剩余天数与倍率。倍率 2 = 倒霉事**加倍**（投票认输后被指定为复仇者时进入）。
+   * 期间所有负面事件（火星/水灾等）与租金倍增按此倍率放大；剩余天数归零自动清除。
+   */
+  unlucky: UnluckyStatus | null;
   bankrupt: boolean;
   online: boolean;
+}
+
+/** 霉运状态（GOD-12） */
+export interface UnluckyStatus {
+  /** 剩余天数 */
+  daysLeft: number;
+  /** 倒霉事倍率：1 = 正常，2 = 加倍（死神附身于复仇者时） */
+  multiplier: number;
 }
 
 /** 在押 / 住院身份（EVT-01 事件 0–3） */
@@ -460,6 +474,25 @@ export interface GameState {
   trades: TradeListing[];
   /** UI-06 成交记录（保留最近 50 条） */
   tradeHistory: TradeRecord[];
+  /**
+   * UI-13 投票认输：处于投票期时记录「发起者」与「可投的复仇者候选」。
+   * null 表示无投票进行中。投票通过后死神附身于得票最高者。
+   */
+  surrenderVote: SurrenderVote | null;
+}
+
+/** UI-13 投票认输：把死神引向指定的「复仇者」 */
+export interface SurrenderVote {
+  /** 认输发起者 id */
+  initiatorId: string;
+  /** 候选复仇者 id 列表（存活且非发起者） */
+  candidateIds: string[];
+  /** 已投的票：playerId -> 复仇者 id */
+  votes: Record<string, string>;
+  /** 投票是否已结算（true 后不再接受投票） */
+  resolved: boolean;
+  /** 死亡阶段：投票中or 已决出复仇者 */
+  stage: 'voting' | 'resolved';
 }
 
 /** TILE-11 魔法屋：施法条件（决定候选受罚者） */
@@ -521,8 +554,16 @@ export type PlayerAction =
   | { type: 'CAST_MAGIC'; targetPlayerId: string }
   /** TILE-09 医院（help [37]）：在医院门外替指定病人办理提前出院 */
   | { type: 'DISCHARGE_PATIENT'; targetPlayerId: string }
-  /** CORE-04：认输投降（走「死神附身」特殊流程后退出对局） */
-  | { type: 'SURRENDER' }
+  /**
+   * CORE-04 / UI-13：认输投降。
+   * 指定 `revengeTargetId` 时走**投票认输**流程：死神附身于该「复仇者」（清空其卡牌道具、
+   * 霉运加倍 13 天），认输者本人干净退出；缺省时沿用旧行为——死神附身于自己。
+   */
+  | { type: 'SURRENDER'; revengeTargetId?: string }
+  /** UI-13：投票认输期内，对某位复仇者候选投票 */
+  | { type: 'VOTE_REVENGE'; revengeTargetId: string }
+  /** UI-13：所有存活玩家已投（或发起者放弃）时结算投票，产出最终复仇者 */
+  | { type: 'RESOLVE_SURRENDER_VOTE' }
   /** UI-06 公布栏：挂出标的公开求售 */
   | { type: 'POST_TRADE'; kind: TradeKind; targetId: string; price: number }
   /** UI-06 公布栏：买下他人挂牌 */
@@ -596,6 +637,12 @@ export interface AvailableActions {
   tradableAssets: Array<{ kind: TradeKind; targetId: string; label: string; suggestPrice: number }>;
   /** UI-06：当前玩家现金（决定能否买入） */
   tradeCash: number;
+  /** UI-13：认输投票期的可选复仇者（存活且非自己）；空数组表示无投票 */
+  revengeCandidates: Player[];
+  /** UI-13：投票期当前玩家已投的复仇者；null 表示未投 */
+  myRevengeVote: string | null;
+  /** UI-13：是否处于认输投票期（UI 据此渲染投票面板） */
+  inSurrenderVote: boolean;
 }
 
 

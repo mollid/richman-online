@@ -13,7 +13,8 @@ import {
   STOCK_DEFS,
   TREASURE_POINTS,
 } from './board.js';
-import { GODS, godDef, type GodDef } from './gods.js';
+import {
+  DEATH_DURATION_DAYS, GODS, godDef, type GodDef } from './gods.js';
 import { addMonths, DEFAULT_START_DATE, gameDate, toSerial } from './calendar.js';
 import { landPrice, landRent, landUpgradeCost, propertyValue, scaled, totalAssets, upgradeCost } from './economy.js';
 import { CARDS, CHANCE_CARD_POOL, SHOP_CARD_IDS } from './cards.js';
@@ -131,6 +132,7 @@ function basePlayer(def: PlayerDef): Player {
     insurance: null,
     financing: 0,
     custody: null,
+    unlucky: null,
     bankrupt: false,
     online: true,
   };
@@ -199,6 +201,8 @@ export function createGame(players: PlayerDef[], seed = Date.now() % 2147483647,
     // UI-06 公布栏：初始无挂牌、无成交记录
     trades: [],
     tradeHistory: [],
+    // UI-13 投票认输：默认无投票
+    surrenderVote: null,
   };
 }
 
@@ -500,8 +504,16 @@ function creditPayee(to: Player | null, paid: number, toDeposit: boolean): void 
 }
 
 /** `pay` 的薄包装：现金/存款/变卖，收款方入现金；`reason` 用于乐透奖池罚金汇总 */
+/**
+ * 无收款方的支出（罚款/损失/倒霉事）。
+ *
+ * GOD-12：霉运期间（`unlucky.multiplier > 1`）**倒霉事加倍**——
+ * 罚金、事件损失、天灾等落在自己头上的钱按倍率上浮。
+ */
 function payCash(state: GameState, from: Player, amount: number, to: Player | null, reason?: PayReason): void {
-  pay(state, from, amount, to, { toDeposit: false, reason });
+  const bad = unluckyMultiplier(from);
+  const finalAmount = to === null && bad > 1 ? amount * bad : amount;
+  pay(state, from, finalAmount, to, { toDeposit: false, reason });
 }
 
 /** EVT-01 事件 26/27：全体或单支股票是否处于停牌期（停牌期间价格冻结、不可买卖） */
@@ -1478,6 +1490,15 @@ const DAY_HOOKS: DayHook[] = [
 
 /** 日切唯一收口点：逐钩子执行，game_over 时提前返回 */
 function onDayChange(state: GameState): void {
+  // GOD-12 霉运倒数（与死神 13 天同步到期）
+  for (const p of state.players) {
+    if (!p.unlucky) continue;
+    p.unlucky.daysLeft -= 1;
+    if (p.unlucky.daysLeft <= 0) {
+      p.unlucky = null;
+      if (!p.bankrupt) log(state, `${p.name} 的霉运终于过去了`);
+    }
+  }
   for (const hook of DAY_HOOKS) {
     if (isGameOver(state)) return;
     hook(state);
@@ -1796,13 +1817,170 @@ function resolvePendingCard(state: GameState): void {
   state.phase = 'awaiting_action';
 }
 
+/**
+ * GOD-12 死神附身于「复仇者」（UI-13 投票认输的落点）。
+ *
+ * 原版 help[51]「死神附身時，不但會遺失所有卡片道具，還會發生一連串倒楣的事情。為期十三天」。
+ * 投票认输时死神是被**指名**落在复仇者头上，因此倒霉事**加倍**（multiplier = 2）：
+ * 1. 清空全部卡片与道具；
+ * 2. 立刻扣一笔「死神索命」损失；
+ * 3. 进入霉运状态 13 天，期间负面事件与租金按2 倍放大；
+ * 4. 死神本体附身 13 天（GOD-12 期满自动消失，不转化）。
+ */
+function summonDeathOnAvenger(state: GameState, avenger: Player, death: GodDef | undefined): void {
+  const cards = avenger.cards.length;
+  const items = Object.values(avenger.items).reduce((a, b) => a + b, 0);
+  avenger.cards = [];
+  avenger.items = {};
+  avenger.god = { godId: 'death', remainingDays: death?.durationDays ?? DEATH_DURATION_DAYS };
+  // 霉运加倍：13 天内倒霉事按 2 倍计
+  avenger.unlucky = { daysLeft: DEATH_DURATION_DAYS, multiplier: 2 };
+  const loss = scaled(state, 2000 * 2); // 死神索命，加倍
+  log(
+    state,
+    `【死神附身】${avenger.name} 被推举为复仇者：遗失全部 ${cards} 张卡片与 ${items} 件道具，` +
+      `并陷入 ${DEATH_DURATION_DAYS} 天霉运（倒霉事**加倍**），当下即损失 ¥${loss}`,
+  );
+  payCash(state, avenger, loss, null, 'god');
+}
+
+/** UI-13：认输投票期的复仇者候选（存活、非当前玩家） */
+function revengeCandidates(state: GameState): Player[] {
+  const vote = state.surrenderVote;
+  if (!vote || vote.stage !== 'voting') return [];
+  return activePlayers(state).filter((q) => q.id !== vote.initiatorId);
+}
+
+/** 霉运倍率（GOD-12）：1 = 无霉运，2 = 加倍 */
+export function unluckyMultiplier(p: Player): number {
+  if (!p.unlucky || p.unlucky.daysLeft <= 0) return 1;
+  return Math.max(1, p.unlucky.multiplier);
+}
+
+/** UI-13：投票认输期内对某位复仇者候选投票 */
+function voteRevenge(state: GameState, action: Extract<PlayerAction, { type: 'VOTE_REVENGE' }>): void {
+  const vote = state.surrenderVote;
+  if (!vote || vote.stage !== 'voting') throw new Error('当前没有进行中的认输投票');
+  const p = currentPlayer(state);
+  if (p.bankrupt) throw new Error('已倒闭的玩家不能投票');
+  if (!vote.candidateIds.includes(action.revengeTargetId)) throw new Error('该玩家不是复仇者候选');
+  vote.votes[p.id] = action.revengeTargetId;
+  const target = state.players.find((q) => q.id === action.revengeTargetId);
+  log(state, `${p.name} 投票把死神引向${target?.name ?? '?'}`);
+  // 所有人都投完 → 自动结算
+  const alive = activePlayers(state);
+  if (alive.every((q) => vote.votes[q.id])) resolveSurrenderVote(state);
+}
+
+/** UI-13：结算投票 —— 得票最多者成为复仇者，死神附身于他 */
+function resolveSurrenderVote(state: GameState): void {
+  const vote = state.surrenderVote;
+  if (!vote || vote.stage === 'resolved') return;
+
+  // 统计票数；同票时按玩家顺序取先者（确定性）
+  const tally = new Map<string, number>();
+  for (const targetId of Object.values(vote.votes)) {
+    tally.set(targetId, (tally.get(targetId) ?? 0) + 1);
+  }
+  const order = state.players.map((q) => q.id);
+  let best: string | null = null;
+  let bestCount = -1;
+  for (const id of order) {
+    const c = tally.get(id) ?? 0;
+    if (c > bestCount) {
+      bestCount = c;
+      best = id;
+    }
+  }
+  vote.stage = 'resolved';
+  vote.resolved = true;
+  const initiator = state.players.find((q) => q.id === vote.initiatorId);
+  if (!best) {
+    // 无人得票：死神回到认输者身上（旧行为）
+    log(state, `【认输投票】无人得票，死神降于认输者${initiator?.name ?? ''}`);
+    state.surrenderVote = null;
+    if (initiator && !initiator.bankrupt) {
+      const death = godDef('death');
+      const cards = initiator.cards.length;
+      const itemCount = Object.values<number>(initiator.items).reduce((a, b) => a + b, 0);
+      initiator.cards = [];
+      initiator.items = {};
+      initiator.god = { godId: 'death', remainingDays: death?.durationDays ?? DEATH_DURATION_DAYS };
+      initiator.unlucky = { daysLeft: DEATH_DURATION_DAYS, multiplier: 2 };
+      const loss = scaled(state, 2000 * 2);
+      log(state, `【死神附身】${initiator.name} 遗失 ${cards} 张卡片与 ${itemCount} 件道具，并陷入霉运（加倍）`);
+      payCash(state, initiator, loss, null, 'god');
+    }
+    return;
+  }
+  const avenger = state.players.find((q) => q.id === best)!;
+  log(state, `【认输投票】${avenger.name} 以 ${bestCount} 票成为复仇者，死神将附身于他`);
+  state.surrenderVote = null;
+  summonDeathOnAvenger(state, avenger, godDef('death'));
+}
+
 /** CORE-04：认输投降 —— 走「死神附身」特殊流程后退出对局 */
-function surrender(state: GameState): void {
+function surrender(state: GameState, revengeTargetId?: string): void {
   const p = currentPlayer(state);
   if (state.phase === 'lobby' || state.phase === 'game_over') throw new Error('当前不能认输');
   if (p.bankrupt) throw new Error('已倒闭的玩家无需认输');
   // 死神附身：清空全部卡片与道具并扣一笔「离场费」，随后退出对局
   const death = godDef('death');
+
+  // UI-13投票认输：死神不落在认输者头上，而是落到被指定的「复仇者」身上
+  if (revengeTargetId) {
+    const avenger = state.players.find((q) => q.id === revengeTargetId);
+    if (!avenger) throw new Error('复仇者不存在');
+    if (avenger.id === p.id) throw new Error('复仇者不能是认输者本人');
+    if (avenger.bankrupt) throw new Error('复仇者已倒闭');
+    // 认输者：干净退出（保留资金与地产，走正常破产清算）
+    log(state, `${p.name} 认输投降，退出对局`);
+    state.surrenderVote = {
+      initiatorId: p.id,
+      candidateIds: [],
+      votes: {},
+      resolved: true,
+      stage: 'resolved',
+    };
+    // 认输者自身不走死神流程，直接破产清算
+    p.cards = [];
+    p.items = {};
+    state.pendingCard = null;
+    p.bankrupt = true;
+    p.cash = 0;
+    p.deposit = 0;
+    p.points = 0;
+    p.loan = null;
+    p.properties = [];
+    p.stocks = {};
+    p.stockCost = {};
+    p.god = null;
+    p.skipTurns = 0;
+    p.holdTurns = 0;
+    p.rentBlockedTurns = 0;
+    p.abroadTurns = 0;
+    p.research = null;
+    p.diceCount = 1;
+    p.alliance = null;
+    p.custody = null;
+    p.unlucky = null;
+    log(state, `${p.name} 已退出对局`);
+
+    // 死神附身于复仇者：清空卡牌道具 + 霉运加倍 13 天
+    summonDeathOnAvenger(state, avenger, death);
+    state.surrenderVote = null;
+    state.phase = 'awaiting_roll';
+    checkWinner(state);
+    if (!isGameOver(state)) {
+      state.currentPlayerIndex = state.players.findIndex((q) => !q.bankrupt);
+      if (state.currentPlayerIndex < 0) state.currentPlayerIndex = 0;
+      state.dice = null;
+      state.phase = 'awaiting_roll';
+    }
+    return;
+  }
+
+  // 无指定复仇者：沿用旧行为——死神附身于认输者本人
   const cards = p.cards.length;
   const items = Object.values(p.items).reduce((a, b) => a + b, 0);
   p.cards = [];
@@ -1834,6 +2012,7 @@ function surrender(state: GameState): void {
     p.diceCount = 1;
     p.alliance = null;
     p.custody = null;
+    p.unlucky = null;
     log(state, `${p.name} 已退出对局`);
   }
   state.phase = 'awaiting_roll';
@@ -2375,6 +2554,9 @@ export function availableActions(state: GameState): AvailableActions {
       pendingCard: state.pendingCard,
       tradableAssets: tradableAssets(state, p),
       tradeCash: p.cash,
+      revengeCandidates: revengeCandidates(state),
+      myRevengeVote: state.surrenderVote?.votes[p.id] ?? null,
+      inSurrenderVote: state.surrenderVote?.stage === 'voting',
     };
   }
   return idleActions(state);
@@ -2423,6 +2605,9 @@ function idleActions(state: GameState): AvailableActions {
     // UI-06：非本人操作阶段（如拍卖/小游戏）或空房间时不给可挂标的
     tradableAssets: [],
     tradeCash: p?.cash ?? 0,
+    revengeCandidates: revengeCandidates(state),
+    myRevengeVote: state.surrenderVote?.votes[p?.id ?? ''] ?? null,
+    inSurrenderVote: state.surrenderVote?.stage === 'voting',
   };
 }
 
@@ -2831,6 +3016,12 @@ function rollDice(state: GameState, action: Extract<PlayerAction, { type: 'ROLL_
     }
     // 行进显灵·租金类（抵赖 / 减半 / 加倍）
     rent = applyGodRentModifier(state, p, rent, c.name);
+    // GOD-12 霉运：付出去的过路费按霉运倍率上浮（倒霉事加倍）
+    const bad = unluckyMultiplier(p);
+    if (bad > 1) {
+      rent *= bad;
+      log(state, `${p.name} 霉运缠身，过路费被霉运抬高 ${bad} 倍`);
+    }
     if (rent <= 0) {
       advanceTurn(state);
       return;
@@ -4660,7 +4851,7 @@ export function applyAction(state: GameState, action: PlayerAction): GameState {
       dischargePatient(next, action);
       break;
     case 'SURRENDER':
-      surrender(next);
+      surrender(next, action.revengeTargetId);
       break;
     case 'POST_TRADE':
       postTrade(next, action, currentPlayer(next), (t) => log(next, t));
@@ -4670,6 +4861,12 @@ export function applyAction(state: GameState, action: PlayerAction): GameState {
       break;
     case 'CANCEL_TRADE':
       cancelTrade(next, action, currentPlayer(next), (t) => log(next, t));
+      break;
+    case 'VOTE_REVENGE':
+      voteRevenge(next, action);
+      break;
+    case 'RESOLVE_SURRENDER_VOTE':
+      resolveSurrenderVote(next);
       break;
     default: {
       const exhaustive: never = action;
