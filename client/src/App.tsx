@@ -45,13 +45,12 @@ import { duckMusic, initMusic } from './game/bgm.js';
 
 type SetupMode = 'local' | 'online' | 'replay';
 
-type SidebarTab = 'status' | 'finance' | 'shop' | 'market' | 'report' | 'trade' | 'log';
+type SidebarTab = 'status' | 'finance' | 'shop' | 'report' | 'trade' | 'log';
 
 const SIDEBAR_TABS: Array<[SidebarTab, string]> = [
   ['status', '状态'],
   ['finance', '金融'],
   ['shop', '商店'],
-  ['market', '股市'],
   ['report', '报表'],
   ['trade', '交易'],
   ['log', '日志'],
@@ -517,13 +516,7 @@ function GameScreen({
   const actions = availableActions(game);
   const [tab, setTab] = useState<SidebarTab>('status');
   const atBank = actions.canDeposit || actions.canWithdraw || actions.canLoan || actions.canRepayLoan;
-  const contextTab: SidebarTab | '' = actions.canShop
-    ? 'shop'
-    : atBank
-      ? 'finance'
-      : actions.canTradeStock
-        ? 'market'
-        : '';
+  const contextTab: SidebarTab | '' = actions.canShop ? 'shop' : atBank ? 'finance' : '';
   const lastContext = useRef('');
   useEffect(() => {
     if (contextTab && contextTab !== lastContext.current) setTab(contextTab);
@@ -666,6 +659,8 @@ function GameScreen({
         <AuctionPanel game={game} onAction={onAction} myPlayerId={session.myPlayerId} />
         <CompanyPanel game={game} onAction={onAction} interactive={interactive} />
         <LotteryPanel game={game} onAction={onAction} interactive={interactive} />
+        {/* ECON-09 help[14]：随时可买卖 → 股市常驻显示，不需切页签、不限格型 */}
+        <StockPanel game={game} onAction={onAction} interactive={interactive} />
         <NpcPanel game={game} onAction={onAction} interactive={interactive} />
 
         <div className="sidebar-tabs">
@@ -695,7 +690,6 @@ function GameScreen({
           ) : (
             <div className="panel empty-hint">未停留在商店格</div>
           ))}
-        {tab === 'market' && <StockPanel game={game} onAction={onAction} interactive={interactive} />}
         {tab === 'report' && <ReportPanel game={game} myPlayerId={session.myPlayerId} />}
         {tab === 'trade' && <TradePanel game={game} onAction={onAction} interactive={interactive} />}
         {tab === 'log' && (

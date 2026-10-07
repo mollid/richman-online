@@ -1,13 +1,35 @@
-import { availableActions, type GameState, type PlayerAction } from '@richman/shared';
+import { useState } from 'react';
+import { availableActions, gameDate, type GameState, type PlayerAction } from '@richman/shared';
 
 function fmtPct(pct: number): string {
   return `${pct >= 0 ? '+' : ''}${pct}%`;
 }
 
-/** 股票面板：行情 + 持仓，银行格可交易 */
-export function StockPanel({ game, onAction, interactive = true }: { game: GameState; onAction: (a: PlayerAction) => void; interactive?: boolean }) {
+function fmt(n: number): string {
+  return n.toLocaleString('zh-CN');
+}
+
+/**
+ * 股市面板（ECON-09 / help[14]「股票是一項不錯的投資，**您可以隨時進行買賣**」）。
+ *
+ * - **不绑定任何格型**：玩家在自己回合的任意决策点（掷骰前 / 决策后）都能买卖；
+ * - 唯一限制是星期例假日休市（TIME-02）与新闻事件导致的全市场 / 个股停牌；
+ * - 支持 1 / 5 / 10 / 全部 / 自定义数量买入，卖出同理；
+ * - ECON-10：独立展示总市值（现值）、成本（投资成本）、经营权（控股公司数）。
+ */
+export function StockPanel({
+  game,
+  onAction,
+  interactive = true,
+}: {
+  game: GameState;
+  onAction: (a: PlayerAction) => void;
+  interactive?: boolean;
+}) {
+  const [customQty, setCustomQty] = useState(1);
   const current = game.players[game.currentPlayerIndex];
   const actions = availableActions(game);
+  const date = gameDate(game);
   if (!current) return null;
 
   const portfolioValue = Object.entries(current.stocks).reduce((sum, [id, qty]) => {
@@ -15,15 +37,41 @@ export function StockPanel({ game, onAction, interactive = true }: { game: GameS
     return sum + (stock?.price ?? 0) * qty;
   }, 0);
   const portfolioCost = Object.values(current.stockCost ?? {}).reduce((sum, v) => sum + v, 0);
+  const profit = portfolioValue - portfolioCost;
   const controlled = game.companies.filter((c) => c.chairmanId === current.id).length;
+  const funds = current.cash + current.deposit; // help[07]：现金不足时自动扣存款
+
+  // 停牌原因诊断（用于给玩家明确提示）
+  const haltAll = game.stockHaltAllDays > 0;
+  const suspendedIds = new Set(
+    game.stockHalts.filter((h) => h.kind === 'suspend').map((h) => h.stockId),
+  );
 
   const trade = (stockId: string, type: 'BUY_STOCK' | 'SELL_STOCK', quantity: number) => {
+    if (quantity <= 0) return;
     onAction({ type, stockId, quantity });
   };
+
+  const maxBuy = (price: number) => (price > 0 ? Math.floor(funds / price) : 0);
 
   return (
     <div className="panel stock-panel">
       <div className="panel-title">股市 · 第 {game.round} 回合</div>
+
+      {/* 市场状态条 */}
+      <div className="stock-market-bar">
+        <span className={`badge weekday ${date.isHoliday ? 'holiday' : ''}`}>{date.weekdayLabel}</span>
+        {actions.canTradeStock ? (
+          <span className="stock-open">● 交易中 · 随时可买卖</span>
+        ) : haltAll ? (
+          <span className="stock-closed">全市场停牌（剩余 {game.stockHaltAllDays} 天）</span>
+        ) : date.isHoliday ? (
+          <span className="stock-closed">例假日休市</span>
+        ) : (
+          <span className="stock-closed">当前阶段不可交易</span>
+        )}
+      </div>
+
       <table className="stock-table">
         <thead>
           <tr>
@@ -37,24 +85,58 @@ export function StockPanel({ game, onAction, interactive = true }: { game: GameS
         <tbody>
           {game.stockMarket.stocks.map((s) => {
             const holding = current.stocks[s.id] ?? 0;
+            const suspended = suspendedIds.has(s.id);
+            const canTrade = interactive && actions.canTradeStock && !suspended;
+            const cap = maxBuy(s.price);
+            const qty = Math.max(1, Math.min(customQty, Math.max(1, cap)));
             return (
-              <tr key={s.id}>
-                <td>{s.name}</td>
-                <td>¥{s.price}</td>
+              <tr key={s.id} className={suspended ? 'suspended' : ''}>
+                <td>
+                  {s.name}
+                  {suspended && <span className="stock-flag">停牌</span>}
+                </td>
+                <td>¥{fmt(s.price)}</td>
                 <td className={s.lastChangePct >= 0 ? 'up' : 'down'}>{fmtPct(s.lastChangePct)}</td>
-                <td>{holding}</td>
+                <td>
+                  {holding > 0 ? holding : '—'}
+                  {holding > 0 && (
+                    <span className="stock-pl">
+                      市值 ¥{fmt(s.price * holding)}
+                    </span>
+                  )}
+                </td>
                 <td className="trade-cell">
-                  <button className="mini" disabled={!interactive || !actions.canTradeStock} onClick={() => trade(s.id, 'BUY_STOCK', 1)}>
-                    买1
+                  <button
+                    className="mini"
+                    disabled={!canTrade || cap < 1}
+                    title={cap < 1 ? '资金不足' : `买入 ${qty} 张（需 ¥${fmt(s.price * qty)}）`}
+                    onClick={() => trade(s.id, 'BUY_STOCK', qty)}
+                  >
+                    买{qty}
                   </button>
-                  <button className="mini" disabled={!interactive || !actions.canTradeStock || current.cash < s.price * 10} onClick={() => trade(s.id, 'BUY_STOCK', 10)}>
-                    买10
+                  <button
+                    className="mini"
+                    disabled={!canTrade || cap < 1}
+                    title={`全部买入（约 ${Math.floor(cap / qty) * qty} 张）`}
+                    onClick={() => trade(s.id, 'BUY_STOCK', cap)}
+                  >
+                    全买
                   </button>
-                  <button className="mini" disabled={!interactive || !actions.canTradeStock || holding < 1} onClick={() => trade(s.id, 'SELL_STOCK', 1)}>
-                    卖1
+                  <button
+                    className="mini"
+                    disabled={!canTrade || holding < 1}
+                    title={holding < 1 ? '无持仓' : `卖出 ${Math.min(qty, holding)} 张`}
+                    onClick={() => trade(s.id, 'SELL_STOCK', Math.min(qty, holding))}
+                  >
+                    卖{Math.min(qty, holding)}
                   </button>
-                  <button className="mini" disabled={!interactive || !actions.canTradeStock || holding < 1} onClick={() => trade(s.id, 'SELL_STOCK', holding)}>
-                    全卖
+                  <button
+                    className="mini"
+                    disabled={!canTrade || holding < 1}
+                    title="清仓"
+                    onClick={() => trade(s.id, 'SELL_STOCK', holding)}
+                  >
+                    清仓
                   </button>
                 </td>
               </tr>
@@ -62,16 +144,59 @@ export function StockPanel({ game, onAction, interactive = true }: { game: GameS
           })}
         </tbody>
       </table>
-      <div className="stock-summary">
-        持仓市值 ¥{portfolioValue.toLocaleString('zh-CN')} · 成本 ¥{portfolioCost.toLocaleString('zh-CN')} · 现金 ¥
-        {current.cash.toLocaleString('zh-CN')} · 控股公司 {controlled} 家
+
+      {/* 数量档位：满足「自由购买」——可一次买任意张 */}
+      <div className="stock-qty-row">
+        <label>数量</label>
+        {[1, 5, 10, 50].map((n) => (
+          <button
+            key={n}
+            className={`small ${customQty === n ? 'primary' : ''}`}
+            onClick={() => setCustomQty(n)}
+          >
+            {n} 张
+          </button>
+        ))}
+        <input
+          type="number"
+          min={1}
+          value={customQty}
+          onChange={(e) => setCustomQty(Math.max(1, Math.floor(Number(e.target.value) || 1)))}
+        />
       </div>
-      {actions.isHoliday ? (
-        <div className="stock-hint holiday-hint">例假日休市，今日无法交易</div>
-      ) : (
-        !actions.canTradeStock && <div className="stock-hint">到达银行/证交所后可交易</div>
-      )}
+
+      {/* ECON-10：总市值 / 成本 / 经营权三项独立展示 */}
+      <div className="stock-summary">
+        <div className="stock-summary-row">
+          <span>总市值</span>
+          <b>¥{fmt(portfolioValue)}</b>
+        </div>
+        <div className="stock-summary-row">
+          <span>成本</span>
+          <b>¥{fmt(portfolioCost)}</b>
+        </div>
+        <div className="stock-summary-row">
+          <span>浮动盈亏</span>
+          <b className={profit >= 0 ? 'up' : 'down'}>
+            {profit >= 0 ? '+' : ''}
+            {fmt(profit)}
+          </b>
+        </div>
+        <div className="stock-summary-row">
+          <span>经营权</span>
+          <b>{controlled} 家</b>
+        </div>
+        <div className="stock-summary-row">
+          <span>可用资金</span>
+          <b>
+            现金 ¥{fmt(current.cash)} · 存款 ¥{fmt(current.deposit)}
+          </b>
+        </div>
+      </div>
+
+      <div className="stock-hint">
+        买卖股票的收支由银行自动转扣：现金优先，不足自动从存款扣除（help[07]）。本面板在任何格型均可交易。
+      </div>
     </div>
   );
 }
-
