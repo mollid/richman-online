@@ -9,7 +9,7 @@ export interface LeaderboardEntry {
   games: number;
 }
 
-import type { PlayerAction } from '@richman/shared';
+import type { DateSerial, PlayerAction } from '@richman/shared';
 
 const TOKEN_KEY = 'richman.token';
 
@@ -95,6 +95,8 @@ export interface ReplayRecordSummary {
 
 export interface ReplayRecord extends ReplayRecordSummary {
   seed: number;
+  /** 起始日期；老记录可能为空 */
+  start_date?: DateSerial | null;
   actions: Array<{ turn: number; action: PlayerAction }>;
 }
 

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { GameState, PlayerAction } from '@richman/shared';
+import { availableActions, type GameState, type PlayerAction } from '@richman/shared';
 import { BoardRenderer } from './game/BoardRenderer.js';
 import { sfx } from './game/sfx.js';
 import { LocalHotseatSession, type GameSession } from './net/session.js';
@@ -18,6 +18,8 @@ import {
 } from './net/auth.js';
 import { PlayerList } from './ui/PlayerList.js';
 import { ControlPanel } from './ui/ControlPanel.js';
+import { CalendarPanel } from './ui/CalendarPanel.js';
+import { BankPanel } from './ui/BankPanel.js';
 import { LogPanel } from './ui/LogPanel.js';
 import { HandPanel } from './ui/HandPanel.js';
 import { StockPanel } from './ui/StockPanel.js';
@@ -27,6 +29,16 @@ import { ReplayScreen } from './ui/ReplayScreen.js';
 import { useGameSfx } from './ui/useGameSfx.js';
 
 type SetupMode = 'local' | 'online' | 'replay';
+
+type SidebarTab = 'status' | 'finance' | 'shop' | 'market' | 'log';
+
+const SIDEBAR_TABS: Array<[SidebarTab, string]> = [
+  ['status', '状态'],
+  ['finance', '金融'],
+  ['shop', '商店'],
+  ['market', '股市'],
+  ['log', '日志'],
+];
 
 export default function App() {
   const [session, setSession] = useState<GameSession | null>(null);
@@ -404,6 +416,22 @@ function GameScreen({ session, onExit }: { session: GameSession; onExit: () => v
   const interactive = isMyTurn && game.phase !== 'game_over';
   const isRemote = session.myPlayerId != null;
 
+  const actions = availableActions(game);
+  const [tab, setTab] = useState<SidebarTab>('status');
+  const atBank = actions.canDeposit || actions.canWithdraw || actions.canLoan || actions.canRepayLoan;
+  const contextTab: SidebarTab | '' = actions.canShop
+    ? 'shop'
+    : atBank
+      ? 'finance'
+      : actions.canTradeStock
+        ? 'market'
+        : '';
+  const lastContext = useRef('');
+  useEffect(() => {
+    if (contextTab && contextTab !== lastContext.current) setTab(contextTab);
+    lastContext.current = contextTab;
+  }, [contextTab]);
+
   return (
     <div className="game-screen">
       <div className="board-area" ref={boardRef}>
@@ -468,13 +496,42 @@ function GameScreen({ session, onExit }: { session: GameSession; onExit: () => v
         {!isMyTurn && current?.online && game.phase !== 'lobby' && game.phase !== 'game_over' && (
           <div className="wait-banner">等待 {current.name} 操作…</div>
         )}
-        <PlayerList game={game} myPlayerId={session.myPlayerId} />
-        <HandPanel game={game} onAction={onAction} interactive={interactive} />
         <ControlPanel game={game} onAction={onAction} interactive={interactive} />
-        <ShopPanel game={game} onAction={onAction} interactive={interactive} />
-        <StockPanel game={game} onAction={onAction} interactive={interactive} />
-        <ChatPanel session={session} myPlayerId={session.myPlayerId} />
-        <LogPanel game={game} />
+
+        <div className="sidebar-tabs">
+          {SIDEBAR_TABS.map(([id, label]) => (
+            <button key={id} className={`small ${tab === id ? 'primary' : ''}`} onClick={() => setTab(id)}>
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {tab === 'status' && (
+          <>
+            <CalendarPanel game={game} />
+            <PlayerList game={game} myPlayerId={session.myPlayerId} />
+            <HandPanel game={game} onAction={onAction} interactive={interactive} />
+          </>
+        )}
+        {tab === 'finance' &&
+          (atBank ? (
+            <BankPanel game={game} onAction={onAction} interactive={interactive} />
+          ) : (
+            <div className="panel empty-hint">未停留在银行格</div>
+          ))}
+        {tab === 'shop' &&
+          (actions.canShop ? (
+            <ShopPanel game={game} onAction={onAction} interactive={interactive} />
+          ) : (
+            <div className="panel empty-hint">未停留在商店格</div>
+          ))}
+        {tab === 'market' && <StockPanel game={game} onAction={onAction} interactive={interactive} />}
+        {tab === 'log' && (
+          <>
+            <ChatPanel session={session} myPlayerId={session.myPlayerId} />
+            <LogPanel game={game} />
+          </>
+        )}
       </aside>
     </div>
   );

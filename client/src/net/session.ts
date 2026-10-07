@@ -1,5 +1,5 @@
 import type { ChatMessage } from './remote.js';
-import { applyAction, createGame, type GameState, type PlayerAction } from '@richman/shared';
+import { applyAction, createGame, type DateSerial, type GameState, type PlayerAction } from '@richman/shared';
 
 /** 会话抽象：本地热座与联机共用同一套 UI */
 export interface GameSession {
@@ -38,7 +38,9 @@ export class LocalHotseatSession implements GameSession {
       name: names[i]!,
       color: colors[i]!,
     }));
-    this.game = applyAction(createGame(players, seed), { type: 'START_GAME' });
+    const now = new Date();
+    const startDate: DateSerial = { year: now.getFullYear(), month: now.getMonth() + 1, day: now.getDate() };
+    this.game = applyAction(createGame(players, seed, { startDate }), { type: 'START_GAME' });
   }
 
   getGame(): GameState {

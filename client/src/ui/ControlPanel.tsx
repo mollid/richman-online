@@ -1,4 +1,28 @@
-import { availableActions, upgradeCost, type GameState, type PlayerAction } from '@richman/shared';
+import { useState } from 'react';
+import {
+  availableActions,
+  FACILITIES,
+  facilityBuildCost,
+  gameDate,
+  gradeName,
+  ITEMS,
+  landPrice,
+  landUpgradeCost,
+  priceIndex,
+  researchDef,
+  type FacilityType,
+  type GameState,
+  type PlayerAction,
+} from '@richman/shared';
+
+/** 建设项目的示意图标（与棋盘徽章保持一致） */
+const FACILITY_ICON: Record<FacilityType, string> = {
+  park: '🌳',
+  mall: '🛍️',
+  hotel: '🏨',
+  gas: '⛽',
+  lab: '🔬',
+};
 
 const PHASE_LABEL: Record<GameState['phase'], string> = {
   lobby: '等待开始',
@@ -19,10 +43,18 @@ export function ControlPanel({
 }) {
   const actions = availableActions(game);
   const current = game.players[game.currentPlayerIndex];
+  const [diceChoice, setDiceChoice] = useState<number | null>(null);
   const cell = game.board[current?.position ?? 0];
   const ownedBy = current && game.players.find((p) => p.properties.some((q) => q.cellId === cell?.id));
   const myProp = ownedBy?.properties.find((q) => q.cellId === cell?.id);
-  const upgrade = myProp && cell?.price !== undefined ? upgradeCost(cell.price, myProp.grade) : undefined;
+  const date = gameDate(game);
+  const price = cell && cell.price !== undefined ? landPrice(game, cell) : undefined;
+  const upgrade = myProp && cell ? landUpgradeCost(game, cell, myProp.grade) : undefined;
+  const waitingForTurn = game.phase === 'awaiting_action' || game.phase === 'awaiting_roll';
+  // CORE-03：步行 1 颗骰子、机车 2 颗、汽车 3 颗；掷骰前可自选本次使用几颗（默认用满）
+  const maxDice = Math.max(1, current?.diceCount ?? 1);
+  const effectiveDice = diceChoice !== null && diceChoice >= 1 && diceChoice <= maxDice ? diceChoice : maxDice;
+  const shownDice: (number | null)[] = game.dice ?? Array.from({ length: maxDice }, () => null);
 
   return (
     <div className="panel control-panel">
@@ -30,6 +62,18 @@ export function ControlPanel({
         <span className="phase-badge">{PHASE_LABEL[game.phase]}</span>
         <span>回合 {game.turn}</span>
       </div>
+
+      <div className="control-meta">
+        <span>
+          {date.month} 月 {date.day} 日 · {date.weekdayLabel}
+        </span>
+        <span>第 {date.dayIndex + 1} 天</span>
+        <span>物价指数 {priceIndex(game).toFixed(2)}</span>
+        {date.isHoliday && <span className="badge holiday">例假·休市</span>}
+      </div>
+
+      {actions.canTradeStock && !actions.isHoliday && <div className="cell-hint">已进入银行/证交所，可存取、贷款与交易股票</div>}
+      {actions.isHoliday && waitingForTurn && <div className="cell-hint holiday-hint">例假日休市：银行与股市暂停服务</div>}
 
       {current && <div className="current-name">当前：{current.name}</div>}
 
@@ -87,28 +131,76 @@ export function ControlPanel({
       ) : (
         <>
           <div className="dice-row">
-            <span className={`die ${game.phase === 'awaiting_roll' ? 'ready' : ''}`}>{game.dice?.[0] ?? '·'}</span>
-            <span className={`die ${game.phase === 'awaiting_roll' ? 'ready' : ''}`}>{game.dice?.[1] ?? '·'}</span>
+            {shownDice.map((v, i) => (
+              <span key={i} className={`die ${game.phase === 'awaiting_roll' ? 'ready' : ''}`}>
+                {v ?? '·'}
+              </span>
+            ))}
           </div>
+
+          {game.phase === 'awaiting_roll' && maxDice > 1 && (
+            <div className="param-row">
+              <label>本次骰子数</label>
+              <select value={effectiveDice} onChange={(e) => setDiceChoice(Number(e.target.value))}>
+                {Array.from({ length: maxDice }, (_, i) => i + 1).map((n) => (
+                  <option key={n} value={n}>
+                    {n} 颗
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
           {game.phase === 'awaiting_action' && cell && (
             <div className="cell-hint">
               当前位置：{cell.name}
-              {cell.price !== undefined && `（¥${cell.price}）`}
-              {myProp && ` · 我的 ${myProp.grade} 级地产`}
-              {ownedBy && !myProp && ` · ${ownedBy.name} 的地产`}
+              {price !== undefined && `（¥${price.toLocaleString('zh-CN')}）`}
+              {myProp &&
+                (myProp.facility
+                  ? ` · 我的${FACILITIES[myProp.facility].name}（${gradeName(myProp.grade)}）`
+                  : ` · 我的${cell.type === 'commercial' ? '商业用地' : `${gradeName(myProp.grade)}地产`}`)}
+              {myProp?.chain && ' · 连锁店'}
+              {ownedBy && !myProp && ` · ${ownedBy.name} 的${cell.type === 'commercial' ? '商业用地' : '地产'}`}
+            </div>
+          )}
+
+          {game.phase === 'awaiting_action' && cell && actions.buildableFacilities.length > 0 && (
+            <div className="build-row">
+              <span className="build-label">建设项目</span>
+              {actions.buildableFacilities.map((f) => (
+                <button key={f} disabled={!interactive} onClick={() => onAction({ type: 'BUILD_FACILITY', facility: f })}>
+                  {FACILITY_ICON[f]} {FACILITIES[f].name} ¥{facilityBuildCost(game, cell, f).toLocaleString('zh-CN')}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {game.phase === 'awaiting_action' && actions.researchableItems.length > 0 && (
+            <div className="build-row">
+              <span className="build-label">立项研发</span>
+              {actions.researchableItems.map((id) => (
+                <button key={id} disabled={!interactive} onClick={() => onAction({ type: 'START_RESEARCH', itemId: id })}>
+                  {ITEMS[id]?.name ?? id}（{researchDef(id)?.days ?? '?'} 天）
+                </button>
+              ))}
+            </div>
+          )}
+
+          {current?.research && (
+            <div className="cell-hint">
+              研发中：{ITEMS[current.research.itemId]?.name ?? current.research.itemId} · 剩余 {current.research.remainDays} 天
             </div>
           )}
 
           <div className="action-row">
-            <button className="primary" disabled={!interactive || !actions.canRoll} onClick={() => onAction({ type: 'ROLL_DICE' })}>
-              🎲 掷骰
+            <button className="primary" disabled={!interactive || !actions.canRoll} onClick={() => onAction({ type: 'ROLL_DICE', diceCount: maxDice > 1 ? effectiveDice : undefined })}>
+              🎲 掷骰{maxDice > 1 ? `（${effectiveDice} 颗）` : ''}
             </button>
             <button disabled={!interactive || !actions.canBuy} onClick={() => onAction({ type: 'BUY_LAND' })}>
-              买地 ¥{cell?.price ?? '-'}
+              买地 ¥{price?.toLocaleString('zh-CN') ?? '-'}
             </button>
             <button disabled={!interactive || !actions.canUpgrade} onClick={() => onAction({ type: 'UPGRADE_LAND' })}>
-              升级 ¥{upgrade ?? '-'}
+              升级 ¥{upgrade?.toLocaleString('zh-CN') ?? '-'}
             </button>
             <button className="ghost" disabled={!interactive || !actions.canEnd} onClick={() => onAction({ type: 'END_TURN' })}>
               结束回合

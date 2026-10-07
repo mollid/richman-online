@@ -8,7 +8,12 @@ export class ReplaySession {
   private engine: ReplayEngine;
 
   constructor(record: ReplayRecord) {
-    this.engine = new ReplayEngine(record);
+    this.engine = new ReplayEngine({
+      seed: record.seed,
+      startDate: record.start_date ?? undefined,
+      players: record.players.map((p) => ({ player_name: p.player_name, color: p.color })),
+      actions: record.actions,
+    });
   }
 
   get totalSteps(): number {

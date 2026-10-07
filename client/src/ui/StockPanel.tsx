@@ -63,7 +63,11 @@ export function StockPanel({ game, onAction, interactive = true }: { game: GameS
       <div className="stock-summary">
         持仓市值 ¥{portfolioValue.toLocaleString('zh-CN')} · 现金 ¥{current.cash.toLocaleString('zh-CN')}
       </div>
-      {!actions.canTradeStock && <div className="stock-hint">到达银行/证交所后可交易</div>}
+      {actions.isHoliday ? (
+        <div className="stock-hint holiday-hint">例假日休市，今日无法交易</div>
+      ) : (
+        !actions.canTradeStock && <div className="stock-hint">到达银行/证交所后可交易</div>
+      )}
     </div>
   );
 }

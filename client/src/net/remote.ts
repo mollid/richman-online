@@ -258,7 +258,17 @@ function emptyState(): GameState {
     stockMarket: { stocks: [] },
     pendingFixedDice: null,
     roadblocks: [],
+    mines: [],
+    bombs: [],
+    stockHalts: [],
+    rentEffects: [],
+    lastRoundSnapshot: null,
     minigame: null,
+    calendar: { start: { year: 1980, month: 1, day: 1 }, elapsedDays: 0 },
+    initialCashPerPlayer: 15000,
+    initialPlayerCount: 0,
+    bankAccess: null,
+    lotteryPool: 0,
   };
 }
 

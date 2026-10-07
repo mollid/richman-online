@@ -1,7 +1,8 @@
 import { Application, Container, Graphics, Text } from 'pixi.js';
-import type { BoardCell, GameState, Player } from '@richman/shared';
+import type { BoardCell, FacilityType, GameState, Player } from '@richman/shared';
 
-const GRID = 11;
+/** 17×17 外圈 = 64 格（波 3 扩棋盘）；每边 16 步 + 4 个角 */
+const GRID = 17;
 const TILE_W = 64;
 const TILE_H = 32;
 const MOVE_SPEED_CELLS_PER_SEC = 6;
@@ -27,6 +28,13 @@ const CELL_ICONS: Partial<Record<BoardCell['type'], string>> = {
   god: '⛩️',
   game: '🎮',
   neutral: '🌳',
+  'free-card': '🎴',
+  points: '🎫',
+  lottery: '🎰',
+  magic: '🔮',
+  treasure: '💰',
+  news: '📰',
+  company: '🏢',
 };
 
 const TYPE_COLORS: Partial<Record<BoardCell['type'], number>> = {
@@ -39,18 +47,45 @@ const TYPE_COLORS: Partial<Record<BoardCell['type'], number>> = {
   shop: 0xffcc80,
   bank: 0xa5d6a7,
   god: 0xb39ddb,
+  commercial: 0xffe0b2,
+  'free-card': 0xce93d8,
+  points: 0xfff59d,
+  lottery: 0xffab91,
+  magic: 0xd1c4e9,
+  treasure: 0xffd54f,
+  news: 0xb0e0e6,
+  company: 0xbcaaa4,
 };
 
+/** 商业设施徽章（EST-07：五种建设项目） */
+const FACILITY_MARKS: Record<FacilityType, { icon: string; color: number }> = {
+  park: { icon: '🌳', color: 0x81c784 },
+  mall: { icon: '🛍️', color: 0xffb74d },
+  hotel: { icon: '🏨', color: 0xf06292 },
+  gas: { icon: '⛽', color: 0x90a4ae },
+  lab: { icon: '🔬', color: 0x4dd0e1 },
+};
+
+/**
+ * 外圈 64 格 → 等距网格坐标（顺时针）：
+ * 0..16 底边右行（含右下角）→ 17..32 右边上行（含右上角）
+ * → 33..48 顶边左行（含左上角）→ 49..63 左边下行。
+ */
 function perimeterGrid(index: number): { x: number; y: number } {
-  if (index <= 10) return { x: index, y: GRID - 1 };
-  if (index <= 20) return { x: GRID - 1, y: GRID - 1 - (index - 10) };
-  if (index <= 30) return { x: GRID - 1 - (index - 20), y: 0 };
-  return { x: 0, y: index - 30 };
+  const side = GRID - 1;
+  if (index <= side) return { x: index, y: side };
+  if (index <= side * 2) return { x: side, y: side - (index - side) };
+  if (index <= side * 3) return { x: side - (index - side * 2), y: 0 };
+  return { x: 0, y: index - side * 3 };
 }
 
 function cellColor(cell: BoardCell): number {
   if (cell.type === 'property' && cell.group) return GROUP_COLORS[cell.group] ?? 0xcfd8dc;
   return TYPE_COLORS[cell.type] ?? 0xcfd8dc;
+}
+
+function isLand(cell: BoardCell): boolean {
+  return (cell.type === 'property' || cell.type === 'commercial') && cell.price !== undefined;
 }
 
 /** PixiJS 棋盘渲染器：只负责表现，不持有游戏规则 */
@@ -69,6 +104,7 @@ export class BoardRenderer {
   private initializing = false;
   private initPromise: Promise<void> | null = null;
   private pendingGame: GameState | null = null;
+  private boardBounds = { width: 0, height: 0 };
 
   constructor(container: HTMLElement, board: BoardCell[]) {
     this.container = container;
@@ -99,10 +135,27 @@ export class BoardRenderer {
     this.world.addChild(this.tokenLayer);
 
     // 计算外圈格子的等距屏幕坐标（先以原点为中心，渲染时整体居中）
+    let minX = Infinity;
+    let maxX = -Infinity;
+    let minY = Infinity;
+    let maxY = -Infinity;
     for (let i = 0; i < this.board.length; i++) {
       const g = perimeterGrid(i);
-      this.cellPositions.push({ x: (g.x - g.y) * (TILE_W / 2), y: (g.x + g.y) * (TILE_H / 2) });
+      const x = (g.x - g.y) * (TILE_W / 2);
+      const y = (g.x + g.y) * (TILE_H / 2);
+      this.cellPositions.push({ x, y });
+      minX = Math.min(minX, x);
+      maxX = Math.max(maxX, x);
+      minY = Math.min(minY, y);
+      maxY = Math.max(maxY, y);
     }
+    // 棋盘外接尺寸（含单格宽高），用于自适应缩放
+    this.boardBounds = {
+      width: maxX - minX + TILE_W,
+      height: maxY - minY + TILE_H,
+    };
+    // 把世界原点移到棋盘几何中心，便于整体居中
+    this.world.pivot.set((minX + maxX) / 2, (minY + maxY) / 2);
 
     for (let i = 0; i < this.board.length; i++) {
       this.drawCell(i);
@@ -151,6 +204,7 @@ export class BoardRenderer {
     tile.position.set(pos.x, pos.y);
     this.cellLayer.addChild(tile);
 
+    const land = isLand(cell);
     const label = new Text({
       text: cell.name,
       style: {
@@ -161,7 +215,7 @@ export class BoardRenderer {
       },
     });
     label.anchor.set(0.5);
-    label.position.set(pos.x, pos.y - (cell.type === 'property' ? 5 : 0));
+    label.position.set(pos.x, pos.y - (land ? 5 : 0));
     this.cellLayer.addChild(label);
 
     const icon = CELL_ICONS[cell.type];
@@ -175,7 +229,7 @@ export class BoardRenderer {
       this.cellLayer.addChild(iconText);
     }
 
-    if (cell.type === 'property' && cell.price !== undefined) {
+    if (land) {
       const price = new Text({
         text: `¥${cell.price}`,
         style: { fontFamily: 'Consolas, monospace', fontSize: 8, fill: 0x455a64 },
@@ -192,6 +246,7 @@ export class BoardRenderer {
       for (const prop of player.properties) {
         const pos = this.cellPositions[prop.cellId];
         if (!pos) continue;
+        const cell = game.board[prop.cellId];
         const border = new Graphics();
         const halfW = TILE_W / 2 - 2;
         const halfH = TILE_H / 2 - 1;
@@ -200,9 +255,12 @@ export class BoardRenderer {
         border.position.set(pos.x, pos.y);
         this.overlayLayer.addChild(border);
 
-        // 等级标记：1~3 栋小屋（屋顶颜色 = 拥有者颜色）
-        for (let i = 0; i < prop.grade; i++) {
-          const bx = pos.x - (prop.grade - 1) * 8 + i * 16;
+        // 等级标记：最多 5 栋小屋（EST-02 扩至 5 级），间距随级数自适应
+        const n = prop.grade;
+        const step = n > 1 ? Math.min(16, 40 / (n - 1)) : 0;
+        const totalW = step * (n - 1);
+        for (let i = 0; i < n; i++) {
+          const bx = pos.x - totalW / 2 + i * step;
           const house = new Graphics();
           house.rect(bx - 4, pos.y, 8, 5);
           house.fill({ color: 0xfff3e0 });
@@ -212,12 +270,48 @@ export class BoardRenderer {
           house.stroke({ width: 1, color: 0x263238 });
           this.overlayLayer.addChild(house);
         }
+
+        // 连锁店标记（EST-04）：改建卡改建而成的店面
+        if (prop.chain) {
+          const badge = new Text({
+            text: '链',
+            style: {
+              fontFamily: 'Microsoft YaHei, sans-serif',
+              fontSize: 9,
+              fill: 0xffffff,
+              fontWeight: '700',
+            },
+          });
+          badge.anchor.set(0.5);
+          const bg = new Graphics();
+          bg.roundRect(pos.x - 7, pos.y - TILE_H / 2 - 8, 14, 12, 3);
+          bg.fill({ color: player.color, alpha: 0.95 });
+          bg.stroke({ width: 1, color: 0x263238 });
+          badge.position.set(pos.x, pos.y - TILE_H / 2 - 2);
+          this.overlayLayer.addChild(bg);
+          this.overlayLayer.addChild(badge);
+        }
+
+        // 商业设施徽章（EST-07）
+        if (cell?.type === 'commercial' && prop.facility) {
+          const mark = FACILITY_MARKS[prop.facility];
+          if (mark) {
+            const badge = new Text({ text: mark.icon, style: { fontSize: 11 } });
+            badge.anchor.set(0.5);
+            const bg = new Graphics();
+            bg.circle(pos.x + halfW - 6, pos.y + halfH - 4, 8);
+            bg.fill({ color: mark.color });
+            bg.stroke({ width: 1, color: 0x263238 });
+            badge.position.set(pos.x + halfW - 6, pos.y + halfH - 4);
+            this.overlayLayer.addChild(bg);
+            this.overlayLayer.addChild(badge);
+          }
+        }
       }
     }
   }
 
   private syncTokens(game: GameState): void {
-    const active = game.players.filter((p) => !p.bankrupt);
     for (const player of game.players) {
       let token = this.tokens.get(player.id);
       if (!token) {
@@ -237,7 +331,6 @@ export class BoardRenderer {
     for (const [id, token] of this.tokens) {
       token.ring.visible = id === currentId && !(!currentId || game.phase === 'game_over');
     }
-    void active;
   }
 
   private createToken(player: Player): { container: Container; ring: Graphics; displayIndex: number; targetIndex: number } {
@@ -275,8 +368,12 @@ export class BoardRenderer {
     if (!app) return;
     this.elapsed += deltaMS / 1000;
 
-    // 棋盘居中（窗口尺寸变化时保持居中）
-    this.world.position.set(app.renderer.width / 2, app.renderer.height / 2 - 40);
+    // 棋盘居中 + 自适应缩放（64 格棋盘在窄容器里也能完整显示）
+    const availW = Math.max(80, app.renderer.width - 24);
+    const availH = Math.max(80, app.renderer.height - 96);
+    const scale = Math.min(1, availW / this.boardBounds.width, availH / this.boardBounds.height);
+    this.world.scale.set(scale);
+    this.world.position.set(app.renderer.width / 2, app.renderer.height / 2 + 12);
 
     const n = this.cellPositions.length || 1;
     const dt = deltaMS / 1000;
@@ -301,6 +398,3 @@ export class BoardRenderer {
     }
   }
 }
-
-
-
