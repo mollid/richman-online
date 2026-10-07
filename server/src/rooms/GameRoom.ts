@@ -170,6 +170,17 @@ export class GameRoom extends Room {
   }
 
   async onLeave(client: Client, consented: boolean) {
+    // 显式退出（consented）不保留重连；异常断开（刷新/断网）保留窗口，
+    // 否则房间会被立即 dispose，旧连接后续推送全部报
+    // 「room has been disposed」，客户端表现为联机失败。
+    if (!consented) {
+      try {
+        await this.allowReconnection(client, RECONNECT_TIMEOUT_SEC);
+      } catch {
+        // 重连超时或期间无重连：走下面的正常离场流程
+      }
+    }
+
     if (this.game.phase === 'lobby') {
       this.game = removePlayer(this.game, client.sessionId);
       this.userIds.delete(client.sessionId);
@@ -179,16 +190,6 @@ export class GameRoom extends Room {
     }
 
     this.setOnline(client.sessionId, false);
-
-    if (!consented) {
-      try {
-        await this.allowReconnection(client, RECONNECT_TIMEOUT_SEC);
-        this.setOnline(client.sessionId, true);
-        return;
-      } catch {
-        // 重连超时：保持离线，交给托管
-      }
-    }
     this.scheduleAutoAct();
   }
 
