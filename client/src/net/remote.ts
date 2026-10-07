@@ -1,6 +1,7 @@
 import { Client, type Room } from 'colyseus.js';
 import { availableActions, type GameState, type PlayerAction } from '@richman/shared';
 import type { GameSession } from './session.js';
+import { getSettings } from '../game/settings.js';
 
 export interface RemoteSnapshot {
   game: GameState;
@@ -53,13 +54,18 @@ export class ColyseusSession implements GameSession {
     this.persistSession();
   }
 
-  /** 创建或加入房间并建立会话 */
+  /** 创建或加入房间并建立会话（TIME-06：建房时上报 OPTION 起始日期） */
   static async connect(opts: { playerName: string; roomId?: string; seed?: number }): Promise<ColyseusSession> {
     const client = new Client(serverUrl());
     const token = localStorage.getItem('richman.token') ?? undefined;
     const room = opts.roomId
       ? await client.joinById(opts.roomId, { name: opts.playerName, token })
-      : await client.create('game', { name: opts.playerName, seed: opts.seed, token });
+      : await client.create('game', {
+          name: opts.playerName,
+          seed: opts.seed,
+          token,
+          startDate: getSettings().startDate ?? undefined,
+        });
     return new ColyseusSession(room, opts.playerName, emptyState());
   }
 

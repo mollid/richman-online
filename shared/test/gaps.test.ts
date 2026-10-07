@@ -421,6 +421,37 @@ describe('CORE-04 认输投降（死神附身流程）', () => {
   });
 });
 
+describe('神庙摇籤：仍为随机（GOD 分布回归保护）', () => {
+  it('不同种子落到神庙摇出不同神明（覆盖多种结果，不恒定）', () => {
+    const picked = new Set<string>();
+    for (let seed = 1; seed <= 200; seed++) {
+      const g = newGame(seed);
+      g.players[0]!.position = 4; // 神庙前一格
+      g.pendingFixedDice = 1;
+      g.players[0]!.diceCount = 1;
+      const r = applyAction(g, { type: 'ROLL_DICE' });
+      // 落庙后回合已推进，改由日志判定附身结果
+      const hit = r.log.filter((l) => l.text.includes('附身'));
+      if (hit.length > 0) picked.add(hit[hit.length - 1]!.text);
+    }
+    // 200 次落庙应覆盖到多种神明（摇籤确实在随机）
+    expect(picked.size).toBeGreaterThanOrEqual(3);
+  });
+
+  it('同一 seed 重复落庙摇出同一神明（确定性回放）', () => {
+    const run = () => {
+      const g = newGame(77);
+      g.players[0]!.position = 4;
+      g.pendingFixedDice = 1;
+      g.players[0]!.diceCount = 1;
+      const r = applyAction(g, { type: 'ROLL_DICE' });
+      const hit = r.log.filter((l) => l.text.includes('附身'));
+      return hit[hit.length - 1]?.text ?? null;
+    };
+    expect(run()).toBe(run());
+  });
+});
+
 describe('神明日切：godTickHook 仍正常递减（回归保护）', () => {
   it('跨天后神明计时递减', () => {
     const g = newGame();

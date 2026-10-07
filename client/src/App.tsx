@@ -41,6 +41,7 @@ import { useGameSfx } from './ui/useGameSfx.js';
 import { useHotkeys } from './ui/useHotkeys.js';
 import { SettingsPanel } from './ui/SettingsPanel.js';
 import { HelpPanel } from './ui/HelpPanel.js';
+import { duckMusic, initMusic } from './game/bgm.js';
 
 type SetupMode = 'local' | 'online' | 'replay';
 
@@ -166,8 +167,6 @@ export default function App() {
           connecting={connecting}
           error={connectError}
           onOpenSettings={() => setShowSettings(true)}
-          onSaveGame={saveGame}
-          onLoadGame={loadGame}
           onOpenHelp={() => setShowHelp(true)}
         />
         {overlays}
@@ -184,6 +183,8 @@ export default function App() {
         registerAction={registerAction}
         onOpenSettings={() => setShowSettings(true)}
         onOpenHelp={() => setShowHelp(true)}
+        onSaveGame={saveGame}
+        onLoadGame={loadGame}
       />
       {overlays}
     </>
@@ -554,7 +555,15 @@ function GameScreen({
 
   const doRoll = useCallback(() => hotkeyAction({ type: 'ROLL_DICE' }), [hotkeyAction]);
   const setReportTab = useCallback(() => setTab('report'), []);
-  const toggleMute = useCallback(() => setMuted(sfx.toggleMuted()), []);
+  const toggleMute = useCallback(() => {
+    const next = sfx.toggleMuted();
+    setMuted(next);
+    // UI-11：总静音同时压低背景音乐
+    duckMusic(next);
+  }, []);
+
+  // UI-11：挂载时按 OPTION 设置启动程序生成的 BGM，卸载时停止
+  useEffect(() => initMusic(), []);
   useEffect(() => registerAction('roll_dice', doRoll), [registerAction, doRoll]);
   useEffect(() => registerAction('buy_land', () => hotkeyAction({ type: 'BUY_LAND' })), [registerAction, hotkeyAction]);
   useEffect(

@@ -25,6 +25,18 @@ function todaySerial(): DateSerial {
   return { year: now.getFullYear(), month: now.getMonth() + 1, day: now.getDate() };
 }
 
+/** TIME-06：校验客户端上报的起始日期（含真实月长与闰年） */
+function isValidDateSerial(d: unknown): d is DateSerial {
+  if (!d || typeof d !== 'object') return false;
+  const { year, month, day } = d as DateSerial;
+  if (!Number.isInteger(year) || year < 1980 || year > 2999) return false;
+  if (!Number.isInteger(month) || month < 1 || month > 12) return false;
+  if (!Number.isInteger(day) || day < 1) return false;
+  const leap = (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
+  const daysInMonth = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  return day <= daysInMonth[month - 1]!;
+}
+
 interface AuthResult {
   userId?: string;
   username?: string;
@@ -64,11 +76,12 @@ export class GameRoom extends Room {
     }
   }
 
-  onCreate(options: { seed?: number; maxPlayers?: number }) {
+  onCreate(options: { seed?: number; maxPlayers?: number; startDate?: DateSerial }) {
     this.maxClients = Math.min(Math.max(options.maxPlayers ?? 4, 2), 4);
     this.seed = options.seed ?? Date.now() % 2147483647;
     this.botRngState = this.seed;
-    this.startDate = todaySerial();
+    // TIME-06：建房方可在 OPTION 指定起始日期；缺省用系统日期
+    this.startDate = isValidDateSerial(options.startDate) ? options.startDate : todaySerial();
     this.game = createGame([], this.seed, { startDate: this.startDate });
     this.updateMetadata('lobby');
 
