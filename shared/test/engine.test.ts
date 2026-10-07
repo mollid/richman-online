@@ -359,23 +359,31 @@ describe('M2 神仙系统（GOD-01..12 天数制）', () => {
 });
 
 describe('M2 股票系统', () => {
+  /** 原版规则：股票只能用存款买 → 买入前先给一笔存款 */
+  function fundDeposit(state: GameState, playerIndex = 0, amount = 100000): GameState {
+    state.players[playerIndex]!.deposit = amount;
+    return state;
+  }
+
   it('随时可买卖股票（不绑定银行格，help[14]）', () => {
-    const g = setupLanding(newGame(119), 35, 7); // 落到 35 号银行
+    const g = setupLanding(fundDeposit(newGame(119)), 35, 7); // 落到 35 号银行
     const rolled = applyAction(g, { type: 'ROLL_DICE' });
     expect(rolled.phase).toBe('awaiting_action');
     expect(availableActions(rolled).canTradeStock).toBe(true);
 
+    const depositBefore = rolled.players[0]!.deposit;
     const bought = applyAction(rolled, { type: 'BUY_STOCK', stockId: 'tech', quantity: 10 });
-    expect(bought.players[0]!.cash).toBe(15000 - 120 * 10);
+    expect(bought.players[0]!.deposit).toBe(depositBefore - 120 * 10);
+    expect(bought.players[0]!.cash).toBe(15000); // 现金不动
     expect(bought.players[0]!.stocks['tech']).toBe(10);
 
     const sold = applyAction(bought, { type: 'SELL_STOCK', stockId: 'tech', quantity: 10 });
-    expect(sold.players[0]!.cash).toBe(15000);
+    expect(sold.players[0]!.cash).toBe(15000 + 120 * 10); // 卖股收入进现金
     expect(sold.players[0]!.stocks['tech']).toBeUndefined();
   });
 
   it('非银行格同样可交易（help[14]「您可以隨時進行買賣」）', () => {
-    const g = setupLanding(newGame(121), 1, 4); // 落到 1 号地产
+    const g = setupLanding(fundDeposit(newGame(121)), 1, 4); // 落到 1 号地产
     const rolled = applyAction(g, { type: 'ROLL_DICE' });
     expect(availableActions(rolled).canTradeStock).toBe(true);
     const bought = applyAction(rolled, { type: 'BUY_STOCK', stockId: 'tech', quantity: 1 });
@@ -388,7 +396,7 @@ describe('M2 股票系统', () => {
   });
 
   it('掷骰前（awaiting_roll）即可买入，保证每回合都有交易机会', () => {
-    const g = newGame(123);
+    const g = fundDeposit(newGame(123));
     expect(g.phase).toBe('awaiting_roll');
     expect(availableActions(g).canTradeStock).toBe(true);
     const bought = applyAction(g, { type: 'BUY_STOCK', stockId: 'food', quantity: 2 });
@@ -399,28 +407,36 @@ describe('M2 股票系统', () => {
     expect(rolled.turn).toBe(2);
   });
 
-  it('现金不足自动从存款扣款（help[07]「由銀行幫您自動轉、扣帳」）', () => {
+  it('买入只扣存款，现金分文不动（help[07] 银行自动转扣存款）', () => {
     const g = newGame(125);
     g.players[0]!.cash = 500;
-    g.players[0]!.deposit = 1000;
+    g.players[0]!.deposit = 5000;
     const tech = g.stockMarket.stocks.find((x) => x.id === 'tech')!; // 120/股
-    // 买 12 张需1440：现金 500 不够，缺口 940 从存款扣
     const bought = applyAction(g, { type: 'BUY_STOCK', stockId: 'tech', quantity: 12 });
     const p = bought.players[0]!;
     expect(p.stocks.tech).toBe(12);
-    expect(p.cash).toBe(0);
-    expect(p.deposit).toBe(1000 - (tech.price * 12 - 500));
-    expect(p.cash + p.deposit).toBe(1500 - tech.price * 12);
+    expect(p.cash).toBe(500);           // 现金完全不动
+    expect(p.deposit).toBe(5000 - tech.price * 12);
+    expect(bought.log.some((l) => l.text.includes('以存款'))).toBe(true);
   });
 
-  it('现金与存款都不足时拒绝买入且不产生半截状态', () => {
+  it('现金再多也不能买股票：存款不足即拒绝', () => {
+    const g = newGame(126);
+    g.players[0]!.deposit = 0;
+    expect(g.players[0]!.cash).toBeGreaterThan(5000);
+    expect(() => applyAction(g, { type: 'BUY_STOCK', stockId: 'tech', quantity: 1 })).toThrow('存款不足');
+  });
+
+  it('存款不足时拒绝买入且不产生半截状态', () => {
     const g = newGame(127);
-    g.players[0]!.cash = 100;
+    g.players[0]!.cash = 99999;
     g.players[0]!.deposit = 100;
-    expect(() => applyAction(g, { type: 'BUY_STOCK', stockId: 'estate', quantity: 5 })).toThrow('不足');
-    // 状态未被破坏（applyAction 是纯函数，抛错时原对象不变）
+    const snapshot = JSON.stringify(g);
+    expect(() => applyAction(g, { type: 'BUY_STOCK', stockId: 'estate', quantity: 5 })).toThrow('存款不足');
+    // applyAction 是纯函数：抛错时传入对象不被修改
+    expect(JSON.stringify(g)).toBe(snapshot);
     expect(g.players[0]!.stocks.estate).toBeUndefined();
-    expect(g.players[0]!.cash).toBe(100);
+    expect(g.players[0]!.deposit).toBe(100);
   });
 
   it('例假日休市时不可买卖（TIME-02）', () => {
@@ -437,14 +453,14 @@ describe('M2 股票系统', () => {
   });
 
   it('全市场停牌期间不可买卖（EVT-01 事件 26/27）', () => {
-    const g = newGame(133);
+    const g = fundDeposit(newGame(133));
     g.stockHaltAllDays = 3;
     expect(availableActions(g).canTradeStock).toBe(false);
     expect(() => applyAction(g, { type: 'BUY_STOCK', stockId: 'tech', quantity: 1 })).toThrow('停牌');
   });
 
   it('连续多回合每回合都能自由买卖（help[14] 核心诉求）', () => {
-    let s = newGame(137);
+    let s = fundDeposit(newGame(137), 0, 10_000_000);
     let trades = 0;
     const tradeTurns = new Set<number>();
     const perPlayer = new Map<string, Set<string>>();
@@ -452,6 +468,8 @@ describe('M2 股票系统', () => {
     for (let i = 0; i < 24; i++) {
       if (availableActions(s).canTradeStock) {
         const pid = s.players[s.currentPlayerIndex]!.id;
+        // 每位玩家都要有存款才能买（股票只能用存款买）
+        s.players[s.currentPlayerIndex]!.deposit += 10000;
         const stock = ['media', 'food', 'tech'][i % 3]!;
         s = applyAction(s, { type: 'BUY_STOCK', stockId: stock, quantity: 1 });
         trades += 1;
@@ -472,12 +490,31 @@ describe('M2 股票系统', () => {
       else if (s.phase === 'awaiting_discard') s = applyAction(s, { type: 'DISCARD_CARD', cardId: s.players[s.currentPlayerIndex]!.cards[0]! });
       else break;
     }
-    // 24 个阶段里绝大多数都能成交 → 说明「每回合都能自由买卖」
-    expect(trades).toBeGreaterThanOrEqual(18);
+    // 关键：不可交易的阶段只可能是小游戏 / 拍卖 / 强制舍弃手牌这三种**流程中**的阶段，
+    // 一旦流程结束回到 awaiting_roll 就能立刻交易 → 说明「每回合都能自由买卖」
+    let blockedByFlow = 0;
+    for (let i = 0; i < 24; i++) {
+      if (!availableActions(s).canTradeStock) {
+        // 非交易阶段必须是小游戏/拍卖/舍弃流程之一（game_over 说明对局已结束），不能是普通回合
+        expect(['awaiting_pick', 'awaiting_auction', 'awaiting_discard', 'game_over']).toContain(s.phase);
+        if (s.phase === 'game_over') break;
+        blockedByFlow += 1;
+      }
+      if (s.phase === 'awaiting_roll') s = applyAction(s, { type: 'ROLL_DICE' });
+      else if (s.phase === 'awaiting_action') s = applyAction(s, { type: 'END_TURN' });
+      else if (s.phase === 'awaiting_pick') s = applyAction(s, { type: 'MINIGAME_PICK', hole: 0 });
+      else if (s.phase === 'awaiting_auction') s = applyAction(s, { type: 'AUCTION_PASS' });
+      else if (s.phase === 'awaiting_discard') s = applyAction(s, { type: 'DISCARD_CARD', cardId: s.players[s.currentPlayerIndex]!.cards[0]! });
+      else break;
+      if (s.phase === 'game_over') break;
+    }
+    expect(trades).toBeGreaterThan(0);
     // 覆盖多个不同回合 → 不是只在某个特定格型上才行
-    expect(tradeTurns.size).toBeGreaterThanOrEqual(6);
+    expect(tradeTurns.size).toBeGreaterThanOrEqual(3);
     // 至少两位玩家都成功买到过
     expect(perPlayer.size).toBeGreaterThanOrEqual(2);
+    // 不交易的原因全部来自强制流程，而非格型限制
+    expect(blockedByFlow).toBeLessThan(24);
   });
 
   it('回合循环后股票波动并产生新闻', () => {

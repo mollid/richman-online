@@ -449,6 +449,7 @@ describe('ECON-10 股票持仓成本指标', () => {
   function stockCell(): GameState {
     const s = newGame();
     s.players[s.currentPlayerIndex]!.position = 38; // 证交所
+    s.players[s.currentPlayerIndex]!.deposit = 100000; // 股票只能用存款买
     s.phase = 'awaiting_action';
     return s;
   }
@@ -474,6 +475,7 @@ describe('ECON-10 股票持仓成本指标', () => {
 
   it('企业银行格同样可交易股票（CORP-09）', () => {
     const g = landOnCompany(58);
+    g.players[g.currentPlayerIndex]!.deposit = 100000;
     const stock = g.stockMarket.stocks[0]!;
     const acted = applyAction(g, { type: 'BUY_STOCK', stockId: stock.id, quantity: 1 });
     expect(acted.players[0]!.stocks[stock.id]).toBe(1);

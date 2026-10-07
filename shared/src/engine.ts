@@ -4373,7 +4373,7 @@ function isShopCell(c: BoardCell): boolean {
  * ECON-09 买入股票（help[14]「隨時可買賣」+ help[07]「買賣股票的收支，也是由銀行幫您自動轉、扣帳」）。
  *
  * - 不绑定格型：自己回合的掷骰前（awaiting_roll）与决策后（awaiting_action）都可买；
- * - 资金从**现金优先、不足自动扣存款**（走pay 管道），符合原版「银行自动转扣」；
+ * - **只能用存款买入**（help[07]：股票收支由银行自动转扣存款）；现金仅用于买地与升级建筑；
  * - 例假日休市、全市场停牌、个股停牌时不可交易；
  * - 零 RNG 消耗，不扰动确定性回放。
  */
@@ -4388,23 +4388,19 @@ function buyStock(state: GameState, action: Extract<PlayerAction, { type: 'BUY_S
   if (isStockSuspended(state, stock.id)) throw new Error(`${stock.name} 暂停交易中`);
   if (!Number.isInteger(action.quantity) || action.quantity <= 0) throw new Error('数量必须为正整数');
   const total = stock.price * action.quantity;
-  // 资金不足时先拦下，避免 pay() 走变卖/破产链路产生半截状态
-  if (p.cash + p.deposit < total) {
+  // 股票**只能用存款买入**（help[07]：买股票的收支由银行自动转、扣帐，走存款账户）；
+  // 现金不能用于炒股——现金只够买地与升级建筑。
+  if (p.deposit < total) {
     throw new Error(
-      `现金与存款合计 ¥${(p.cash + p.deposit).toLocaleString('zh-CN')}，不足以买入 ¥${total.toLocaleString('zh-CN')}（需先补充资金）`,
+      `存款不足：买入 ${stock.name} ×${action.quantity} 需 ¥${total.toLocaleString('zh-CN')}，可用存款 ¥${p.deposit.toLocaleString('zh-CN')}（现金不能用于炒股）`,
     );
   }
-  // help[07]：收支由银行自动转扣 —— 现金优先，不足自动从存款扣
-  const cashBefore = p.cash;
-  const paid = pay(state, p, total, null, { reason: 'stock' });
-  if (paid < total) throw new Error(`资金不足，仅买入 ${Math.floor(paid / stock.price)} 张`);
+  p.deposit -= total;
   p.stocks[stock.id] = (p.stocks[stock.id] ?? 0) + action.quantity;
   // ECON-10：记录建仓成本（累计投入），UI 用于展示浮动盈亏
   p.stockCost = p.stockCost ?? {};
   p.stockCost[stock.id] = (p.stockCost[stock.id] ?? 0) + total;
-  // 现金被扣光说明动用了存款（help[07] 银行自动转扣）
-  const fromDeposit = cashBefore < total ? '（现金不足部分由银行自动从存款扣除）' : '';
-  log(state, `${p.name} 以 ¥${total} 买入 ${stock.name} ×${action.quantity}（单价 ¥${stock.price}）${fromDeposit}`);
+  log(state, `${p.name} 以存款 ¥${total} 买入 ${stock.name} ×${action.quantity}（单价 ¥${stock.price}）`);
 }
 
 /** ECON-09 卖出股票（help[14]「隨時可買賣」；与buyStock 同规则，不绑定格型） */
