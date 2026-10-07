@@ -1,42 +1,85 @@
-/** 棋盘格类型 */
+/**
+ * 棋盘格类型（波 3 扩棋盘后覆盖文档 §9 全部 TILE-01..30 + TILE-31）。
+ * 括号内为文档对标编号。
+ */
 export type CellType =
-  | 'start'    // 起点：经过/停留发放薪水
-  | 'property' // 地产：可购买/升级/收租
-  | 'chance'   // 机会：抽卡片
-  | 'tax'      // 缴税
-  | 'hospital' // 医院：停留 1 回合
-  | 'jail'     // 监狱：停留 2 回合
-  | 'game'     // 游戏厅：三仙归洞猜杯小游戏
-  | 'shop'     // 商店：购买卡片
-  | 'bank'     // 银行/证交所：买卖股票
-  | 'god'      // 神庙：召唤神仙附身
-  | 'neutral'; // 中性格：暂无效果
+  | 'start'     // 起点：经过/停留发放薪水
+  | 'property'  // TILE-01 空地/住宅用地：可购买、可加盖 5 级
+  | 'commercial'// TILE-02 商业用地：首次只买地，再次走到可选 5 种建设
+  | 'chance'    // TILE-17 机会/危险格：抽卡片
+  | 'news'      // TILE-18 新闻格：触发新闻事件
+  | 'free-card' // TILE-13 免费卡片格：免费获得一张卡片
+  | 'points'    // TILE-14/15/16 点券格：+10/+30/+50 点券
+  | 'lottery'   // TILE-19 乐透行：投注（波 6 开放开奖）
+  | 'magic'     // TILE-11 魔法屋：女巫施法（波 8 开放）
+  | 'treasure'  // TILE-31 宝箱：获得 500 点券（待验证格）
+  | 'tax'       // 缴税格
+  | 'hospital'  // TILE-09 医院：住院不能出门且丧失收租权
+  | 'jail'      // TILE-10 监狱：坐牢失去自由
+  | 'game'      // 游戏厅：小游戏
+  | 'shop'      // TILE-12 卡片店/道具店
+  | 'bank'      // TILE-08/26 银行：存取款；停留可贷款
+  | 'god'       // 神庙：召唤神仙附身
+  | 'company'   // TILE-20..30 公司企业（波 5 开放经营）
+  | 'neutral';  // 中性格：暂无效果
 
-/** 地产分区 */
+/** 地产分区（仅用于配色与展示） */
 export type PropertyGroup = 'residential' | 'commercial' | 'industrial' | 'tech' | 'coastal' | 'financial';
+
+/** 商业用地设施（EST-07：TILE-03..07） */
+export type FacilityType = 'park' | 'mall' | 'hotel' | 'gas' | 'lab';
+
+/** 公司企业类型（TILE-20..30 / CORP-03..13，波 5 开放经营） */
+export type CompanyKind =
+  | 'airline'    // TILE-20 航空公司
+  | 'restaurant' // TILE-21 饭店
+  | 'computer'   // TILE-22 电脑公司
+  | 'insurance'  // TILE-23 保险公司
+  | 'car'        // TILE-24 汽车公司
+  | 'oil'        // TILE-25 石油公司
+  | 'bank'       // TILE-26 银行（公司）
+  | 'water'      // TILE-27 水力公司
+  | 'power'      // TILE-28 电力公司
+  | 'department' // TILE-29 百货公司
+  | 'estate';    // TILE-30 房地产公司
 
 export interface BoardCell {
   id: number;
   type: CellType;
   name: string;
-  /** 地产：购买价格 */
+  /** 地产/商业用地：购买价格（不含物价指数） */
   price?: number;
-  /** 地产：每级租金基数（租金 = grade * baseRent） */
+  /** 地产：每级租金基数（租金 = grade * baseRent，含指数） */
   baseRent?: number;
   group?: PropertyGroup;
+  /** 银行细分：公立银行可存取款；证交所可买卖股票；企业银行归波 5 */
+  bankKind?: 'public' | 'exchange' | 'corporate';
+  /**
+   * 所属路段（EST-03）：同路段的地产租金联合计算。
+   * 取值 = 该连续同类地产段的起始格 id，如 `street-8`（8/9/10 号商业地）。
+   */
+  street?: string;
+  /** 点券格发放点数（TILE-14/15/16） */
+  pointsGain?: number;
+  /** 公司格类型（TILE-20..30） */
+  companyKind?: CompanyKind;
 }
 
 export interface PlayerProperty {
   cellId: number;
-  /** 1=平地已购 2=小屋 3=大厦（级） */
-  grade: 1 | 2 | 3;
+  /** 等级 1..5（EST-02：住宅可加盖 5 级；EST-07：商业建设除公园/加油站外 5 级） */
+  grade: 1 | 2 | 3 | 4 | 5;
+  /** 商业用地已建成的设施（EST-07）；为空表示只买了地 */
+  facility?: FacilityType;
+  /** 连锁店（EST-04）：改建卡改建而成，不能再加盖，租金按店面总数计算（EST-05） */
+  chain?: boolean;
 }
 
-/** 神仙附身状态 */
+/** 神仙附身状态（GOD-01..12：天数制，日切时递减） */
 export interface GodStatus {
   godId: string;
-  /** 剩余生效回合数（每次自己回合开始时 -1） */
-  remainingTurns: number;
+  /** 剩余生效天数（每完成一整天 -1；期满按对偶规则转化或离开） */
+  remainingDays: number;
 }
 
 /** 创建玩家时的定义 */
@@ -46,28 +89,87 @@ export interface PlayerDef {
   color: number;
 }
 
+/** 公历日期（month 1-12），确定性回放的时间基线 */
+export interface DateSerial {
+  year: number;
+  month: number;
+  day: number;
+}
+
+/** 银行贷款状态（无利息，到期全额归还） */
+export interface LoanStatus {
+  /** 未还本金 */
+  principal: number;
+  takenAtDayIndex: number;
+  /** elapsedDays >= dueDayIndex 时强制还清 */
+  dueDayIndex: number;
+}
+
+/** 游戏日历：日期由「起始日期 + 流逝天数」全量派生 */
+export interface GameCalendar {
+  /** createGame 时捕获一次，之后不再读系统时钟 */
+  start: DateSerial;
+  /** 开局 0；每完成一整圈 +1 */
+  elapsedDays: number;
+}
+
+/** 本回合银行访问权限，回合结束清空 */
+export interface BankAccess {
+  canDeposit: boolean;
+  canLoan: boolean;
+  cellId: number;
+}
+
+/** 同盟状态（CARD-29）：与指定玩家互不收租 */
+export interface AllianceStatus {
+  with: string;
+  daysLeft: number;
+}
+
 export interface Player {
   id: string;
   name: string;
   /** PixiJS 可用的 0xRRGGBB 颜色 */
   color: number;
   cash: number;
+  /** 银行存款（月末结算利息；租金入账、可被动用于支付） */
+  deposit: number;
+  /** 点券（卡片/道具唯一货币，波 2 启用商店） */
+  points: number;
+  /** 当前贷款；null 表示无贷款 */
+  loan: LoanStatus | null;
+  /** 波 5 预留：各股票建仓成本，用于计算持股浮动盈亏 */
+  stockCost?: Record<string, number>;
   position: number;
   properties: PlayerProperty[];
-  /** 手持卡片（cardId 列表，上限 6 张） */
+  /** 手持卡片（cardId 列表，上限 MAX_HAND_CARDS=15 张） */
   cards: string[];
+  /** 持有道具：itemId -> 数量（每种上限 MAX_ITEM_COUNT=9） */
+  items: Record<string, number>;
   /** 持股：stockId -> 数量 */
   stocks: Record<string, number>;
   /** 神仙附身状态 */
   god: GodStatus | null;
-  /** 剩余跳过回合数（医院/监狱） */
+  /** 剩余跳过回合数（医院/监狱/冬眠/陷害） */
   skipTurns: number;
   /** 行进方向：1=顺时针 -1=逆时针（转向卡改变） */
   direction: 1 | -1;
-  /** 乌龟卡减速剩余次数（掷骰步数减半） */
-  slowTurns: number;
-  /** 免租剩余次数（经过他人地产免租） */
-  freeRentTurns: number;
+  /** 停留卡（CARD-14）：下一次前进时停留在原地 */
+  holdTurns: number;
+  /** 丧失收租权剩余天数（坐牢/冬眠/梦游） */
+  rentBlockedTurns: number;
+  /** 梦游卡（CARD-16）剩余天数：丧失收租与买地权利 */
+  sleepwalkTurns: number;
+  /** 乌龟卡（CARD-30）剩余天数：一次只走一步 */
+  turtleTurns: number;
+  /** 工程车（ITEM-12）剩余回合：走到哪拆到哪 */
+  bulldozerTurns: number;
+  /** 研究所研发队列（EST-09/10）：进行中的项目与剩余天数；null 表示空闲 */
+  research: { itemId: string; remainDays: number } | null;
+  /** 骰子个数（1 默认；机车 2；汽车 3） */
+  diceCount: number;
+  /** 同盟状态 */
+  alliance: AllianceStatus | null;
   bankrupt: boolean;
   online: boolean;
 }
@@ -114,13 +216,47 @@ export interface StockMarket {
   stocks: Stock[];
 }
 
+/** 红卡/黑卡造成的涨跌停（CARD-24/25） */
+export interface StockHalt {
+  stockId: string;
+  kind: 'up' | 'down';
+  daysLeft: number;
+}
+
+/** 涨价卡/查封卡对整条街的过路费修正（CARD-27/28） */
+export interface RentEffect {
+  kind: 'raise' | 'seal';
+  daysLeft: number;
+  cells: number[];
+  /** 施加者（用于日志与解除同盟判定） */
+  ownerId: string;
+}
+
+/** 定时炸弹（ITEM-04）：附身在玩家身上，走满步数后爆炸 */
+export interface ActiveBomb {
+  playerId: string;
+  stepsLeft: number;
+}
+
+/** 时光机（ITEM-10）用的轻量回合快照 */
+export interface RoundSnapshot {
+  players: Array<{
+    id: string;
+    position: number;
+    cash: number;
+    deposit: number;
+    properties: PlayerProperty[];
+    stocks: Record<string, number>;
+  }>;
+}
+
 export interface GameState {
   players: Player[];
   board: BoardCell[];
   currentPlayerIndex: number;
   phase: Phase;
-  /** 最近一次掷骰结果（用于客户端走格子动画） */
-  dice: [number, number] | null;
+  /** 最近一次掷骰结果（用于客户端走格子动画；骰子个数随机车/汽车变化） */
+  dice: number[] | null;
   turn: number;
   /** 回合数（每循环一圈 +1，股票随回合波动） */
   round: number;
@@ -134,21 +270,50 @@ export interface GameState {
   pendingFixedDice: number | null;
   /** 路障所在格（其他玩家经过必须停下，锥筒随之消失） */
   roadblocks: number[];
+  /** 地雷所在格（ITEM-03：踩中住院 3 天） */
+  mines: number[];
+  /** 进行中的定时炸弹（ITEM-04） */
+  bombs: ActiveBomb[];
+  /** 红卡/黑卡造成的涨跌停列表 */
+  stockHalts: StockHalt[];
+  /** 涨价卡/查封卡对整条街的过路费修正 */
+  rentEffects: RentEffect[];
+  /** 上一回合开始时的轻量快照（时光机 ITEM-10 用） */
+  lastRoundSnapshot: RoundSnapshot | null;
   /** 进行中的小游戏 */
   minigame: MinigameState | null;
+  /** 游戏日历（时间系统基线） */
+  calendar: GameCalendar;
+  /** 开局单人初始资金（startGame 冻结，物价指数分母） */
+  initialCashPerPlayer: number;
+  /** 开局玩家人数（startGame 冻结，物价指数分母） */
+  initialPlayerCount: number;
+  /** 本回合银行访问权限（回合结束清空） */
+  bankAccess: BankAccess | null;
+  /** 乐透奖池（波 6 启用，波 1 建字段） */
+  lotteryPool: number;
 }
 
 export type PlayerAction =
   | { type: 'START_GAME' }
-  | { type: 'ROLL_DICE' }
+  | { type: 'ROLL_DICE'; diceCount?: number }
   | { type: 'BUY_LAND' }
   | { type: 'UPGRADE_LAND' }
   | { type: 'END_TURN' }
-  | { type: 'USE_CARD'; cardId: string; targetPlayerId?: string; stockId?: string; diceValue?: number }
+  | { type: 'USE_CARD'; cardId: string; targetPlayerId?: string; stockId?: string; diceValue?: number; cellId?: number; facility?: FacilityType }
   | { type: 'BUY_CARD'; cardId: string }
+  | { type: 'DISCARD_CARD'; cardId: string }
+  | { type: 'BUY_ITEM'; itemId: string }
+  | { type: 'USE_ITEM'; itemId: string; targetPlayerId?: string; cellId?: number; diceValue?: number }
+  | { type: 'BUILD_FACILITY'; facility: FacilityType }
+  | { type: 'START_RESEARCH'; itemId: string }
   | { type: 'BUY_STOCK'; stockId: string; quantity: number }
   | { type: 'SELL_STOCK'; stockId: string; quantity: number }
-  | { type: 'MINIGAME_PICK'; hole: number };
+  | { type: 'MINIGAME_PICK'; hole: number }
+  | { type: 'DEPOSIT'; amount: number }
+  | { type: 'WITHDRAW'; amount: number }
+  | { type: 'TAKE_LOAN'; amount: number }
+  | { type: 'REPAY_LOAN'; amount: number };
 
 /** 可用动作集合（UI 按此渲染按钮） */
 export interface AvailableActions {
@@ -160,8 +325,24 @@ export interface AvailableActions {
   canTradeStock: boolean;
   /** 小游戏猜杯可用 */
   canPick: boolean;
+  /** 银行可存款 */
+  canDeposit: boolean;
+  /** 银行可取款 */
+  canWithdraw: boolean;
+  /** 银行可贷款 */
+  canLoan: boolean;
+  /** 可提前还贷 */
+  canRepayLoan: boolean;
+  /** 今天为例假日（股市/银行休市） */
+  isHoliday: boolean;
+  /** 站上自有商业用地（已购地未建设）时可建设的设施（EST-07） */
+  buildableFacilities: FacilityType[];
+  /** 站上自有研究所时可立项的研发项目（EST-10） */
+  researchableItems: string[];
   /** 当前阶段可使用的卡片 id 列表 */
   usableCards: string[];
+  /** 当前阶段可使用的道具 id 列表 */
+  usableItems: string[];
 }
 
 

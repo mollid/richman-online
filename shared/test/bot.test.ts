@@ -34,12 +34,12 @@ describe('M9 AI 托管决策', () => {
     expect(action).toEqual({ type: 'UPGRADE_LAND' });
   });
 
-  it('掷骰阶段直接掷骰；停留且有天使卡先用卡', () => {
+  it('掷骰阶段直接掷骰；附穷神且持送神卡先送神', () => {
     let g = applyAction(createGame(BOTS, 407), { type: 'START_GAME' });
     expect(botDecide(g, 'b1', () => 0.5)).toEqual({ type: 'ROLL_DICE' });
-    g.players[0]!.skipTurns = 1;
-    g.players[0]!.cards = ['angel'];
-    expect(botDecide(g, 'b1', () => 0.5)).toEqual({ type: 'USE_CARD', cardId: 'angel' });
+    g.players[0]!.god = { godId: 'small-poverty', remainingDays: 3 };
+    g.players[0]!.cards = ['send-god'];
+    expect(botDecide(g, 'b1', () => 0.5)).toEqual({ type: 'USE_CARD', cardId: 'send-god' });
   });
 
   it('猜杯阶段按 rng 选杯（0-2）', () => {

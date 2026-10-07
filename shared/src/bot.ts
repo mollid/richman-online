@@ -1,6 +1,14 @@
-import { availableActions, upgradeCost } from './engine.js';
+import { availableActions } from './engine.js';
+import { landPrice, landUpgradeCost } from './economy.js';
 import { CARDS, SHOP_CARD_IDS } from './cards.js';
-import type { GameState, PlayerAction } from './types.js';
+import { ITEMS, SHOP_ITEM_IDS } from './items.js';
+import { MAX_HAND_CARDS, MAX_ITEM_COUNT } from './board.js';
+import { facilityBuildCost } from './tiles.js';
+import { isNegativeGod } from './gods.js';
+import type { FacilityType, GameState, PlayerAction } from './types.js';
+
+/** AI 建设偏好：研究所（可研发道具）优先，其次购物中心/旅馆/加油站/公园 */
+const BUILD_PREFERENCE: FacilityType[] = ['lab', 'mall', 'hotel', 'gas', 'park'];
 
 
 
@@ -18,8 +26,9 @@ export function botDecide(state: GameState, botId: string, rng: () => number): P
   if (state.players[state.currentPlayerIndex]?.id !== botId) return null;
 
   if (state.phase === 'awaiting_roll') {
-    if (me.cards.includes('angel') && (me.skipTurns > 0 || me.god?.godId === 'poverty')) {
-      return { type: 'USE_CARD', cardId: 'angel' };
+    // 身上有不祥神明（穷神/衰神/死神）时优先用送神卡送走
+    if (me.cards.includes('send-god') && isNegativeGod(me.god?.godId)) {
+      return { type: 'USE_CARD', cardId: 'send-god' };
     }
     return { type: 'ROLL_DICE' };
   }
@@ -32,29 +41,53 @@ export function botDecide(state: GameState, botId: string, rng: () => number): P
   const acts = availableActions(state);
   const cell = state.board[me.position]!;
 
-  if (me.cards.includes('angel') && me.god?.godId === 'poverty') {
-    return { type: 'USE_CARD', cardId: 'angel' };
+  if (me.cards.includes('send-god') && isNegativeGod(me.god?.godId)) {
+    return { type: 'USE_CARD', cardId: 'send-god' };
   }
 
-  if (acts.canBuy && cell.price !== undefined && me.cash >= cell.price + 2000) {
+  if (acts.canBuy && cell.price !== undefined && me.cash >= landPrice(state, cell) + 2000) {
     return { type: 'BUY_LAND' };
   }
 
   if (acts.canUpgrade && cell.price !== undefined) {
     const prop = me.properties.find((q) => q.cellId === cell.id);
     if (prop) {
-      const cost = upgradeCost(cell.price, prop.grade);
+      const cost = landUpgradeCost(state, cell, prop.grade);
       if (me.cash >= cost + 2000) return { type: 'UPGRADE_LAND' };
     }
   }
 
-  if (acts.canShop && me.cards.length < 6) {
-    const affordable = SHOP_CARD_IDS.filter(
-      (id) => !me.cards.includes(id) && me.cash >= (CARDS[id]?.cost ?? Infinity) + 2500,
+  // 商业用地建设（EST-07）：按偏好选择，保留 ¥2000 安全垫
+  if (acts.buildableFacilities.length > 0 && cell.price !== undefined) {
+    for (const f of BUILD_PREFERENCE) {
+      if (!acts.buildableFacilities.includes(f)) continue;
+      if (me.cash >= facilityBuildCost(state, cell, f) + 2000) return { type: 'BUILD_FACILITY', facility: f };
+    }
+  }
+
+  // 研究所研发（EST-09/10）：优先开发最高阶项目
+  if (acts.researchableItems.length > 0 && !me.research) {
+    return { type: 'START_RESEARCH', itemId: acts.researchableItems[acts.researchableItems.length - 1]! };
+  }
+
+  if (acts.canShop) {
+    // 卡片：点券结算，保留 100 点安全垫
+    if (me.cards.length < MAX_HAND_CARDS) {
+      const affordable = SHOP_CARD_IDS.filter(
+        (id) => !me.cards.includes(id) && me.points >= (CARDS[id]?.cost ?? Infinity) + 100,
+      );
+      if (affordable.length > 0) {
+        const pick = affordable[Math.floor(rng() * affordable.length)]!;
+        return { type: 'BUY_CARD', cardId: pick };
+      }
+    }
+    // 道具：点券结算，每种上限 9
+    const affordableItems = SHOP_ITEM_IDS.filter(
+      (id) => (me.items[id] ?? 0) < MAX_ITEM_COUNT && me.points >= (ITEMS[id]?.cost ?? Infinity) + 100,
     );
-    if (affordable.length > 0) {
-      const pick = affordable[Math.floor(rng() * affordable.length)]!;
-      return { type: 'BUY_CARD', cardId: pick };
+    if (affordableItems.length > 0) {
+      const pick = affordableItems[Math.floor(rng() * affordableItems.length)]!;
+      return { type: 'BUY_ITEM', itemId: pick };
     }
   }
 

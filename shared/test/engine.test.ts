@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { addPlayer, applyAction, availableActions, createGame, forceGameOver, nextRandom, removePlayer, rentOf, ReplayEngine, rollDie, upgradeCost } from '../src/index.js';
+import { addPlayer, applyAction, availableActions, BOARD_SIZE, createGame, forceGameOver, GOD_DURATION_DAYS, GODS, nextRandom, POINTS_START, removePlayer, rentOf, ReplayEngine, rollDie, totalAssets, upgradeCost } from '../src/index.js';
 import type { GameState, PlayerAction, PlayerDef } from '../src/index.js';
 
 const PLAYERS: PlayerDef[] = [
@@ -7,8 +7,35 @@ const PLAYERS: PlayerDef[] = [
   { id: 'p2', name: '小美', color: 0x42a5f5 },
 ];
 
+/**
+ * 迁移策略一：固定起始日期。
+ * 波 1 引入时间日历（例假休市）后，`elapsedDays` 会随回合推进跨到周末，
+ * 若用系统当天日期做起点，测试结果会随运行日漂移。统一固定为周一、非 15 号、非月末。
+ */
+const MONDAY = { year: 2026, month: 1, day: 5 } as const;
+
 function newGame(seed = 42): GameState {
-  return applyAction(createGame(PLAYERS, seed), { type: 'START_GAME' });
+  const g = applyAction(createGame(PLAYERS, seed, { startDate: { ...MONDAY } }), { type: 'START_GAME' });
+  // 迁移（波 2 / CORE-03）：步行默认 1 颗骰子，机车 2 颗、汽车 3 颗。
+  // 下列历史断言基于「两骰之和」，故统一给测试玩家配机车（diceCount=2）以保持既有语义。
+  for (const p of g.players) p.diceCount = 2;
+  return g;
+}
+
+/**
+ * 迁移策略二：冻结物价指数为 1。
+ * 波 1 起所有交易金额都过 `scaled()`（乘物价指数），指数的分母是「开局总资产」。
+ * 测试里直接篡改现金/无偿授予地产会改变总资产 → 指数漂移 → 数值断言失真。
+ * 该辅助函数把分母就地对齐为当前总资产，此后只要只发生玩家间守恒转移，指数恒为 1。
+ */
+function pinIndexOne(state: GameState): GameState {
+  let total = 0;
+  for (const p of state.players) {
+    if (!p.bankrupt) total += totalAssets(state, p);
+  }
+  state.initialCashPerPlayer = Math.max(1, total);
+  state.initialPlayerCount = 1;
+  return state;
 }
 
 /** 找一个能让两骰之和等于 target 的确定性种子 */
@@ -49,18 +76,34 @@ function seedForFirstDie(values: number[]): number {
 function setupLanding(state: GameState, targetCell: number, sum: number): GameState {
   const s = structuredClone(state);
   s.rngState = seedForSum(sum);
-  s.players[s.currentPlayerIndex]!.position = (targetCell - sum + 40) % 40;
+  s.players[s.currentPlayerIndex]!.position = (targetCell - sum + BOARD_SIZE) % BOARD_SIZE;
+  return s;
+}
+
+/** 推进一个动作（掷骰 / 结束回合 / 小游戏选杯）：落格可能停在 awaiting_action，需能收尾 */
+function step(state: GameState): GameState {
+  if (state.phase === 'awaiting_roll') return applyAction(state, { type: 'ROLL_DICE' });
+  if (state.phase === 'awaiting_pick') return applyAction(state, { type: 'MINIGAME_PICK', hole: 0 });
+  return applyAction(state, { type: 'END_TURN' });
+}
+
+/** 一直推进到跨过一天（触发日切钩子：神明计时递减/转化） */
+function advanceOneDay(state: GameState): GameState {
+  const start = state.calendar.elapsedDays;
+  let s = state;
+  for (let i = 0; i < 16 && s.calendar.elapsedDays === start; i++) s = step(s);
   return s;
 }
 
 describe('createGame', () => {
   it('初始状态正确', () => {
-    const g = createGame(PLAYERS, 1);
+    const g = createGame(PLAYERS, 1, { startDate: { ...MONDAY } });
     expect(g.phase).toBe('lobby');
     expect(g.players).toHaveLength(2);
     expect(g.players[0]!.cash).toBe(15000);
     expect(g.players[0]!.position).toBe(0);
-    expect(g.board).toHaveLength(40);
+    expect(g.board).toHaveLength(BOARD_SIZE);
+    expect(BOARD_SIZE).toBe(64);
   });
 
   it('人数不合法时报错', () => {
@@ -70,7 +113,7 @@ describe('createGame', () => {
   });
 
   it('支持房间阶段加入/移除玩家', () => {
-    let g = createGame([], 9);
+    let g = createGame([], 9, { startDate: { ...MONDAY } });
     expect(() => applyAction(g, { type: 'START_GAME' })).toThrow('至少需要 2 名玩家'); // 0 人不能开始
     g = addPlayer(g, PLAYERS[0]!);
     g = addPlayer(g, PLAYERS[1]!);
@@ -89,8 +132,8 @@ describe('回合流转', () => {
   it('掷骰后按点数移动且不修改原状态', () => {
     const g = newGame(7);
     const rolled = applyAction(g, { type: 'ROLL_DICE' });
-    const [d1, d2] = rolled.dice!;
-    expect(rolled.players[0]!.position).toBe((d1 + d2) % 40);
+    const sum = rolled.dice!.reduce((a, b) => a + b, 0);
+    expect(rolled.players[0]!.position).toBe(sum % BOARD_SIZE);
     expect(g.players[0]!.position).toBe(0); // 纯函数：原状态未被修改
   });
 
@@ -98,7 +141,7 @@ describe('回合流转', () => {
     const s = seedForSum(5);
     const g = newGame(99);
     g.rngState = s;
-    g.players[0]!.position = 38; // 38 + 5 = 43 → 越过起点落到 3（机会格）
+    g.players[0]!.position = 62; // 62 + 5 = 67 → 越过起点落到 3（机会格）
     const rolled = applyAction(g, { type: 'ROLL_DICE' });
     expect(rolled.players[0]!.cash).toBeGreaterThanOrEqual(15000 + 2000 - 1000);
     expect(rolled.players[0]!.cash).toBeLessThanOrEqual(15000 + 2000 + 1000);
@@ -128,9 +171,11 @@ describe('回合流转', () => {
     g.rngState = seedForSumQuietNews(3);
     g.players[1]!.position = 3; // 3 + 3 = 6，不经过起点
     g.players[0]!.properties = [{ cellId: 6, grade: 2 }];
+    pinIndexOne(g);
     const rolled = applyAction(g, { type: 'ROLL_DICE' });
     expect(rolled.players[1]!.cash).toBe(15000 - 260);
-    expect(rolled.players[0]!.cash).toBe(15000 + 260);
+    // ECON-02：租金入收款方「存款」
+    expect(rolled.players[0]!.deposit).toBe(260);
     expect(rentOf(130, 2)).toBe(260);
   });
 
@@ -152,6 +197,7 @@ describe('回合流转', () => {
     const g = setupLanding(newGame(5), 22, 8);
     g.players[0]!.properties = [{ cellId: 22, grade: 1 }];
     g.players[0]!.cash = 10000;
+    pinIndexOne(g);
     const rolled = applyAction(g, { type: 'ROLL_DICE' });
     expect(rolled.phase).toBe('awaiting_action');
     expect(upgradeCost(780, 1)).toBe(468);
@@ -162,7 +208,7 @@ describe('回合流转', () => {
 
   it('满级地产不可升级', () => {
     const g = setupLanding(newGame(5), 1, 5);
-    g.players[0]!.properties = [{ cellId: 1, grade: 3 }];
+    g.players[0]!.properties = [{ cellId: 1, grade: 5 }];
     const rolled = applyAction(g, { type: 'ROLL_DICE' });
     expect(rolled.phase).toBe('awaiting_roll'); // 满级自动过
     expect(() => applyAction(rolled, { type: 'UPGRADE_LAND' })).toThrow();
@@ -216,81 +262,88 @@ describe('M2 卡片系统', () => {
     expect(rolled.log.some((e) => e.text.includes('抽到卡片'))).toBe(true);
   });
 
-  it('商店可购买卡片并扣款', () => {
+  it('商店可以点券购买卡片并扣点券（现金不动）', () => {
     const g = setupLanding(newGame(103), 2, 2); // 落到 2 号商店（从 0 号出发，不绕起点）
     const rolled = applyAction(g, { type: 'ROLL_DICE' });
     expect(rolled.phase).toBe('awaiting_action');
     expect(availableActions(rolled).canShop).toBe(true);
     const bought = applyAction(rolled, { type: 'BUY_CARD', cardId: 'demolish' });
     expect(bought.players[0]!.cards).toContain('demolish');
-    expect(bought.players[0]!.cash).toBe(15000 - 1200);
+    expect(bought.players[0]!.points).toBe(POINTS_START - 15);
+    expect(bought.players[0]!.cash).toBe(15000);
   });
 
-  it('遥控骰子固定第一颗骰子点数', () => {
+  it('商店可点券购买道具（每种上限 9）', () => {
+    const g = setupLanding(newGame(104), 2, 2);
+    const rolled = applyAction(g, { type: 'ROLL_DICE' });
+    const bought = applyAction(rolled, { type: 'BUY_ITEM', itemId: 'roadblock' });
+    expect(bought.players[0]!.items['roadblock']).toBe(1);
+    expect(bought.players[0]!.points).toBe(POINTS_START - 30);
+  });
+
+  it('遥控骰子道具固定第一颗骰子点数', () => {
     // 固定 6 点后，随机第二骰为 2 或 4 时总点数 8/10 会落在地产格（保持决策阶段）
     const g = newGame(seedForFirstDie([2, 4]));
-    g.players[0]!.cards = ['remote-dice'];
-    const used = applyAction(g, { type: 'USE_CARD', cardId: 'remote-dice', diceValue: 6 });
+    g.players[0]!.items = { 'remote-dice-item': 1 };
+    const used = applyAction(g, { type: 'USE_ITEM', itemId: 'remote-dice-item', diceValue: 6 });
     expect(used.pendingFixedDice).toBe(6);
-    expect(used.players[0]!.cards).toHaveLength(0);
+    expect(used.players[0]!.items['remote-dice-item'] ?? 0).toBe(0);
     const rolled = applyAction(used, { type: 'ROLL_DICE' });
     expect(rolled.dice![0]).toBe(6);
     expect(rolled.phase).toBe('awaiting_action');
     expect(rolled.pendingFixedDice).toBeNull();
   });
 
-  it('均富卡平均分配现金', () => {
+  it('均富卡平均分配现金（余数归使用者）', () => {
     const g = newGame(107);
-    g.players[0]!.cards = ['equalize'];
-    g.players[0]!.cash = 20000;
+    g.players[0]!.cards = ['even-all'];
+    g.players[0]!.cash = 20001;
     g.players[1]!.cash = 10000;
-    const used = applyAction(g, { type: 'USE_CARD', cardId: 'equalize' });
-    expect(used.players[0]!.cash).toBe(15000);
+    const used = applyAction(g, { type: 'USE_CARD', cardId: 'even-all' });
+    expect(used.players[0]!.cash).toBe(15001); // 均额 15000 + 余数 1
     expect(used.players[1]!.cash).toBe(15000);
   });
 
-  it('拆屋卡降级目标最高地产', () => {
+  it('拆除卡将目标建筑降一级', () => {
     const g = newGame(109);
     g.players[0]!.cards = ['demolish'];
     g.players[1]!.properties = [{ cellId: 6, grade: 2 }];
-    const used = applyAction(g, { type: 'USE_CARD', cardId: 'demolish', targetPlayerId: 'p2' });
+    const used = applyAction(g, { type: 'USE_CARD', cardId: 'demolish', cellId: 6 });
     expect(used.players[1]!.properties[0]).toEqual({ cellId: 6, grade: 1 });
   });
 
-  it('强占卡夺取脚下地产', () => {
-    const g = setupLanding(newGame(111), 6, 3); // 落到 6 号南京路（无主 → 决策阶段）
-    const rolled = applyAction(g, { type: 'ROLL_DICE' });
-    expect(rolled.phase).toBe('awaiting_action');
-    rolled.players[0]!.cards = ['seize'];
-    rolled.players[1]!.properties = [{ cellId: 6, grade: 2 }];
-    const used = applyAction(rolled, { type: 'USE_CARD', cardId: 'seize' });
-    expect(used.players[0]!.properties).toEqual([{ cellId: 6, grade: 2 }]);
-    expect(used.players[1]!.properties).toHaveLength(0);
+  it('抢夺卡抢走对手的卡片或道具', () => {
+    const g = newGame(111);
+    g.players[0]!.cards = ['snatch'];
+    g.players[1]!.cards = ['hold'];
+    const used = applyAction(g, { type: 'USE_CARD', cardId: 'snatch', targetPlayerId: 'p2' });
+    expect(used.players[0]!.cards).toContain('hold');
+    expect(used.players[1]!.cards).not.toContain('hold');
   });
 
-  it('红卡使指定股票上涨 25%', () => {
+  it('红卡使指定股票涨停（+15% 并锁定 3 天）', () => {
     const g = newGame(113);
     g.players[0]!.cards = ['red-card'];
     const used = applyAction(g, { type: 'USE_CARD', cardId: 'red-card', stockId: 'tech' });
     const tech = used.stockMarket.stocks.find((s) => s.id === 'tech')!;
-    expect(tech.price).toBe(150); // 120 * 1.25
+    expect(tech.price).toBe(138); // 120 * 1.15
+    expect(used.stockHalts).toEqual([{ stockId: 'tech', kind: 'up', daysLeft: 3 }]);
   });
 });
 
-describe('M2 神仙系统', () => {
-  it('财神附身每回合发放金钱并递减时长', () => {
-    const g = newGame(115);
-    g.players[0]!.god = { godId: 'wealth', remainingTurns: 2 };
+describe('M2 神仙系统（GOD-01..12 天数制）', () => {
+  it('附身按天计时：当日不递减，跨日才递减', () => {
+    const g = setupLanding(newGame(115), 62, 6); // p0 落到公司格（占位安全格）
+    g.players[0]!.god = { godId: 'big-wealth', remainingDays: 3 };
     const rolled = applyAction(g, { type: 'ROLL_DICE' });
-    expect(rolled.players[0]!.cash).toBeGreaterThanOrEqual(15000 + 800);
-    expect(rolled.players[0]!.god).toEqual({ godId: 'wealth', remainingTurns: 1 });
+    expect(rolled.players[0]!.god).toEqual({ godId: 'big-wealth', remainingDays: 3 });
   });
 
-  it('神庙格召唤随机神仙', () => {
+  it('神庙格召唤随机神明', () => {
     const g = setupLanding(newGame(117), 5, 4); // 落到 5 号神庙
     const rolled = applyAction(g, { type: 'ROLL_DICE' });
     expect(rolled.players[0]!.god).not.toBeNull();
-    expect(['wealth', 'poverty', 'land']).toContain(rolled.players[0]!.god!.godId);
+    expect(GODS.map((x) => x.id)).toContain(rolled.players[0]!.god!.godId);
   });
 });
 
@@ -322,7 +375,7 @@ describe('M2 股票系统', () => {
     expect(g.currentPlayerIndex).toBe(1);
     // p1 也走到自动结算格，回合绕回 p0 → round 2
     g.rngState = seedForSum(6);
-    g.players[1]!.position = 39; // 39 + 6 = 45 → 落到 5 号神庙，自动结算
+    g.players[1]!.position = 63; // 63 + 6 = 69 → 越过起点落到 5 号神庙，自动结算
     g = applyAction(g, { type: 'ROLL_DICE' });
     expect(g.currentPlayerIndex).toBe(0);
     expect(g.round).toBe(2);
@@ -341,6 +394,7 @@ describe('M2 资产变卖', () => {
     g.players[1]!.cash = 100;
     g.players[1]!.stocks = { tech: 10 };
     g.players[1]!.properties = [{ cellId: 6, grade: 2 }];
+    pinIndexOne(g);
     const rolled = applyAction(g, { type: 'ROLL_DICE' });
     const p1 = rolled.players[1]!;
     expect(p1.bankrupt).toBe(false);
@@ -357,6 +411,7 @@ describe('M2 资产变卖', () => {
     g.players[0]!.properties = [{ cellId: 30, grade: 3 }];
     g.players[1]!.cash = 100;
     g.players[1]!.properties = [{ cellId: 6, grade: 1 }]; // 变卖仅回收 250
+    pinIndexOne(g);
     const rolled = applyAction(g, { type: 'ROLL_DICE' });
     expect(rolled.players[1]!.bankrupt).toBe(true);
     expect(rolled.winnerId).toBe('p1');
@@ -368,7 +423,7 @@ describe('M2 资产变卖', () => {
 
 describe('M5 forceGameOver（测试钩子）', () => {
   it('其余玩家破产、指定者获胜，走真实 game_over 流程', () => {
-    const g = applyAction(createGame(PLAYERS, 131), { type: 'START_GAME' });
+    const g = applyAction(createGame(PLAYERS, 131, { startDate: { ...MONDAY } }), { type: 'START_GAME' });
     const finished = forceGameOver(g, 'p2');
     expect(finished.phase).toBe('game_over');
     expect(finished.winnerId).toBe('p2');
@@ -381,7 +436,7 @@ describe('M5 forceGameOver（测试钩子）', () => {
 describe('M5 确定性回放（ReplayEngine）', () => {
   it('重放动作序列与逐步应用引擎状态完全一致', () => {
     const seed = 2024;
-    let state = applyAction(createGame(PLAYERS, seed), { type: 'START_GAME' });
+    let state = applyAction(createGame(PLAYERS, seed, { startDate: { ...MONDAY } }), { type: 'START_GAME' });
     const actions: Array<{ turn: number; action: PlayerAction }> = [
       { turn: state.turn, action: { type: 'START_GAME' } },
     ];
@@ -395,7 +450,12 @@ describe('M5 确定性回放（ReplayEngine）', () => {
     state = applyAction(state, { type: 'ROLL_DICE' });
     actions.push({ turn: state.turn, action: { type: 'ROLL_DICE' } });
 
-    const engine = new ReplayEngine({ seed, players: PLAYERS.map((p) => ({ player_name: p.name, color: p.color })), actions });
+    const engine = new ReplayEngine({
+      seed,
+      startDate: { ...MONDAY },
+      players: PLAYERS.map((p) => ({ player_name: p.name, color: p.color })),
+      actions,
+    });
     expect(engine.totalSteps).toBe(actions.length - 1);
     const final = engine.finalState;
     expect(final.players.map((p) => [p.position, p.cash, p.properties])).toEqual(
@@ -423,11 +483,11 @@ describe('M5 确定性回放（ReplayEngine）', () => {
 
 
 describe('M6 移动系统（路障/转向/乌龟）', () => {
-  it('路障卡：他人经过被截停且路障消失', () => {
+  it('路障道具：他人经过被截停且路障消失', () => {
     const g = setupLanding(newGame(201), 4, 3); // p0 落到无主成都路 → 决策阶段
     const rolled = applyAction(g, { type: 'ROLL_DICE' });
-    rolled.players[0]!.cards = ['roadblock'];
-    const used = applyAction(rolled, { type: 'USE_CARD', cardId: 'roadblock' });
+    rolled.players[0]!.items = { roadblock: 1 };
+    const used = applyAction(rolled, { type: 'USE_ITEM', itemId: 'roadblock', cellId: 4 });
     expect(used.roadblocks).toEqual([4]);
     // 放置路障不消耗回合，仍需显式结束回合
     const ended = applyAction(used, { type: 'END_TURN' });
@@ -453,57 +513,56 @@ describe('M6 移动系统（路障/转向/乌龟）', () => {
     expect(rolled.players[0]!.position).toBe(7); // 10 - 3
   });
 
-  it('乌龟卡：目标掷骰步数减半', () => {
+  it('乌龟卡：所有人 3 天内一次只走一步', () => {
     const g = newGame(205);
     g.players[0]!.cards = ['turtle'];
-    const used = applyAction(g, { type: 'USE_CARD', cardId: 'turtle', targetPlayerId: 'p2' });
-    expect(used.players[1]!.slowTurns).toBe(2);
+    const used = applyAction(g, { type: 'USE_CARD', cardId: 'turtle' });
+    expect(used.players[0]!.turtleTurns).toBe(3);
+    expect(used.players[1]!.turtleTurns).toBe(3);
 
-    // 切到 p2 掷骰：总和 7 → 实际移动 ceil(7/2)=4
+    // 切到 p2 掷骰：总和 7 → 实际只走 1 步，落到 11 号机会格
     used.rngState = seedForSum(7);
     used.currentPlayerIndex = 1;
     used.players[1]!.position = 10;
     const rolled = applyAction(used, { type: 'ROLL_DICE' });
-    expect(rolled.players[1]!.position).toBe(14);
-    expect(rolled.players[1]!.slowTurns).toBe(1);
+    expect(rolled.players[1]!.position).toBe(11);
   });
 });
 
 describe('M6 新卡片', () => {
-  it('免租卡：落地他人地产时一次租金全免', () => {
+  it('查封卡：整条街 5 天内免收过路费', () => {
     const g = setupLanding(newGame(209), 6, 3); // p0 即将落到 p1 的 6 号南京路（2 级，租金 260）
-    g.players[0]!.cards = ['rent-free'];
+    g.players[0]!.cards = ['seal-rent'];
     g.players[1]!.properties = [{ cellId: 6, grade: 2 }];
-    // 先在掷骰前使用免租卡（phase=any，awaiting_roll 可用）
-    const used = applyAction(g, { type: 'USE_CARD', cardId: 'rent-free' });
-    expect(used.players[0]!.freeRentTurns).toBe(1);
+    // 掷骰前使用查封卡，锁定 6 号所在路段
+    const used = applyAction(g, { type: 'USE_CARD', cardId: 'seal-rent', cellId: 6 });
+    expect(used.rentEffects).toHaveLength(1);
+    expect(used.rentEffects[0]!.cells).toContain(6);
     const rolled = applyAction(used, { type: 'ROLL_DICE' });
-    expect(rolled.players[0]!.cash).toBe(15000); // 租金 260 被免除
-    expect(rolled.players[0]!.freeRentTurns).toBe(0);
-    expect(rolled.log.some((e) => e.text.includes('免租卡生效'))).toBe(true);
+    expect(rolled.players[0]!.cash).toBe(15000); // 租金被查封免除
+    expect(rolled.log.some((e) => e.text.includes('查封'))).toBe(true);
   });
 
-  it('天使卡：解除停留并送走穷神', () => {
+  it('送神卡：送走附身神明', () => {
     const g = newGame(211);
-    g.players[0]!.cards = ['angel'];
-    g.players[0]!.skipTurns = 3;
-    g.players[0]!.god = { godId: 'poverty', remainingTurns: 3 };
-    const used = applyAction(g, { type: 'USE_CARD', cardId: 'angel' });
-    expect(used.players[0]!.skipTurns).toBe(0);
+    g.players[0]!.cards = ['send-god'];
+    g.players[0]!.god = { godId: 'small-poverty', remainingDays: 3 };
+    const used = applyAction(g, { type: 'USE_CARD', cardId: 'send-god' });
     expect(used.players[0]!.god).toBeNull();
   });
 });
 
-describe('M6 福神', () => {
-  it('福神每回合发放 200-600 随机红包', () => {
-    const g = newGame(213);
-    g.players[0]!.god = { godId: 'fortune', remainingTurns: 2 };
-    const before = g.players[0]!.cash;
-    const rolled = applyAction(g, { type: 'ROLL_DICE' });
-    const gain = rolled.players[0]!.cash - before - 0;
-    expect(gain).toBeGreaterThanOrEqual(200);
-    expect(gain).toBeLessThanOrEqual(600);
-    expect(rolled.players[0]!.god).toEqual({ godId: 'fortune', remainingTurns: 1 });
+describe('M6 神明对偶转化（GOD-02..11）', () => {
+  it('大福神期满对偶转化为小福神', () => {
+    const g = setupLanding(newGame(213), 62, 6); // p0 落到公司格（占位安全格）
+    g.players[0]!.god = { godId: 'big-fortune', remainingDays: 1 };
+    const after0 = applyAction(g, { type: 'ROLL_DICE' });
+    // p0 自己的回合尚未跨天，计时不变
+    expect(after0.players[0]!.god).toEqual({ godId: 'big-fortune', remainingDays: 1 });
+    // 推到跨日 → 日切 → 期满转化为小福神（重置为 7 天）
+    const after1 = advanceOneDay(after0);
+    expect(after1.players[0]!.god?.godId).toBe('small-fortune');
+    expect(after1.players[0]!.god?.remainingDays).toBe(GOD_DURATION_DAYS);
   });
 });
 
@@ -588,7 +647,7 @@ describe('M8 新闻事件扩充', () => {
     // 扫描种子：找到 12 轮内出现玩家事件的种子，保证断言确定性
     let chosen: GameState | null = null;
     for (let seed = 1; seed <= 300 && !chosen; seed++) {
-      let g = applyAction(createGame(PLAYERS, seed), { type: 'START_GAME' });
+      let g = applyAction(createGame(PLAYERS, seed, { startDate: { ...MONDAY } }), { type: 'START_GAME' });
       // 双方自动掷骰推进 12 轮（落地游戏厅/决策时结束回合）
       for (let i = 0; i < 120 && g.round <= 12 && g.phase !== 'game_over'; i++) {
         if (g.phase === 'awaiting_action') {
@@ -627,7 +686,7 @@ describe('M10 小游戏：记忆翻牌', () => {
 
   it('翻牌配对与不配对逻辑正确（确定性种子直推）', () => {
     // 用受控状态直接构造：symbols 已知
-    const g = applyAction(createGame(PLAYERS, 421), { type: 'START_GAME' });
+    const g = applyAction(createGame(PLAYERS, 421, { startDate: { ...MONDAY } }), { type: 'START_GAME' });
     g.players[0]!.position = 17;
     g.phase = 'awaiting_pick';
     g.minigame = {
@@ -654,7 +713,7 @@ describe('M10 小游戏：记忆翻牌', () => {
   });
 
   it('全部配对立即结算，奖励 = 对数×500 − 翻牌×100', () => {
-    const g = applyAction(createGame(PLAYERS, 423), { type: 'START_GAME' });
+    const g = applyAction(createGame(PLAYERS, 423, { startDate: { ...MONDAY } }), { type: 'START_GAME' });
     g.players[0]!.position = 17;
     g.phase = 'awaiting_pick';
     g.minigame = {
@@ -686,7 +745,7 @@ describe('M10 小游戏：记忆翻牌', () => {
   });
 
   it('翻牌次数用尽（8 次）强制结算', () => {
-    const g = applyAction(createGame(PLAYERS, 425), { type: 'START_GAME' });
+    const g = applyAction(createGame(PLAYERS, 425, { startDate: { ...MONDAY } }), { type: 'START_GAME' });
     g.players[0]!.position = 17;
     g.phase = 'awaiting_pick';
     g.minigame = {
