@@ -236,7 +236,15 @@ describe('NPC-05 恶犬（TILE 随机出没）', () => {
     expect(landed.log.some((l) => l.text.includes('撞跑了恶犬'))).toBe(true);
   });
 
-  it('createGame 初始化 npcs 为空数组', () => {
-    expect(createGame(PLAYERS, 1, { startDate: { ...MONDAY } }).npcs).toEqual([]);
+  it('createGame 初始化四大恶人在押于监狱、magic 为空', () => {
+    const g = createGame(PLAYERS, 1, { startDate: { ...MONDAY } });
+    expect(g.magic).toBeNull();
+    // NPC-01..04 四大恶人初始在押于监狱格（26），无主、刑期 0
+    expect(g.npcs).toEqual([
+      { kind: 'thief', position: 26, ownerId: null, daysLeft: 0, jailed: true },
+      { kind: 'protection', position: 26, ownerId: null, daysLeft: 0, jailed: true },
+      { kind: 'robber', position: 26, ownerId: null, daysLeft: 0, jailed: true },
+      { kind: 'rent-thief', position: 26, ownerId: null, daysLeft: 0, jailed: true },
+    ]);
   });
 });

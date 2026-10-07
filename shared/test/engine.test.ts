@@ -230,10 +230,20 @@ describe('回合流转', () => {
     expect(skipped.phase).toBe('awaiting_roll');
   });
 
-  it('落地监狱暂停两回合', () => {
+  it('落地监狱门外安全不停留，且可保释在押恶人', () => {
     const g = setupLanding(newGame(17), 26, 8);
     const landed = applyAction(g, { type: 'ROLL_DICE' });
-    expect(landed.players[0]!.skipTurns).toBe(2);
+    // TILE-10：监狱门外安全，不再落地坐牢
+    expect(landed.players[0]!.skipTurns).toBe(0);
+    expect(landed.players[0]!.custody).toBeNull();
+    expect(landed.phase).toBe('awaiting_action');
+    // 在押恶人可保释
+    expect(availableActions(landed).bailableVillains).toEqual([
+      'thief',
+      'protection',
+      'robber',
+      'rent-thief',
+    ]);
   });
 
   it('缴税扣除 10% 现金', () => {

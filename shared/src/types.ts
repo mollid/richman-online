@@ -73,6 +73,8 @@ export interface PlayerProperty {
   facility?: FacilityType;
   /** 连锁店（EST-04）：改建卡改建而成，不能再加盖，租金按店面总数计算（EST-05） */
   chain?: boolean;
+  /** NPC-04 窃取租金：该地最近一次收取到的租金（无人收租时为 null） */
+  lastRent?: number | null;
 }
 
 /** 神仙附身状态（GOD-01..12：天数制，日切时递减） */
@@ -413,6 +415,29 @@ export interface GameState {
   loanBanDays: number;
   /** NPC 特殊单位（NPC-01..06：四大恶人 + 恶犬） */
   npcs: NpcUnit[];
+  /** TILE-11 魔法屋：女巫水晶球的当次施法机会（NPC-06）；null 表示无 */
+  magic: MagicOffer | null;
+}
+
+/** TILE-11 魔法屋：施法条件（决定候选受罚者） */
+export type MagicCondition = 'all' | 'ahead' | 'behind' | 'vehicle' | 'landowner';
+
+/** 四大恶人（NPC-01..04） */
+export type VillainKind = 'thief' | 'protection' | 'robber' | 'rent-thief';
+
+/** TILE-11 魔法屋：女巫的惩罚（诅咒）种类 */
+export type CurseKind = 'fine' | 'jail' | 'hospital' | 'abroad' | 'lose-card';
+
+/** TILE-11 魔法屋：女巫水晶球给出的当次施法机会 */
+export interface MagicOffer {
+  condition: MagicCondition;
+  curse: CurseKind;
+  /** 满足条件的候选受罚者 id 列表 */
+  candidateIds: string[];
+  /** fine 类诅咒金额（已按物价指数缩放） */
+  amount: number;
+  /** hospital / jail / abroad 类诅咒天数 */
+  days: number;
 }
 
 export type PlayerAction =
@@ -446,7 +471,11 @@ export type PlayerAction =
   /** ECON-13：拍卖出价 */
   | { type: 'AUCTION_BID'; amount: number }
   /** ECON-13：拍卖放弃本轮出价 */
-  | { type: 'AUCTION_PASS' };
+  | { type: 'AUCTION_PASS' }
+  /** NPC-01..04：在监狱门外保释四大恶人（收益归保释人） */
+  | { type: 'BAIL_PRISONER'; npcKind: VillainKind }
+  /** TILE-11 魔法屋（NPC-06）：女巫施法，指定受罚者 */
+  | { type: 'CAST_MAGIC'; targetPlayerId: string };
 
 /** 可用动作集合（UI 按此渲染按钮） */
 export interface AvailableActions {
@@ -496,6 +525,12 @@ export interface AvailableActions {
   lotteryTicketCost: number;
   /** ECON-13：进行中的拍卖会（无则 null，UI 据此渲染竞价面板） */
   auction: AuctionState | null;
+  /** NPC-01..04：站立于监狱门外时可保释的在押恶人种类 */
+  bailableVillains: VillainKind[];
+  /** NPC-01..04：保释金（现金，已按物价指数缩放） */
+  bailFee: number;
+  /** TILE-11：当前魔法屋施法机会（无则 null，UI 据此渲染女巫面板） */
+  magic: MagicOffer | null;
 }
 
 

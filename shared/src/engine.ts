@@ -15,7 +15,7 @@ import {
 } from './board.js';
 import { GODS, godDef, type GodDef } from './gods.js';
 import { addMonths, DEFAULT_START_DATE, gameDate, toSerial } from './calendar.js';
-import { landPrice, landRent, landUpgradeCost, propertyValue, scaled, upgradeCost } from './economy.js';
+import { landPrice, landRent, landUpgradeCost, propertyValue, scaled, totalAssets, upgradeCost } from './economy.js';
 import { CARDS, CHANCE_CARD_POOL, SHOP_CARD_IDS } from './cards.js';
 import { ITEMS, SHOP_ITEM_IDS } from './items.js';
 import { nextRandom, rollDie } from './rng.js';
@@ -34,6 +34,19 @@ import {
   renderFateText,
   type FateCardDef,
 } from './fate.js';
+import {
+  BAIL_FEE,
+  CURSE_ORDER,
+  CURSES,
+  MAGIC_CONDITION_LABEL,
+  MAGIC_CONDITIONS,
+  PROTECTION_FEE_RATE,
+  THIEF_POINTS_TAKE,
+  VILLAIN_DAYS,
+  VILLAIN_KINDS,
+  VILLAINS,
+  type VillainDef,
+} from './npc.js';
 import {
   FACILITIES,
   FACILITY_ORDER,
@@ -73,12 +86,15 @@ import type {
   DateSerial,
   FacilityType,
   GameState,
+  MagicOffer,
+  NpcUnit,
   PendingAuction,
   Player,
   PlayerAction,
   PlayerDef,
   PlayerProperty,
   RoundSnapshot,
+  VillainKind,
 } from './types.js';
 
 export interface CreateGameOptions {
@@ -167,7 +183,15 @@ export function createGame(players: PlayerDef[], seed = Date.now() % 2147483647,
     streetPriceFactors: {},
     stockHaltAllDays: 0,
     loanBanDays: 0,
-    npcs: [],
+    // NPC-01..04 四大恶人初始在押于监狱；被玩家保释后上路为保释人效力
+    npcs: VILLAIN_KINDS.map((kind) => ({
+      kind,
+      position: DEFAULT_BOARD.find((c) => c.type === 'jail')!.id,
+      ownerId: null,
+      daysLeft: 0,
+      jailed: true,
+    })),
+    magic: null,
   };
 }
 
@@ -1208,6 +1232,169 @@ function dogActivityHook(state: GameState): void {
   log(state, `【恶犬】一只恶犬在「${state.board[position]!.name}」附近徘徊`);
 }
 
+/**
+ * 只读派生随机：读 `nextRandom` 但**不写回** `state.rngState`。
+ * `salt` 为派生层数（同一 salt 恒得同值），全程零抽数 → 不扰动确定性回放。
+ */
+function derivedValue(state: GameState, salt: number): number {
+  let st = state.rngState;
+  for (let i = 0; i <= salt; i += 1) st = nextRandom(st).nextState;
+  return nextRandom(st).value;
+}
+
+/** 只读派生的 [0, n) 整数索引 */
+function derivedIndex(state: GameState, salt: number, n: number): number {
+  return Math.floor(derivedValue(state, salt) * n);
+}
+
+/** 恶人行动收益结算：收益归保释人；保释人倒闭则恶人押回监狱 */
+function giveVillainLoot(state: GameState, npc: NpcUnit, text: string): void {
+  const def = villainDefOf(npc);
+  const owner = npc.ownerId ? state.players.find((p) => p.id === npc.ownerId) : undefined;
+  if (!owner || owner.bankrupt) {
+    log(state, `${def.name} ${text}，但保释人已倒闭，赃物充公`);
+    npc.ownerId = null;
+    npc.jailed = true;
+    npc.daysLeft = 0;
+    npc.position = JAIL_CELL_ID(state);
+    return;
+  }
+  log(state, `${def.name} ${text}，收益归 ${owner.name}`);
+}
+
+/** NpcUnit.kind 收窄为四大恶人（排除恶犬），供 VILLAINS 索引 */
+function villainDefOf(npc: NpcUnit): VillainDef {
+  if (npc.kind === 'dog') throw new Error('恶犬不是四大恶人之一');
+  return VILLAINS[npc.kind];
+}
+
+/**
+ * NPC-01..04 四大恶人的每日行动（每日移动 1..6 步并就地作案）。
+ * 移动步数与作案目标均由 `derivedValue` 派生（零抽数），保证确定性回放。
+ */
+function villainAct(state: GameState, npc: NpcUnit, salt: number): void {
+  const steps = 1 + derivedIndex(state, salt, 6);
+  npc.position = (npc.position + steps) % BOARD_SIZE;
+  const cell = state.board[npc.position]!;
+  const victimPool = activePlayers(state).filter((p) => p.id !== npc.ownerId && !p.bankrupt);
+  if (victimPool.length === 0) return;
+
+  switch (npc.kind) {
+    case 'thief': {
+      // 偷取一名路人的点券（上限 500）并取走一件道具
+      const victim = victimPool[derivedIndex(state, salt + 1, victimPool.length)]!;
+      const take = Math.min(victim.points, THIEF_POINTS_TAKE);
+      victim.points -= take;
+      const itemIds = Object.keys(victim.items).filter((id) => (victim.items[id] ?? 0) > 0);
+      let itemText = '';
+      if (itemIds.length > 0) {
+        const itemId = itemIds[derivedIndex(state, salt + 2, itemIds.length)]!;
+        victim.items[itemId] = (victim.items[itemId] ?? 1) - 1;
+        if ((victim.items[itemId] ?? 0) <= 0) delete victim.items[itemId];
+        itemText = `、道具「${ITEMS[itemId]?.name ?? itemId}」`;
+      }
+      giveVillainLoot(state, npc, `在「${cell.name}」偷走 ${victim.name} 的 ${take} 点券${itemText}`);
+      break;
+    }
+    case 'protection': {
+      // 站在土地格时向该地产主收取 5% 地价的保护费（现金不足则折算点券）
+      const owner = cellOwner(state, cell.id);
+      if (!owner || cell.price === undefined) return;
+      const fee = Math.round(cell.price * PROTECTION_FEE_RATE);
+      if (fee <= 0) return;
+      if (owner.player.cash + owner.player.deposit >= fee) {
+        pay(state, owner.player, fee, null);
+      } else {
+        const byPoints = Math.min(owner.player.points, Math.max(1, Math.floor(fee / 10)));
+        owner.player.points -= byPoints;
+      }
+      giveVillainLoot(state, npc, `在「${cell.name}」向 ${owner.player.name} 收取保护费 ¥${fee}`);
+      break;
+    }
+    case 'robber': {
+      // 抢夺一名路人的一张卡片，没有卡片则抢一件道具
+      const victim = victimPool[derivedIndex(state, salt + 1, victimPool.length)]!;
+      let lootText = '';
+      if (victim.cards.length > 0) {
+        const idx = derivedIndex(state, salt + 2, victim.cards.length);
+        const cardId = victim.cards[idx]!;
+        victim.cards.splice(idx, 1);
+        lootText = `卡片「${CARDS[cardId]?.name ?? cardId}」`;
+      } else {
+        const itemIds = Object.keys(victim.items).filter((id) => (victim.items[id] ?? 0) > 0);
+        if (itemIds.length === 0) return;
+        const itemId = itemIds[derivedIndex(state, salt + 2, itemIds.length)]!;
+        victim.items[itemId] = (victim.items[itemId] ?? 1) - 1;
+        if ((victim.items[itemId] ?? 0) <= 0) delete victim.items[itemId];
+        lootText = `道具「${ITEMS[itemId]?.name ?? itemId}」`;
+      }
+      giveVillainLoot(state, npc, `在「${cell.name}」抢走 ${victim.name} 的 ${lootText}`);
+      break;
+    }
+    case 'rent-thief': {
+      // 公司格：盗领全部累积红利；土地格：窃取上次收取的租金
+      const company = companyAtCell(state, cell.id);
+      if (company) {
+        if (company.surplus <= 0) return;
+        const stolen = company.surplus;
+        company.surplus = 0;
+        giveVillainLoot(state, npc, `潜入「${cell.name}」盗领累积红利 ¥${stolen}`);
+        return;
+      }
+      const owner = cellOwner(state, cell.id);
+      if (!owner || !owner.property.lastRent) return;
+      const stolen = owner.property.lastRent;
+      owner.property.lastRent = null;
+      giveVillainLoot(state, npc, `在「${cell.name}」窃取租金 ¥${stolen}`);
+      break;
+    }
+  }
+}
+
+/** 监狱格 id（四大恶人初始在押处） */
+function JAIL_CELL_ID(state: GameState): number {
+  const jail = state.board.find((c) => c.type === 'jail');
+  if (!jail) throw new Error('棋盘缺少监狱格');
+  return jail.id;
+}
+
+/**
+ * NPC-01..04 四大恶人日切：
+ * 1) 未保释者留在监狱；2) 已保释者刑期 -1 天，归零或保释人倒闭则押回监狱；
+ * 3) 在外者当日移动并作案（只读派生随机，零抽数）。
+ */
+function villainActivityHook(state: GameState): void {
+  const jailId = JAIL_CELL_ID(state);
+  for (let i = 0; i < state.npcs.length; i += 1) {
+    const npc = state.npcs[i]!;
+    if (npc.kind === 'dog') continue;
+    if (npc.jailed) {
+      npc.position = jailId;
+      continue;
+    }
+    const owner = npc.ownerId ? state.players.find((p) => p.id === npc.ownerId) : undefined;
+    if (!owner || owner.bankrupt) {
+      npc.ownerId = null;
+      npc.jailed = true;
+      npc.daysLeft = 0;
+      npc.position = jailId;
+      log(state, `【恶人】${villainDefOf(npc).name} 的保释人倒闭，被押回监狱`);
+      continue;
+    }
+    npc.daysLeft -= 1;
+    if (npc.daysLeft <= 0) {
+      npc.ownerId = null;
+      npc.jailed = true;
+      npc.daysLeft = 0;
+      npc.position = jailId;
+      log(state, `【恶人】${villainDefOf(npc).name} 刑满释放，被押回监狱`);
+      continue;
+    }
+    // salt 按日推进（elapsedDays）与恶人序号错开，确保不同恶人不同步、跨日不同值
+    villainAct(state, npc, state.calendar.elapsedDays * 8 + i * 2);
+  }
+}
+
 const DAY_HOOKS: DayHook[] = [
   noticeHolidayHook,
   dividendAndLotteryHook,
@@ -1218,6 +1405,7 @@ const DAY_HOOKS: DayHook[] = [
   researchTickHook,
   godTickHook,
   dogActivityHook,
+  villainActivityHook,
 ];
 
 /** 日切唯一收口点：逐钩子执行，game_over 时提前返回 */
@@ -1259,6 +1447,7 @@ function advanceTurn(state: GameState): void {
   }
   state.turn += 1;
   state.bankAccess = null;
+  state.magic = null;
   if (state.currentPlayerIndex < before) {
     state.round += 1;
     captureRoundSnapshot(state);
@@ -1984,6 +2173,9 @@ export function availableActions(state: GameState): AvailableActions {
       canBuyLottery,
       lotteryTicketCost: LOTTERY_TICKET_COST,
       auction: null,
+      bailableVillains: bailableVillains(state),
+      bailFee: bailFee(state),
+      magic: state.magic,
     };
   }
   return {
@@ -2013,6 +2205,9 @@ export function availableActions(state: GameState): AvailableActions {
     canBuyLottery: false,
     lotteryTicketCost: LOTTERY_TICKET_COST,
     auction: state.phase === 'awaiting_auction' ? state.auction : null,
+    bailableVillains: bailableVillains(state),
+    bailFee: bailFee(state),
+    magic: state.magic,
   };
 }
 
@@ -2259,14 +2454,16 @@ function rollDice(state: GameState, action: Extract<PlayerAction, { type: 'ROLL_
     return;
   }
 
+  // TILE-10 监狱：落地不停留在牢内（安全），可在监狱门外保释在押恶人（help [34]）
   if (c.type === 'jail') {
-    applyDisaster(state, p, 'jail', null, (v) => {
-      v.skipTurns = Math.max(v.skipTurns, 2);
-      v.custody = { kind: 'jail', daysLeft: Math.max(v.skipTurns, 2) };
-      blockRent(v, 2);
-      log(state, `${v.name} 被关进监狱，暂停 2 回合并丧失收租权`);
-    });
-    advanceTurn(state);
+    state.phase = 'awaiting_action';
+    const jailed = state.npcs.filter((n) => n.jailed && n.kind !== 'dog');
+    log(
+      state,
+      jailed.length > 0
+        ? `${p.name} 来到「${c.name}」门外（安全无恙），可花 ¥${bailFee(state)} 保释在押恶人`
+        : `${p.name} 来到「${c.name}」门外（安全无恙），当前没有在押恶人`,
+    );
     return;
   }
 
@@ -2431,6 +2628,8 @@ function rollDice(state: GameState, action: Extract<PlayerAction, { type: 'ROLL_
     }
     log(state, `${p.name} 进入 ${owned.player.name} 的「${c.name}」，需付租金 ¥${rent}`);
     pay(state, p, rent, owned.player, { toDeposit: true, reason: 'rent' });
+    // NPC-04 窃取租金：记录本地上次收取的租金，供窃取租金型恶人作案
+    owned.property.lastRent = rent;
     if (isGameOver(state)) return;
     advanceTurn(state);
     return;
@@ -2562,10 +2761,32 @@ function rollDice(state: GameState, action: Extract<PlayerAction, { type: 'ROLL_
     return;
   }
 
-  // TILE-11 魔法屋（女巫水晶球与指定受罚者归波 8）
+  // TILE-11 魔法屋（NPC-06 女巫）：水晶球给出施法条件 + 诅咒，由玩家指定受罚者
   if (c.type === 'magic') {
-    log(state, `${p.name} 走进「${c.name}」，女巫的水晶球尚未苏醒（波 8 开放）`);
-    advanceTurn(state);
+    const conditionRoll = nextRandom(state.rngState);
+    state.rngState = conditionRoll.nextState;
+    const condition = MAGIC_CONDITIONS[Math.floor(conditionRoll.value * MAGIC_CONDITIONS.length)]!.kind;
+    const curseRoll = nextRandom(state.rngState);
+    state.rngState = curseRoll.nextState;
+    const curse = CURSE_ORDER[Math.floor(curseRoll.value * CURSE_ORDER.length)]!;
+    const curseDef = CURSES[curse];
+    const candidateIds = magicCandidates(state, p, condition);
+    const offer: MagicOffer = {
+      condition,
+      curse,
+      candidateIds,
+      amount: curse === 'fine' ? scaled(state, curseDef.amount ?? 0) : 0,
+      days: curseDef.days ?? 0,
+    };
+    state.magic = offer;
+    state.phase = 'awaiting_action';
+    log(
+      state,
+      `${p.name} 进入「${c.name}」，女巫的水晶球亮起：${MAGIC_CONDITION_LABEL[condition]}；若施法，将降下「${curseDef.name}」`,
+    );
+    if (candidateIds.length === 0) {
+      log(state, '当前没有符合条件的受罚对象，女巫悻悻收回水晶球');
+    }
     return;
   }
 
@@ -2972,6 +3193,130 @@ function buyLotteryTicket(state: GameState, action: Extract<PlayerAction, { type
   state.lotteryPool += LOTTERY_TICKET_COST;
   state.lotteryTickets.push({ playerId: p.id, number: action.number });
   log(state, `${p.name} 在「${c.name}」以 ¥${LOTTERY_TICKET_COST} 投注号码 ${action.number}，奖池累计 ¥${state.lotteryPool}`);
+}
+
+// ---------------------------------------------------------------------------
+// NPC-01..06 特殊单位动作：保释四大恶人 + 魔法屋施法
+// ---------------------------------------------------------------------------
+
+/** 保释金（固定 5000，随物价指数缩放） */
+function bailFee(state: GameState): number {
+  return scaled(state, BAIL_FEE);
+}
+
+/** 魔法屋施法条件对应的候选受罚者（排除施法者本人与已倒闭玩家） */
+function magicCandidates(state: GameState, caster: Player, condition: MagicOffer['condition']): string[] {
+  const others = activePlayers(state).filter((p) => p.id !== caster.id);
+  switch (condition) {
+    case 'all':
+      return others.map((p) => p.id);
+    case 'ahead':
+      return others.filter((p) => totalAssets(state, p) > totalAssets(state, caster)).map((p) => p.id);
+    case 'behind':
+      return others.filter((p) => totalAssets(state, p) < totalAssets(state, caster)).map((p) => p.id);
+    case 'vehicle':
+      // 拥有交通工具（机车 diceCount=2 / 汽车 diceCount=3）
+      return others.filter((p) => p.diceCount > 1).map((p) => p.id);
+    case 'landowner':
+      return others.filter((p) => p.properties.some((q) => {
+        const cell = state.board[q.cellId];
+        return cell ? (cell.type === 'property' || cell.type === 'commercial') : false;
+      })).map((p) => p.id);
+    default: {
+      const exhaustive: never = condition;
+      throw new Error(`未知施法条件: ${JSON.stringify(exhaustive)}`);
+    }
+  }
+}
+
+/** 当前站立于监狱门外时可保释的在押恶人 */
+function bailableVillains(state: GameState): VillainKind[] {
+  const p = currentPlayer(state);
+  if (state.phase !== 'awaiting_action' || p.bankrupt) return [];
+  if (cellAt(state, p.position).type !== 'jail') return [];
+  return state.npcs
+    .filter((n) => n.kind !== 'dog' && n.jailed)
+    .map((n) => n.kind as VillainKind);
+}
+
+/** NPC-01..04：在监狱门外保释一名在押恶人（收益归保释人） */
+function bailPrisoner(state: GameState, action: Extract<PlayerAction, { type: 'BAIL_PRISONER' }>): void {
+  if (state.phase !== 'awaiting_action') throw new Error('当前不能保释');
+  const p = currentPlayer(state);
+  if (cellAt(state, p.position).type !== 'jail') throw new Error('不在监狱门外，不能保释');
+  const npc = state.npcs.find((n) => n.kind === action.npcKind);
+  if (!npc) throw new Error('没有这名恶人');
+  if (!npc.jailed) throw new Error('这名恶人不在押');
+  const fee = bailFee(state);
+  if (p.cash < fee) throw new Error('现金不足以支付保释金');
+  p.cash -= fee;
+  npc.jailed = false;
+  npc.ownerId = p.id;
+  npc.daysLeft = VILLAIN_DAYS;
+  npc.position = cellAt(state, p.position).id;
+  log(
+    state,
+    `${p.name} 花费 ¥${fee} 保释了${villainDefOf(npc).name}，${VILLAIN_DAYS} 天内所获收益归 ${p.name}`,
+  );
+}
+
+/** TILE-11：女巫施法，对指定候选降下诅咒 */
+function castMagic(state: GameState, action: Extract<PlayerAction, { type: 'CAST_MAGIC' }>): void {
+  const offer = state.magic;
+  if (!offer) throw new Error('当前没有可施法的机会');
+  if (state.phase !== 'awaiting_action') throw new Error('当前不能施法');
+  const p = currentPlayer(state);
+  const target = state.players.find((q) => q.id === action.targetPlayerId);
+  if (!target) throw new Error('受罚对象不存在');
+  if (target.id === p.id) throw new Error('不能诅咒自己');
+  if (!offer.candidateIds.includes(target.id)) throw new Error('该对象不满足施法条件');
+  const curseDef = CURSES[offer.curse];
+  state.magic = null;
+  log(state, `${p.name} 对 ${target.name} 施法，诅咒「${curseDef.name}」降临`);
+  switch (offer.curse) {
+    case 'fine':
+      payCash(state, target, offer.amount, null, 'god');
+      break;
+    case 'jail':
+      applyDisaster(state, target, 'jail', p, (v) => {
+        v.skipTurns = Math.max(v.skipTurns, offer.days);
+        v.custody = { kind: 'jail', daysLeft: Math.max(v.skipTurns, offer.days) };
+        blockRent(v, offer.days);
+        log(state, `${v.name} 被关进监狱，暂停 ${offer.days} 回合并丧失收租权`);
+      });
+      break;
+    case 'hospital':
+      applyDisaster(state, target, 'jail', p, (v) => {
+        v.skipTurns = Math.max(v.skipTurns, offer.days);
+        v.custody = { kind: 'hospital', daysLeft: Math.max(v.skipTurns, offer.days) };
+        blockRent(v, offer.days);
+        log(state, `${v.name} 怪病缠身，住院 ${offer.days} 天并丧失收租权`);
+      });
+      break;
+    case 'abroad':
+      applyDisaster(state, target, 'jail', p, (v) => {
+        v.abroadTurns = Math.max(v.abroadTurns, offer.days);
+        v.skipTurns = Math.max(v.skipTurns, offer.days);
+        log(state, `${v.name} 被放逐异界 ${offer.days} 回合`);
+      });
+      break;
+    case 'lose-card':
+      applyDisaster(state, target, 'jail', p, (v) => {
+        if (v.cards.length === 0) {
+          log(state, `${v.name} 身上没有卡片，诅咒无处降落`);
+          return;
+        }
+        const idx = randomIndex(state, v.cards.length);
+        const cardId = v.cards[idx]!;
+        v.cards.splice(idx, 1);
+        log(state, `${v.name} 的卡片「${CARDS[cardId]?.name ?? cardId}」凭空消失`);
+      });
+      break;
+    default: {
+      const exhaustive: never = offer.curse;
+      throw new Error(`未知诅咒: ${JSON.stringify(exhaustive)}`);
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -3961,6 +4306,12 @@ export function applyAction(state: GameState, action: PlayerAction): GameState {
       break;
     case 'AUCTION_PASS':
       auctionPass(next);
+      break;
+    case 'BAIL_PRISONER':
+      bailPrisoner(next, action);
+      break;
+    case 'CAST_MAGIC':
+      castMagic(next, action);
       break;
     default: {
       const exhaustive: never = action;
