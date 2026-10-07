@@ -381,6 +381,14 @@ describe('ECON-06 物价指数', () => {
 });
 
 describe('TIME-06 确定性：同 seed + startDate + actions 完整复现', () => {
+  /** 小游戏进行中：记忆翻牌需挑一张尚未翻开/未消除的牌，其余小游戏固定猜 0 号 */
+  function nextPick(s: GameState): number {
+    const mg = s.minigame;
+    if (!mg || mg.kind !== 'memory') return 0;
+    const idx = mg.symbols.findIndex((_, i) => !mg.matched[i] && !mg.revealed.includes(i));
+    return idx < 0 ? 0 : idx;
+  }
+
   function drive(seed: number): { state: GameState; actions: PlayerAction[] } {
     let s = applyAction(createGame(PLAYERS, seed, { startDate: { ...MONDAY } }), { type: 'START_GAME' });
     const actions: PlayerAction[] = [{ type: 'START_GAME' }];
@@ -390,7 +398,7 @@ describe('TIME-06 确定性：同 seed + startDate + actions 完整复现', () =
           ? { type: 'ROLL_DICE' }
           : s.phase === 'awaiting_action'
             ? { type: 'END_TURN' }
-            : { type: 'MINIGAME_PICK', hole: 0 };
+            : { type: 'MINIGAME_PICK', hole: nextPick(s) };
       s = applyAction(s, action);
       actions.push(action);
     }

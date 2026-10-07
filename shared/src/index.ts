@@ -11,6 +11,7 @@ export * from './tiles.js';
 export * from './companies.js';
 export * from './gods.js';
 export * from './lottery.js';
+export * from './news.js';
 
 export * from './replay.js';
 

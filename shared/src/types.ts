@@ -241,8 +241,19 @@ export interface Player {
   insurance: InsuranceStatus | null;
   /** 企业银行董事长特别融资未还额（CORP-09）；0 表示无 */
   financing: number;
+  /**
+   * 在押/住院记录（EVT-01 事件 0–3 用）：区分「监狱」与「医院」以便延长或提前开释。
+   * `skipTurns` 仍是真正的停留天数来源，本字段只做身份与剩余天数的记账。
+   */
+  custody: CustodyStatus | null;
   bankrupt: boolean;
   online: boolean;
+}
+
+/** 在押 / 住院身份（EVT-01 事件 0–3） */
+export interface CustodyStatus {
+  kind: 'jail' | 'hospital';
+  daysLeft: number;
 }
 
 export type Phase =
@@ -253,12 +264,12 @@ export type Phase =
   | 'awaiting_auction' // 拍卖会进行中：等待当前竞买人出价/放弃
   | 'game_over';
 
-/** 小游戏状态（游戏厅随机二选一） */
+/** 小游戏状态（游戏厅随机四选一：三仙归洞 / 记忆翻牌 / 七彩气球 / 企鹅挖宝） */
 export interface MinigameState {
-  kind: 'shells' | 'memory';
-  /** shells：当前第几轮（0-2，共 3 轮） */
+  kind: 'shells' | 'memory' | 'balloon' | 'penguin';
+  /** shells/balloon/penguin：当前第几轮（0-2，共 3 轮） */
   round: 0 | 1 | 2;
-  /** shells：每轮命中记录 */
+  /** shells/balloon/penguin：每轮命中记录 */
   hits: boolean[];
   /** memory：8 张牌的图案（0-3 各两张，已洗牌） */
   symbols: number[];
@@ -268,6 +279,8 @@ export interface MinigameState {
   matched: boolean[];
   /** memory：已用翻牌次数 */
   flips: number;
+  /** balloon：本轮是否已踩到炸弹（提前结束，剩余轮次作废） */
+  exploded?: boolean;
 }
 
 export interface LogEntry {
@@ -288,10 +301,11 @@ export interface StockMarket {
   stocks: Stock[];
 }
 
-/** 红卡/黑卡造成的涨跌停（CARD-24/25） */
+/** 红卡/黑卡造成的涨跌停（CARD-24/25）；EVT-01 事件 26/27 的停牌（suspend）复用同一列表 */
 export interface StockHalt {
   stockId: string;
-  kind: 'up' | 'down';
+  /** up=涨停板（不允许下跌） down=跌停板（不允许上涨） suspend=暂停交易（EVT-01 事件 26/27） */
+  kind: 'up' | 'down' | 'suspend';
   daysLeft: number;
 }
 
@@ -372,6 +386,14 @@ export interface GameState {
   auctionQueue: PendingAuction[];
   /** 11 家公司企业的经营状态（CORP-01..13，波 5） */
   companies: CompanyState[];
+  /** 新闻事件池游标（EVT-01：从该 id 起轮询，取第一条满足前提的事件） */
+  newsCursor: number;
+  /** 街道地价乘数（EVT-01 事件 6/14 永久生效）：street -> 乘数，缺省 1 */
+  streetPriceFactors: Record<string, number>;
+  /** 股市全面停牌剩余天数（EVT-01 事件 26）；> 0 时全市场不可交易 */
+  stockHaltAllDays: number;
+  /** 银行停止放款剩余天数（EVT-01 事件 22）；> 0 时不可贷款 */
+  loanBanDays: number;
 }
 
 export type PlayerAction =

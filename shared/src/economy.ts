@@ -61,9 +61,18 @@ export function scaled(state: GameState, amount: number): number {
   return Math.round(amount * priceIndex(state));
 }
 
-/** 地价（含指数），UI 与引擎同源 */
+/**
+ * 街道地价乘数（EVT-01 事件 6/14）：{街}公告地价调涨 30% / 闹鬼下跌 30%，永久生效于买地价与租金。
+ * 缺省 1（未受事件影响的街道恒为 1，既有数值不受影响）。
+ */
+export function streetFactor(state: GameState, cell: BoardCell): number {
+  if (!cell.street) return 1;
+  return state.streetPriceFactors[cell.street] ?? 1;
+}
+
+/** 地价（含指数与街道乘数），UI 与引擎同源 */
 export function landPrice(state: GameState, cell: BoardCell): number {
-  return scaled(state, cell.price ?? 0);
+  return scaled(state, Math.round((cell.price ?? 0) * streetFactor(state, cell)));
 }
 
 /** 升级价（含指数） */
@@ -71,7 +80,7 @@ export function landUpgradeCost(state: GameState, cell: BoardCell, grade: number
   return scaled(state, upgradeCost(cell.price ?? 0, grade));
 }
 
-/** 租金（含指数） */
+/** 租金（含指数与街道乘数） */
 export function landRent(state: GameState, cell: BoardCell, grade: number): number {
-  return scaled(state, rentOf(cell.baseRent ?? 0, grade));
+  return scaled(state, Math.round(rentOf(cell.baseRent ?? 0, grade) * streetFactor(state, cell)));
 }

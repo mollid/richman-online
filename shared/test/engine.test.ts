@@ -673,8 +673,11 @@ describe('M8 新闻事件扩充', () => {
 describe('M10 小游戏：记忆翻牌', () => {
   it('落地游戏厅可随机到记忆翻牌（8 张牌 4 对）', () => {
     let found: GameState | null = null;
-    for (let seed = 401; seed < 1200 && !found; seed++) {
-      const rolled = applyAction(setupLanding(newGame(seed), 17, 5), { type: 'ROLL_DICE' });
+    for (let k = 1; k < 80 && !found; k++) {
+      const g = newGame(401);
+      g.rngState = nthSeedForSum(5, k);
+      g.players[g.currentPlayerIndex]!.position = 12; // 12 + 5 = 17 游戏厅
+      const rolled = applyAction(g, { type: 'ROLL_DICE' });
       if (rolled.minigame?.kind === 'memory') found = rolled;
     }
     expect(found).not.toBeNull();
