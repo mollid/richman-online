@@ -1,0 +1,8 @@
+packages:
+  - shared
+  - server
+  - client
+
+onlyBuiltDependencies:
+  - esbuild
+  - msgpackr-extract
