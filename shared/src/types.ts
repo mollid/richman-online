@@ -256,6 +256,23 @@ export interface CustodyStatus {
   daysLeft: number;
 }
 
+/**
+ * NPC 特殊单位（NPC-01..06，波 8）。
+ * - 四大恶人（小偷/收保护费/行抢/窃取租金）：被玩家保释出狱后在路上活动，收益归保释人；
+ * - 恶犬：随机在路上出没，步行者被咬伤住院，驾车者可将其撞跑。
+ */
+export interface NpcUnit {
+  kind: 'thief' | 'protection' | 'robber' | 'rent-thief' | 'dog';
+  /** 所在格 */
+  position: number;
+  /** 保释人 id；null 表示无主（在押待保释的恶人 / 无主恶犬） */
+  ownerId: string | null;
+  /** 剩余活动天数；<= 0 时自动离场 */
+  daysLeft: number;
+  /** 是否仍在监狱中待保释（四大恶人） */
+  jailed: boolean;
+}
+
 export type Phase =
   | 'lobby'        // 等待玩家加入/开始
   | 'awaiting_roll'    // 等待当前玩家掷骰
@@ -394,6 +411,8 @@ export interface GameState {
   stockHaltAllDays: number;
   /** 银行停止放款剩余天数（EVT-01 事件 22）；> 0 时不可贷款 */
   loanBanDays: number;
+  /** NPC 特殊单位（NPC-01..06：四大恶人 + 恶犬） */
+  npcs: NpcUnit[];
 }
 
 export type PlayerAction =

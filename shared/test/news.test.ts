@@ -402,24 +402,31 @@ describe('EVT-02 机会格违法事件（TILE-17）', () => {
     expect(r.log.some((e) => e.text.includes('【违法事件】'))).toBe(true);
   });
 
-  it('违法判定为只读派生随机：机会格落格恰好消耗 1 抽（抽卡）', () => {
-    const s = landOn(newGame(42), 3, 3);
-    const before = s.rngState;
-    const landed = applyAction(s, { type: 'ROLL_DICE' });
-    expect(landed.players[0]!.position).toBe(3);
-    expect(landed.rngState).toBe(nextRandom(before).nextState);
-    expect(landed.players[0]!.cards).toHaveLength(1); // drawChanceCard 抽到一张
+  it('违法判定为只读派生随机：抽命运卡恰好消耗 1 抽', () => {
+    // 波 8 起机会格改为抽命运卡池（公共池 33 张），抽签本身消耗 1 抽；
+    // 违法判定用只读派生随机（只读不写回），故不额外消耗抽数。
+    // 找一张「无额外随机」的命运卡样本（拆房/征地/绑架等会再抽一次）验证恰好 1 抽。
+    let found: GameState | null = null;
+    for (let seed = 1; seed <= 3000 && !found; seed++) {
+      const s = landOn(newGame(seed), 3, 3);
+      const before = s.rngState;
+      const landed = applyAction(s, { type: 'ROLL_DICE' });
+      expect(landed.players[0]!.position).toBe(3);
+      if (landed.rngState === nextRandom(before).nextState) found = landed;
+    }
+    expect(found).not.toBeNull();
+    expect(found!.log.some((e) => e.text.includes('【命运】'))).toBe(true);
   });
 
   it('判定不成立时不坐牢', () => {
-    // 找一个机会格不触发违法事件的种子
+    // 找一个机会格不触发违法事件的种子（命运卡本身也可能致住院/出国，故同时看 skipTurns）
     let quiet: GameState | null = null;
     for (let seed = 1; seed <= 3000 && !quiet; seed++) {
       const r = applyAction(landOn(newGame(seed), 3, 3), { type: 'ROLL_DICE' });
-      if (r.players[0]!.custody === null) quiet = r;
+      if (r.players[0]!.custody === null && r.players[0]!.skipTurns === 0) quiet = r;
     }
     expect(quiet).not.toBeNull();
-    expect(quiet!.players[0]!.skipTurns).toBe(0);
+    expect(quiet!.log.some((e) => e.text.includes('【违法事件】'))).toBe(false);
   });
 });
 

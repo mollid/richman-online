@@ -17,3 +17,5 @@ export * from './replay.js';
 
 export * from './bot.js';
 
+export * from './fate.js';
+

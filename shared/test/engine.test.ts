@@ -138,13 +138,13 @@ describe('回合流转', () => {
   });
 
   it('经过起点领取薪水', () => {
-    const s = seedForSum(5);
     const g = newGame(99);
-    g.rngState = s;
-    g.players[0]!.position = 62; // 62 + 5 = 67 → 越过起点落到 3（机会格）
+    g.rngState = seedForSum(2);
+    // 62 + 2 = 64 → 正好停在起点：越过起点即领薪水（落格为起点，无命运卡等其它结算）
+    g.players[0]!.position = 62;
     const rolled = applyAction(g, { type: 'ROLL_DICE' });
-    expect(rolled.players[0]!.cash).toBeGreaterThanOrEqual(15000 + 2000 - 1000);
-    expect(rolled.players[0]!.cash).toBeLessThanOrEqual(15000 + 2000 + 1000);
+    expect(rolled.players[0]!.position).toBe(0);
+    expect(rolled.players[0]!.cash).toBe(15000 + 2000);
   });
 
   it('落地无主地产进入决策阶段，可购买', () => {
@@ -255,8 +255,9 @@ describe('回合流转', () => {
 
 
 describe('M2 卡片系统', () => {
-  it('机会格抽到卡片', () => {
-    const g = setupLanding(newGame(101), 3, 5); // 落到 3 号机会格
+  it('卡片屋（TILE-13）免费获得一张卡片', () => {
+    // 波 8 起机会格改抽命运卡池（TILE-17 原版语义），免费赠卡改由 42 号「卡片屋」承担
+    const g = setupLanding(newGame(101), 42, 5);
     const rolled = applyAction(g, { type: 'ROLL_DICE' });
     expect(rolled.players[0]!.cards).toHaveLength(1);
     expect(rolled.log.some((e) => e.text.includes('抽到卡片'))).toBe(true);

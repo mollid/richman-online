@@ -28,6 +28,13 @@ import {
   type NewsEventDef,
 } from './news.js';
 import {
+  FATE_MAP_IDS,
+  FATE_PUBLIC_IDS,
+  fateCardById,
+  renderFateText,
+  type FateCardDef,
+} from './fate.js';
+import {
   FACILITIES,
   FACILITY_ORDER,
   HOTEL_MAX_DAYS,
@@ -160,6 +167,7 @@ export function createGame(players: PlayerDef[], seed = Date.now() % 2147483647,
     streetPriceFactors: {},
     stockHaltAllDays: 0,
     loanBanDays: 0,
+    npcs: [],
   };
 }
 
@@ -357,6 +365,16 @@ const BALLOON_PAYOUT = [0, 200, 700, 1500];
 const BALLOON_BOMB_FEE = 300;
 /** EVT-06 企鹅挖宝：命中 0/1/2/3 次的金币奖励（负值 = 门票） */
 const PENGUIN_PAYOUT = [-200, 200, 800, 2000];
+
+/**
+ * NPC-05 恶犬：日切时以**只读派生随机**决定是否出没（读而不写回 `rngState`），
+ * 因此不改变 RNG 抽数序列，确定性回放不受影响。
+ */
+const DOG_SPAWN_CHANCE = 0.12;
+/** NPC-05 恶犬：步行者被咬伤的住院天数 */
+const DOG_HOSPITAL_DAYS = 3;
+/** EVT-04 倒闭乞讨：路人施舍金额（固定金额，随物价指数缩放） */
+const BEGGAR_ALMS = 1000;
 
 /**
  * 三货币支付管道：现金 → 存款 → 变卖（股票→降级→售地）→ 破产。
@@ -1177,6 +1195,19 @@ function researchTickHook(state: GameState): void {
   }
 }
 
+/**
+ * NPC-05 恶犬：每天日切时先让昨日的恶犬离场，再以只读派生随机决定今日是否出没。
+ * 全程读而不写回 `rngState`（零抽数），不扰动确定性回放。
+ */
+function dogActivityHook(state: GameState): void {
+  state.npcs = state.npcs.filter((n) => n.kind !== 'dog');
+  const roll = nextRandom(state.rngState);
+  if (roll.value >= DOG_SPAWN_CHANCE) return;
+  const position = Math.min(BOARD_SIZE - 1, Math.floor((roll.value / DOG_SPAWN_CHANCE) * BOARD_SIZE));
+  state.npcs.push({ kind: 'dog', position, ownerId: null, daysLeft: 1, jailed: false });
+  log(state, `【恶犬】一只恶犬在「${state.board[position]!.name}」附近徘徊`);
+}
+
 const DAY_HOOKS: DayHook[] = [
   noticeHolidayHook,
   dividendAndLotteryHook,
@@ -1186,6 +1217,7 @@ const DAY_HOOKS: DayHook[] = [
   expireTimedEffectsHook,
   researchTickHook,
   godTickHook,
+  dogActivityHook,
 ];
 
 /** 日切唯一收口点：逐钩子执行，game_over 时提前返回 */
@@ -1448,6 +1480,231 @@ function drawChanceCard(state: GameState, p: Player, source = '机会'): void {
   }
   p.cards.push(cardId);
   log(state, `${p.name} 在${source}抽到卡片「${CARDS[cardId]!.name}」`);
+}
+
+// ---------------------------------------------------------------------------
+// 波 8：命运卡池（TILE-17 机会/危险格的原版实现）
+// 数据源 `docs/extraction/fate_pool_数据表_2026-09-27.txt`（49 张：公共池 33 + 地图专属 16）。
+// ---------------------------------------------------------------------------
+
+/**
+ * 抽一张命运卡并结算（机会/危险格）。
+ * 抽签只消耗 **1 抽**（与原先的抽卡一致），个别效果（拆除/征收）另需 1 抽选目标。
+ */
+function resolveFateCard(state: GameState, p: Player): void {
+  const id = FATE_PUBLIC_IDS[randomIndex(state, FATE_PUBLIC_IDS.length)]!;
+  const def = fateCardById(id);
+  if (!def) return;
+  applyFateEffect(state, p, def);
+}
+
+/** 结算单张命运卡效果；金额类过 `scaled()`（固定金额），百分比类直接作用于名义值 */
+function applyFateEffect(state: GameState, p: Player, def: FateCardDef): void {
+  // 日志占位符参数（金额默认按物价指数缩放，百分比类在分支内改回原值）
+  const renderParams: Record<string, string | number> = {
+    amount: scaled(state, def.amount ?? 0),
+    days: def.days ?? 0,
+    player: p.name,
+  };
+  const money = scaled(state, def.amount ?? 0);
+  let extra = '';
+
+  switch (def.effect) {
+    case 'demolish-house': {
+      const ref = randomPick(state, builtProperties(state));
+      if (ref) {
+        destroyBuilding(ref);
+        extra = `「${ref.cell.name}」建筑被强制拆除`;
+      } else {
+        extra = '（无人拥有可拆的建筑，无事发生）';
+      }
+      break;
+    }
+    case 'requisition-land': {
+      const pool: BuildingRef[] = [];
+      for (const q of activePlayers(state)) {
+        for (const prop of q.properties) pool.push({ player: q, prop, cell: state.board[prop.cellId]! });
+      }
+      const ref = randomPick(state, pool);
+      if (ref) {
+        ref.player.properties = ref.player.properties.filter((q) => q !== ref.prop);
+        extra = `${ref.player.name} 的「${ref.cell.name}」被强制征收`;
+      } else {
+        extra = '（无人拥有土地，无事发生）';
+      }
+      break;
+    }
+    case 'fake-loan': {
+      renderParams.amount = money;
+      payCash(state, p, money, null, 'other');
+      extra = `被冒名贷款，损失 ¥${money}`;
+      break;
+    }
+    case 'check-bounce': {
+      state.loanBanDays = 30;
+      extra = '银行拒绝往来 30 天（停止放款）';
+      break;
+    }
+    case 'bank-hack': {
+      const pct = def.amount ?? 10;
+      renderParams.amount = pct;
+      let stolen = 0;
+      for (const q of activePlayers(state)) {
+        if (q.id === p.id) continue;
+        const take = Math.floor((q.deposit * pct) / 100);
+        if (take <= 0) continue;
+        q.deposit -= take;
+        stolen += take;
+      }
+      p.deposit += stolen;
+      extra = `挪用他人存款共 ¥${stolen}`;
+      break;
+    }
+    case 'birthday-cards': {
+      let got = 0;
+      for (const q of activePlayers(state)) {
+        if (q.id === p.id || q.cards.length === 0) continue;
+        if (p.cards.length >= MAX_HAND_CARDS) break;
+        p.cards.push(q.cards.shift()!);
+        got += 1;
+      }
+      extra = `向每人收取一张卡片，共得 ${got} 张`;
+      break;
+    }
+    case 'forced-abroad': {
+      const days = def.days ?? 5;
+      renderParams.days = days;
+      p.abroadTurns = Math.max(p.abroadTurns, days);
+      extra = `被迫出国观光 ${days} 天（期间不能收租）`;
+      break;
+    }
+    case 'abduct': {
+      const days = def.days ?? 5;
+      renderParams.days = days;
+      p.skipTurns = Math.max(p.skipTurns, days);
+      blockRent(p, days);
+      extra = `被外星人绑架 ${days} 天（暂停行动并丧失收租权）`;
+      break;
+    }
+    case 'stock-default': {
+      const pct = def.amount ?? 20;
+      renderParams.amount = pct;
+      for (const [stockId, qty] of Object.entries(p.stocks)) {
+        const lost = Math.floor((qty * pct) / 100);
+        if (lost <= 0) continue;
+        const left = qty - lost;
+        if (left > 0) p.stocks[stockId] = left;
+        else delete p.stocks[stockId];
+      }
+      extra = `违约交割损失 ${pct}% 持股`;
+      break;
+    }
+    case 'sell-all-stocks': {
+      let total = 0;
+      for (const [stockId, qty] of Object.entries(p.stocks)) {
+        const stock = stockById(state, stockId);
+        if (!stock || qty <= 0) continue;
+        total += stock.price * qty;
+        delete p.stocks[stockId];
+        if (p.stockCost) delete p.stockCost[stockId];
+      }
+      p.cash += total;
+      extra = `变卖所有股票求现 ¥${total}`;
+      break;
+    }
+    case 'lose-bike':
+    case 'crash-car': {
+      p.diceCount = 1;
+      extra = '交通工具损毁，恢复步行（1 颗骰子）';
+      break;
+    }
+    case 'ditch-hospital':
+    case 'bike-hospital': {
+      const days = def.days ?? 2;
+      renderParams.days = days;
+      p.skipTurns = Math.max(p.skipTurns, days);
+      p.custody = { kind: 'hospital', daysLeft: Math.max(p.skipTurns, days) };
+      blockRent(p, days);
+      extra = `就医住院 ${days} 天（暂停行动并丧失收租权）`;
+      break;
+    }
+    case 'jaywalk-fine':
+    case 'helmet-fine':
+    case 'speeding-fine':
+    case 'litter-fine':
+    case 'dog-fine': {
+      renderParams.amount = money;
+      payCash(state, p, money, null, 'other');
+      extra = `罚款 ¥${money}`;
+      break;
+    }
+    case 'treat-all': {
+      renderParams.amount = money;
+      const others = activePlayers(state).filter((q) => q.id !== p.id);
+      const share = others.length > 0 ? Math.floor(money / others.length) : 0;
+      for (const q of others) {
+        if (share > 0) pay(state, p, share, q, { toDeposit: true, reason: 'other' });
+      }
+      extra = `请所有人吃大餐，共花 ¥${share * others.length}`;
+      break;
+    }
+    case 'found-money':
+    case 'inherit':
+    case 'invoice-win': {
+      renderParams.amount = money;
+      p.cash += money;
+      extra = `获得 ¥${money}`;
+      break;
+    }
+    case 'lose-wallet':
+    case 'bad-loan': {
+      renderParams.amount = money;
+      payCash(state, p, money, null, 'other');
+      extra = `损失 ¥${money}`;
+      break;
+    }
+    case 'pay-insurance': {
+      renderParams.amount = money;
+      payCash(state, p, money, null, 'other');
+      extra = `支付保险金 ¥${money}`;
+      break;
+    }
+    case 'claim-insurance': {
+      renderParams.amount = money;
+      if (p.insurance) {
+        p.cash += money;
+        extra = `领取保险金 ¥${money}`;
+      } else {
+        extra = '（无有效保单，未获理赔）';
+      }
+      break;
+    }
+    case 'sell-all-cards': {
+      let gained = 0;
+      for (const cardId of p.cards) gained += Math.floor((CARDS[cardId]?.cost ?? 0) / 2);
+      for (const [itemId, count] of Object.entries(p.items)) {
+        gained += Math.floor((ITEMS[itemId]?.cost ?? 0) / 2) * count;
+      }
+      p.cards = [];
+      p.items = {};
+      p.points += gained;
+      extra = `变卖所有卡片道具，回收 ${gained} 点券`;
+      break;
+    }
+    case 'jail': {
+      const days = def.days ?? CRIME_JAIL_DAYS;
+      renderParams.days = days;
+      applyDisaster(state, p, 'jail', null, (v) => {
+        v.skipTurns = Math.max(v.skipTurns, days);
+        v.custody = { kind: 'jail', daysLeft: Math.max(v.skipTurns, days) };
+        blockRent(v, days);
+      });
+      extra = `坐牢 ${days} 天（丧失收租权）`;
+      break;
+    }
+  }
+
+  log(state, `【命运】${p.name} 抽到「${renderFateText(def, renderParams)}」 —— ${extra}`);
 }
 
 /** 玩家最值钱的地产 */
@@ -1839,6 +2096,9 @@ function rollDice(state: GameState, action: Extract<PlayerAction, { type: 'ROLL_
   let crossedStart = false;
   let moved = 0;
   let steppedOnMine = false;
+  let bittenByDog = false;
+  /** EVT-04：途中遇到的原地乞讨者 */
+  let beggar: Player | null = null;
   // TILE-08 公立银行：路过开放存取款（停留当格的完整权限由落格分派给出）
   const publicBankId = state.board.find((bc) => bc.bankKind === 'public')?.id;
   let passedPublicBank = false;
@@ -1859,6 +2119,23 @@ function rollDice(state: GameState, action: Extract<PlayerAction, { type: 'ROLL_
       log(state, `${p.name} 踩中地雷，被炸伤`);
       break;
     }
+    // EVT-04 倒闭与乞讨：倒闭者在原地乞讨，路过遇上一律施舍 1000 元
+    if (!beggar) {
+      const b = state.players.find((q) => q.bankrupt && q.position === pos);
+      if (b) beggar = b;
+    }
+    // NPC-05 恶犬：步行者被咬伤（住院 3 天）；以车辆行进者可将其撞跑
+    const dogIdx = state.npcs.findIndex((n) => n.kind === 'dog' && n.position === pos);
+    if (dogIdx >= 0) {
+      const dogCell = state.board[pos]!;
+      state.npcs.splice(dogIdx, 1);
+      if (p.diceCount <= 1) {
+        log(state, `${p.name} 在「${dogCell.name}」步行途中碰上恶犬，被咬伤`);
+        bittenByDog = true;
+        break;
+      }
+      log(state, `${p.name} 驾车在「${dogCell.name}」撞跑了恶犬`);
+    }
   }
   if (crossedStart) {
     p.cash += PASS_START_SALARY;
@@ -1867,6 +2144,14 @@ function rollDice(state: GameState, action: Extract<PlayerAction, { type: 'ROLL_
   p.position = pos;
   // 停在公立银行当格时，由落格分派给出完整权限，不再算「路过」
   if (publicBankId !== undefined && pos === publicBankId) passedPublicBank = false;
+
+  // EVT-04 倒闭与乞讨：路遇原地乞讨的倒闭者，施舍 1000 元（固定金额，随物价指数缩放）
+  if (beggar) {
+    const alms = scaled(state, BEGGAR_ALMS);
+    log(state, `${p.name} 路遇在原处乞讨的 ${beggar.name}，施舍 ¥${alms}`);
+    pay(state, p, alms, beggar, { reason: 'other' });
+    if (isGameOver(state)) return;
+  }
 
   // 定时炸弹（ITEM-04）：走满 38 步自动爆炸
   const bomb = state.bombs.find((b) => b.playerId === p.id);
@@ -1885,6 +2170,16 @@ function rollDice(state: GameState, action: Extract<PlayerAction, { type: 'ROLL_
     p.skipTurns = Math.max(p.skipTurns, 3);
     blockRent(p, 3);
     log(state, `${p.name} 住院 3 天，且暂时无法收租`);
+    advanceTurn(state);
+    return;
+  }
+
+  // NPC-05 恶犬咬伤（步行者）：住院 3 天并丧失收租权
+  if (bittenByDog) {
+    p.skipTurns = Math.max(p.skipTurns, DOG_HOSPITAL_DAYS);
+    p.custody = { kind: 'hospital', daysLeft: Math.max(p.skipTurns, DOG_HOSPITAL_DAYS) };
+    blockRent(p, DOG_HOSPITAL_DAYS);
+    log(state, `${p.name} 被恶犬咬伤，住院 ${DOG_HOSPITAL_DAYS} 天并丧失收租权`);
     advanceTurn(state);
     return;
   }
@@ -1913,16 +2208,25 @@ function rollDice(state: GameState, action: Extract<PlayerAction, { type: 'ROLL_
   }
 
   if (c.type === 'chance') {
-    drawChanceCard(state, p);
+    // TILE-17 机会/危险格：原版为命运卡池抽签（help[28]），此处抽公共池 33 张中的一张
+    resolveFateCard(state, p);
     if (isGameOver(state)) return;
     // EVT-02：机会/危险格附带违法事件风险（只读派生随机，不消耗 RNG 抽数）
-    if (nextRandom(state.rngState).value < CRIME_CHANCE) {
+    const crimeRoll = nextRandom(state.rngState);
+    if (crimeRoll.value < CRIME_CHANCE) {
+      // 案由取自命运卡「地图专属池」（id 33–48 全是违法坐牢事件）：用同一读数值派生，零抽数
+      const causeId =
+        FATE_MAP_IDS[
+          Math.min(FATE_MAP_IDS.length - 1, Math.floor((crimeRoll.value / CRIME_CHANCE) * FATE_MAP_IDS.length))
+        ]!;
+      const cause = fateCardById(causeId);
+      const days = cause?.days ?? CRIME_JAIL_DAYS;
       applyDisaster(state, p, 'jail', null, (v) => {
-        v.skipTurns = Math.max(v.skipTurns, CRIME_JAIL_DAYS);
-        v.custody = { kind: 'jail', daysLeft: Math.max(v.skipTurns, CRIME_JAIL_DAYS) };
-        blockRent(v, CRIME_JAIL_DAYS);
-        log(state, `【违法事件】${v.name} 卷入违法案件，被判处拘役 ${CRIME_JAIL_DAYS} 天`);
+        v.skipTurns = Math.max(v.skipTurns, days);
+        v.custody = { kind: 'jail', daysLeft: Math.max(v.skipTurns, days) };
+        blockRent(v, days);
       });
+      log(state, `【违法事件】${renderFateText(cause ?? { id: causeId, text: '卷入违法案件', effect: 'jail' }, { days })}`);
       if (isGameOver(state)) return;
     }
     advanceTurn(state);

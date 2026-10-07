@@ -14,6 +14,7 @@ import {
   INSURANCE_FEE_PER_DAY,
   majorityHolderId,
   MAX_SHARES_PER_BUY,
+  nextRandom,
   OIL_FEE,
   POWER_FEE_PER_LEVEL,
   RESTAURANT_FEE_PER_DAY,
@@ -58,6 +59,20 @@ function seedForDie(target: number): number {
   throw new Error(`找不到点数为 ${target} 的种子`);
 }
 
+/** 找掷骰和为 target、且回合回绕（日切）时【不触发】玩家新闻事件的种子 */
+function seedForSumQuietNews(target: number): number {
+  for (let seed = 1; seed <= 200000; seed++) {
+    const a = rollDie(seed);
+    const b = rollDie(a.nextState);
+    if (a.value + b.value !== target) continue;
+    // 日切抽数固定：6 支股票波动 + 新闻选股 + 涨跌方向 = 8 抽，第 9 抽是事件门槛
+    let st = b.nextState;
+    for (let i = 0; i < 8; i++) st = nextRandom(st).nextState;
+    if (nextRandom(st).value >= 0.25) return seed;
+  }
+  throw new Error('找不到满足条件的种子');
+}
+
 /** 让当前玩家落到指定公司格（两骰之和 7），可在掷骰前注入初始状态 */
 function landOnCompany(cellId: number, mutate?: (g: GameState) => void): GameState {
   const s = newGame();
@@ -75,12 +90,16 @@ function giveChairman(g: GameState, kind: (typeof COMPANY_LIST)[number]['kind'],
   comp.chairmanId = playerId;
 }
 
-/** 双方各掷一次 3 点（落在 3 号机会格自动结算）→ 推进正好一天 */
+/**
+ * 双方各掷一次 3 点自动结算 → 推进正好一天。
+ * 落格取 41 号「点券站」（38 + 3）：只加点券、不动现金/存款；
+ * 种子取「日切不触发玩家新闻事件」的样本，避免随机新闻扰动金额断言。
+ */
 function advanceOneDay(state: GameState): GameState {
   let s = state;
   for (let i = 0; i < 2; i++) {
-    s.rngState = seedForSum(3);
-    s.players[s.currentPlayerIndex]!.position = 0;
+    s.rngState = seedForSumQuietNews(3);
+    s.players[s.currentPlayerIndex]!.position = 38;
     s = applyAction(s, { type: 'ROLL_DICE' });
   }
   return s;
