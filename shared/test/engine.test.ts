@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { addPlayer, applyAction, availableActions, BOARD_SIZE, gameDate, createGame, forceGameOver, GOD_DURATION_DAYS, GODS, nextRandom, POINTS_START, removePlayer, rentOf, ReplayEngine, rollDie, totalAssets, upgradeCost } from '../src/index.js';
+import { addPlayer, allAssetSummaries, allStockSummaries, applyAction, availableActions, BOARD_SIZE, gameDate, createGame, priceIndex, forceGameOver, GOD_DURATION_DAYS, GODS, nextRandom, POINTS_START, removePlayer, rentOf, ReplayEngine, rollDie, totalAssets, upgradeCost } from '../src/index.js';
 import type { GameState, PlayerAction, PlayerDef } from '../src/index.js';
 
 const PLAYERS: PlayerDef[] = [
@@ -920,3 +920,59 @@ describe('M10 小游戏：记忆翻牌', () => {
   });
 });
 
+
+describe('空房间健壮性（回归：联机大厅最后一人离开后崩溃）', () => {
+  it('移除最后一位玩家后 availableActions 不抛错', () => {
+    let g = createGame([PLAYERS[0]!], 5, { startDate: { ...MONDAY } });
+    g = removePlayer(g, PLAYERS[0]!.id);
+    expect(g.players).toHaveLength(0);
+    expect(g.currentPlayerIndex).toBe(0);
+    // 关键：曾因currentPlayer 越界抛「当前玩家不存在」而导致联机失败
+    const acts = availableActions(g);
+    expect(acts.canRoll).toBe(false);
+    expect(acts.canBuy).toBe(false);
+    expect(acts.canTradeStock).toBe(false);
+    expect(acts.bailableVillains).toEqual([]);
+    expect(acts.dischargeablePatients).toEqual([]);
+    expect(acts.tradableAssets).toEqual([]);
+    expect(acts.tradeCash).toBe(0);
+  });
+
+  it('非首位玩家离开后 currentPlayerIndex 正确前移', () => {
+    const three = [...PLAYERS, { id: 'p3', name: '老王', color: 0x66bb6a }];
+    let g = createGame(three, 7, { startDate: { ...MONDAY } });
+    g.currentPlayerIndex = 2;
+    g = removePlayer(g, 'p1'); // 移除 idx 0
+    expect(g.players.map((p) => p.id)).toEqual(['p2', 'p3']);
+    expect(g.currentPlayerIndex).toBe(1); // 2 -> 1
+    expect(g.players[g.currentPlayerIndex]!.id).toBe('p3');
+  });
+
+  it('移除末位玩家后 currentPlayerIndex 夹到有效范围', () => {
+    const three = [...PLAYERS, { id: 'p3', name: '老王', color: 0x66bb6a }];
+    let g = createGame(three, 9, { startDate: { ...MONDAY } });
+    g.currentPlayerIndex = 2;
+    g = removePlayer(g, 'p3'); // 移除 idx 2（末位）
+    expect(g.currentPlayerIndex).toBe(1);
+    expect(g.players[g.currentPlayerIndex]).toBeDefined();
+  });
+
+  it('多人依次离开直至空房间，始终不抛错', () => {
+    let g = createGame(PLAYERS, 11, { startDate: { ...MONDAY } });
+    for (const def of [...PLAYERS]) {
+      g = removePlayer(g, def.id);
+      expect(() => availableActions(g)).not.toThrow();
+    }
+    expect(g.players).toHaveLength(0);
+  });
+
+  it('空房间的 GameState 可被客户端正常读取（面板不崩）', () => {
+    let g = createGame(PLAYERS, 13, { startDate: { ...MONDAY } });
+    for (const def of [...PLAYERS]) g = removePlayer(g, def.id);
+    // gameDate / priceIndex 等只读函数在空房间下也应安全
+    expect(() => gameDate(g)).not.toThrow();
+    expect(() => priceIndex(g)).not.toThrow();
+    expect(allAssetSummaries(g)).toEqual([]);
+    expect(allStockSummaries(g)).toEqual([]);
+  });
+});

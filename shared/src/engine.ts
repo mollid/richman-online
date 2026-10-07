@@ -225,6 +225,14 @@ export function removePlayer(state: GameState, id: string): GameState {
   if (idx < 0) return next;
   const name = next.players[idx]!.name;
   next.players.splice(idx, 1);
+  // 移除后修正 currentPlayerIndex，避免 players 变短导致越界（空房间时归零）
+  if (next.players.length === 0) {
+    next.currentPlayerIndex = 0;
+  } else if (idx < next.currentPlayerIndex) {
+    next.currentPlayerIndex -= 1;
+  } else if (next.currentPlayerIndex >= next.players.length) {
+    next.currentPlayerIndex = next.players.length - 1;
+  }
   log(next, `${name} 离开了房间`);
   return next;
 }
@@ -242,6 +250,16 @@ function currentPlayer(state: GameState): Player {
   const p = state.players[state.currentPlayerIndex];
   if (!p) throw new Error('当前玩家不存在');
   return p;
+}
+
+/**
+ * 安全的「当前玩家」查询：房间在 lobby 阶段可能一个玩家都没有
+ * （所有人离开后 players 为空数组但 currentPlayerIndex 仍是 0）。
+ * `availableActions` 会被`broadcastState` 在任何阶段调用，因此必须能安全降级，
+ * 否则房间一空就会抛错、导致「联机失败」。
+ */
+function currentPlayerOrNull(state: GameState): Player | null {
+  return state.players[state.currentPlayerIndex] ?? null;
 }
 
 function cellOwner(state: GameState, cellId: number): { player: Player; property: PlayerProperty } | undefined {
@@ -2242,7 +2260,9 @@ export function availableActions(state: GameState): AvailableActions {
     state.phase === 'awaiting_action' ||
     state.phase === 'awaiting_pick'
   ) {
-    const p = currentPlayer(state);
+    // 空房间（lobby 且players 为空）时安全降级到兜底分支
+    const p = currentPlayerOrNull(state);
+    if (!p) return idleActions(state);
     const c = cellAt(state, p.position);
     const owned = cellOwner(state, c.id);
     const holiday = gameDate(state).isHoliday;
@@ -2357,6 +2377,15 @@ export function availableActions(state: GameState): AvailableActions {
       tradeCash: p.cash,
     };
   }
+  return idleActions(state);
+}
+
+/**
+ * 「不可操作」状态下的动作集（大厅 / 拍卖 / 小游戏 / 空房间）。
+ * 抽成独立函数以便 `availableActions` 在遇到**空房间**时提前返回。
+ */
+function idleActions(state: GameState): AvailableActions {
+  const p = currentPlayerOrNull(state);
   return {
     canRoll: false,
     canBuy: false,
@@ -2384,23 +2413,19 @@ export function availableActions(state: GameState): AvailableActions {
     canBuyLottery: false,
     lotteryTicketCost: LOTTERY_TICKET_COST,
     auction: state.phase === 'awaiting_auction' ? state.auction : null,
-    bailableVillains: bailableVillains(state),
+    bailableVillains: p ? bailableVillains(state) : [],
     bailFee: bailFee(state),
     magic: state.magic,
-    dischargeablePatients: dischargeablePatients(state),
+    dischargeablePatients: p ? dischargeablePatients(state) : [],
     dischargeFee: dischargeFee(state),
     canSurrender: canSurrender(state),
     pendingCard: state.pendingCard,
-    // UI-06：非本人操作阶段（如拍卖/小游戏）时不给可挂标的
+    // UI-06：非本人操作阶段（如拍卖/小游戏）或空房间时不给可挂标的
     tradableAssets: [],
-    tradeCash: currentPlayerSafe(state)?.cash ?? 0,
+    tradeCash: p?.cash ?? 0,
   };
 }
 
-/** 取当前玩家；不存在时返回 undefined（availableActions 的兜底分支用） */
-function currentPlayerSafe(state: GameState): Player | undefined {
-  return state.players[state.currentPlayerIndex];
-}
 
 function startGame(state: GameState): void {
   if (state.phase !== 'lobby') throw new Error('游戏已经开始');
@@ -3449,8 +3474,9 @@ function magicCandidates(state: GameState, caster: Player, condition: MagicOffer
 
 /** 当前站立于监狱门外时可保释的在押恶人 */
 function bailableVillains(state: GameState): VillainKind[] {
+  if (state.phase !== 'awaiting_action') return [];
   const p = currentPlayer(state);
-  if (state.phase !== 'awaiting_action' || p.bankrupt) return [];
+  if (p.bankrupt) return [];
   if (cellAt(state, p.position).type !== 'jail') return [];
   return state.npcs
     .filter((n) => n.kind !== 'dog' && n.jailed)
@@ -3483,8 +3509,9 @@ const DISCHARGE_FEE = 2000;
 
 /** TILE-09 医院门外可办理出院的住院病人（help [37]「走到醫院門外時，可以替病人辦理出院」） */
 function dischargeablePatients(state: GameState): string[] {
+  if (state.phase !== 'awaiting_action') return [];
   const p = currentPlayer(state);
-  if (state.phase !== 'awaiting_action' || p.bankrupt) return [];
+  if (p.bankrupt) return [];
   if (cellAt(state, p.position).type !== 'hospital') return [];
   return activePlayers(state)
     .filter((q) => q.id !== p.id && q.custody?.kind === 'hospital' && q.skipTurns > 0)
