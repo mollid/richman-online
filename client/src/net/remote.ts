@@ -269,6 +269,9 @@ function emptyState(): GameState {
     initialPlayerCount: 0,
     bankAccess: null,
     lotteryPool: 0,
+    lotteryTickets: [],
+    auction: null,
+    auctionQueue: [],
     companies: [],
   };
 }

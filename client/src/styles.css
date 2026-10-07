@@ -1268,6 +1268,54 @@ button.mini {
   color: #607d8b;
 }
 
+/* ---------- 乐透 / 拍卖（波 6） ---------- */
+.lottery-panel,
+.auction-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.lottery-panel {
+  border: 1px solid rgba(255, 213, 79, 0.35);
+}
+
+.auction-panel {
+  border: 1px solid rgba(255, 138, 128, 0.45);
+}
+
+.lottery-pool,
+.auction-info,
+.auction-turn {
+  font-size: 12px;
+  color: #b0bec5;
+}
+
+.lottery-pool b {
+  color: #ffe082;
+}
+
+.auction-info {
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.auction-turn b {
+  color: #ffab91;
+}
+
+.lottery-hint,
+.lottery-mine {
+  font-size: 11px;
+  color: #607d8b;
+}
+
+.lottery-mine {
+  color: #ffe082;
+}
+
 /* ---------- 公司企业（波 5） ---------- */
 .company-panel {
   display: flex;

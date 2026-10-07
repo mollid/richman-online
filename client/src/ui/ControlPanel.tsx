@@ -29,6 +29,7 @@ const PHASE_LABEL: Record<GameState['phase'], string> = {
   awaiting_roll: '等待掷骰',
   awaiting_action: '等待决策',
   awaiting_pick: '小游戏：三仙归洞',
+  awaiting_auction: '拍卖会竞价',
   game_over: '游戏结束',
 };
 
