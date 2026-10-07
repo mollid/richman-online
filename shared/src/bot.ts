@@ -96,6 +96,11 @@ export function botDecide(state: GameState, botId: string, rng: () => number): P
     if (cheapest) return { type: 'BUY_STOCK', stockId: cheapest.id, quantity: 10 };
   }
 
+  // CORP-01：现金充裕时认购所在公司股份（保留 ¥2000 安全垫）
+  if (acts.canBuyShares && acts.shareQuantityLimit >= 10 && me.cash >= acts.sharePrice * 10 + 2000) {
+    return { type: 'BUY_SHARES', cellId: cell.id, quantity: 10 };
+  }
+
   if (acts.canEnd) return { type: 'END_TURN' };
   return null;
 }

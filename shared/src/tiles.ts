@@ -1,4 +1,4 @@
-import type { BoardCell, CompanyKind, FacilityType, GameState, PlayerProperty } from './types.js';
+import type { BoardCell, FacilityType, GameState, PlayerProperty } from './types.js';
 import { scaled } from './economy.js';
 
 /**
@@ -200,27 +200,4 @@ export function facilityUpgradeable(prop: PlayerProperty): boolean {
   return FACILITIES[prop.facility].upgradeable;
 }
 
-// ---------------------------------------------------------------------------
-// 公司企业（TILE-20..30）：波 3 仅展示与标识，经营权/累积盈余归波 5
-// ---------------------------------------------------------------------------
-
-export interface CompanyDef {
-  tile: string;
-  name: string;
-  /** 消费方式（波 5 结算用，波 3 仅 UI/日志展示） */
-  charge: string;
-}
-
-export const COMPANIES: Record<CompanyKind, CompanyDef> = {
-  airline: { tile: 'TILE-20', name: '航空公司', charge: '轮盘定出国天数与费用，出国期间不能收租' },
-  restaurant: { tile: 'TILE-21', name: '饭店', charge: '轮盘定休息天数与消费金额' },
-  computer: { tile: 'TILE-22', name: '电脑公司', charge: '付电脑使用费' },
-  insurance: { tile: 'TILE-23', name: '保险公司', charge: '强制签约，轮盘定投保天数与保费' },
-  car: { tile: 'TILE-24', name: '汽车公司', charge: '付保养费（没开车不用给）' },
-  oil: { tile: 'TILE-25', name: '石油公司', charge: '付加油费（没开车不用给）' },
-  bank: { tile: 'TILE-26', name: '企业银行', charge: '同公立银行；董事长可特别融资周转' },
-  water: { tile: 'TILE-27', name: '水力公司', charge: '按拥有土地总笔数付水费' },
-  power: { tile: 'TILE-28', name: '电力公司', charge: '按房屋/连锁店/建设级数总和付电费' },
-  department: { tile: 'TILE-29', name: '百货公司', charge: '同公立百货；董事长进入获赠卡片或道具' },
-  estate: { tile: 'TILE-30', name: '房地产公司', charge: '可任选一处加盖一层房屋，按地价收施工费' },
-};
+// 公司企业（TILE-20..30）的定义与规则已迁至 companies.ts（波 5 开放经营）。

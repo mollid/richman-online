@@ -82,6 +82,29 @@ export interface GodStatus {
   remainingDays: number;
 }
 
+/** 保险状态（ECON-07 / CORP-06）：强制签约，按天计时 */
+export interface InsuranceStatus {
+  /** 保险有效期剩余天数 */
+  daysLeft: number;
+}
+
+/** 公司经营状态（CORP-01..13 / TILE-20..30，波 5） */
+export interface CompanyState {
+  kind: CompanyKind;
+  /** 棋盘格 id */
+  cellId: number;
+  /** 股票面值（每股价格；不随物价指数变化） */
+  sharePrice: number;
+  /** 累积盈余：消费费用累积（可为负 = 负债），每月 15 号按持股比例分配 */
+  surplus: number;
+  /** 持股：playerId -> 股数 */
+  shares: Record<string, number>;
+  /** 现任董事长（最大持股 + 同票先到先得）；null = 经营权空缺 */
+  chairmanId: string | null;
+  /** 首次入股日（同票先到先得判定）：playerId -> elapsedDays */
+  firstHeldDayIndex: Record<string, number>;
+}
+
 /** 创建玩家时的定义 */
 export interface PlayerDef {
   id: string;
@@ -170,6 +193,12 @@ export interface Player {
   diceCount: number;
   /** 同盟状态 */
   alliance: AllianceStatus | null;
+  /** 出国旅游剩余天数（CORP-03）：出国期间不能收租 */
+  abroadTurns: number;
+  /** 保险状态（ECON-07 / CORP-06） */
+  insurance: InsuranceStatus | null;
+  /** 企业银行董事长特别融资未还额（CORP-09）；0 表示无 */
+  financing: number;
   bankrupt: boolean;
   online: boolean;
 }
@@ -292,6 +321,8 @@ export interface GameState {
   bankAccess: BankAccess | null;
   /** 乐透奖池（波 6 启用，波 1 建字段） */
   lotteryPool: number;
+  /** 11 家公司企业的经营状态（CORP-01..13，波 5） */
+  companies: CompanyState[];
 }
 
 export type PlayerAction =
@@ -313,7 +344,13 @@ export type PlayerAction =
   | { type: 'DEPOSIT'; amount: number }
   | { type: 'WITHDRAW'; amount: number }
   | { type: 'TAKE_LOAN'; amount: number }
-  | { type: 'REPAY_LOAN'; amount: number };
+  | { type: 'REPAY_LOAN'; amount: number }
+  /** CORP-01：认购公司股份（单次 ≤1000 张） */
+  | { type: 'BUY_SHARES'; cellId: number; quantity: number }
+  /** CORP-13：房地产公司任选一处加盖一层 */
+  | { type: 'BUILD_ESTATE'; cellId: number }
+  /** CORP-09：企业银行董事长特别融资 */
+  | { type: 'SPECIAL_FINANCING'; amount: number };
 
 /** 可用动作集合（UI 按此渲染按钮） */
 export interface AvailableActions {
@@ -335,6 +372,20 @@ export interface AvailableActions {
   canRepayLoan: boolean;
   /** 今天为例假日（股市/银行休市） */
   isHoliday: boolean;
+  /** CORP-01：站立于公司格可认购股份 */
+  canBuyShares: boolean;
+  /** 当前公司股票面值（非公司格为 0） */
+  sharePrice: number;
+  /** 单次认购上限（股数；受现金与 MAX_SHARES_PER_BUY 约束） */
+  shareQuantityLimit: number;
+  /** CORP-13：房地产公司可加盖 */
+  canBuildEstate: boolean;
+  /** CORP-13：可加盖的自有地产格 id 列表 */
+  estateBuildCells: number[];
+  /** CORP-09：企业银行董事长可特别融资 */
+  canFinancing: boolean;
+  /** CORP-09：特别融资剩余可周转额度 */
+  financingRemaining: number;
   /** 站上自有商业用地（已购地未建设）时可建设的设施（EST-07） */
   buildableFacilities: FacilityType[];
   /** 站上自有研究所时可立项的研发项目（EST-10） */

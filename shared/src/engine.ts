@@ -20,7 +20,6 @@ import { CARDS, CHANCE_CARD_POOL, SHOP_CARD_IDS } from './cards.js';
 import { ITEMS, SHOP_ITEM_IDS } from './items.js';
 import { nextRandom, rollDie } from './rng.js';
 import {
-  COMPANIES,
   FACILITIES,
   FACILITY_ORDER,
   HOTEL_MAX_DAYS,
@@ -38,10 +37,22 @@ import {
   vehicleLabel,
   vehicleLevel,
 } from './tiles.js';
+import {
+  COMPANIES,
+  COMPANY_LIST,
+  ESTATE_BUILD_RATIO,
+  MAX_SHARES_PER_BUY,
+  WHEEL_KINDS,
+  companyAtCell,
+  companyFee,
+  majorityHolderId,
+} from './companies.js';
 import type {
   AvailableActions,
   BankAccess,
   BoardCell,
+  CompanyKind,
+  CompanyState,
   DateSerial,
   FacilityType,
   GameState,
@@ -81,6 +92,9 @@ function basePlayer(def: PlayerDef): Player {
     research: null,
     diceCount: 1,
     alliance: null,
+    abroadTurns: 0,
+    insurance: null,
+    financing: 0,
     bankrupt: false,
     online: true,
   };
@@ -117,6 +131,15 @@ export function createGame(players: PlayerDef[], seed = Date.now() % 2147483647,
     initialPlayerCount: players.length,
     bankAccess: null,
     lotteryPool: 0,
+    companies: COMPANY_LIST.map((def) => ({
+      kind: def.kind,
+      cellId: def.cellId,
+      sharePrice: def.sharePrice,
+      surplus: 0,
+      shares: {},
+      chairmanId: null,
+      firstHeldDayIndex: {},
+    })),
   };
 }
 
@@ -199,11 +222,22 @@ function bankruptPlayer(state: GameState, p: Player): void {
   p.research = null;
   p.diceCount = 1;
   p.alliance = null;
+  p.abroadTurns = 0;
+  p.insurance = null;
+  p.financing = 0;
   p.properties = [];
   p.cards = [];
   p.items = {};
   p.stocks = {};
+  p.stockCost = {};
   p.god = null;
+  // 释放所持公司股份，并在必要时重新判定经营权（破产者已不参与持股计算）
+  for (const company of state.companies) {
+    if (company.shares[p.id] === undefined) continue;
+    delete company.shares[p.id];
+    delete company.firstHeldDayIndex[p.id];
+    if (company.chairmanId === p.id) company.chairmanId = majorityHolderId(company, state.players);
+  }
   // 定时炸弹失去载体
   state.bombs = state.bombs.filter((b) => b.playerId !== p.id);
   log(state, `${p.name} 破产出局，名下资产被银行没收`);
@@ -218,6 +252,7 @@ function liquidateFor(state: GameState, p: Player, needed: number): void {
       if (!stock) continue;
       p.cash += stock.price * qty;
       delete p.stocks[stockId];
+      if (p.stockCost) delete p.stockCost[stockId];
       log(state, `${p.name} 变卖 ${stock.name} ×${qty}，回收 ¥${stock.price * qty}`);
     }
   }
@@ -257,7 +292,7 @@ function liquidateFor(state: GameState, p: Player, needed: number): void {
 }
 
 /** 支付用途（波 6 罚金汇总用；波 1 仅作日志语义） */
-export type PayReason = 'rent' | 'tax' | 'god' | 'news' | 'minigame' | 'loan' | 'card' | 'other';
+export type PayReason = 'rent' | 'tax' | 'god' | 'news' | 'minigame' | 'loan' | 'card' | 'company' | 'financing' | 'other';
 
 /**
  * 三货币支付管道：现金 → 存款 → 变卖（股票→降级→售地）→ 破产。
@@ -269,8 +304,8 @@ function pay(
   amount: number,
   to: Player | null,
   opts: { toDeposit?: boolean; reason?: PayReason } = {},
-): void {
-  if (amount <= 0) return;
+): number {
+  if (amount <= 0) return 0;
 
   let remaining = amount;
 
@@ -302,6 +337,8 @@ function pay(
     bankruptPlayer(state, from);
     checkWinner(state);
   }
+
+  return paid;
 }
 
 function creditPayee(to: Player | null, paid: number, toDeposit: boolean): void {
@@ -412,11 +449,56 @@ function noticeHolidayHook(state: GameState): void {
   }
 }
 
-/** TIME-03：每月 15 号 股东分红 + 乐透开奖（波 5/6 落地，波 1 占位） */
+/**
+ * TIME-03：每月 15 号股东分红 + 乐透开奖（乐透归波 6）。
+ * 各公司按持股比例分配**累积盈余**；盈余为负（负债）时由股东按持股比例共同承担。
+ * 不抽 RNG，保持确定性回放。
+ */
 function dividendAndLotteryHook(state: GameState): void {
   const d = gameDate(state);
   if (!d.isDividendDay) return;
-  log(state, `【分红日】${d.iso} 是 15 号，股东分红与乐透开奖结算（敬请期待）`);
+  log(state, `【分红日】${d.iso} 是 15 号，股东分红结算`);
+  for (const company of state.companies) {
+    const total = Object.values(company.shares).reduce((a, b) => a + b, 0);
+    if (total <= 0 || company.surplus === 0) continue;
+    const name = COMPANIES[company.kind].name;
+    const surplus = company.surplus;
+    let distributed = 0;
+    for (const [id, shares] of Object.entries(company.shares)) {
+      if (shares <= 0) continue;
+      const owner = state.players.find((p) => p.id === id);
+      if (!owner || owner.bankrupt) continue;
+      const part = Math.floor((surplus * shares) / total);
+      if (part === 0) continue;
+      distributed += part;
+      if (part > 0) {
+        owner.cash += part;
+        log(state, `【${name}】${owner.name} 按 ${shares}/${total} 股获分红 ¥${part}`);
+      } else {
+        log(state, `【${name}】${owner.name} 按 ${shares}/${total} 股承担亏损 ¥${-part}`);
+        pay(state, owner, -part, null, { reason: 'company' });
+        if (isGameOver(state)) return;
+      }
+    }
+    company.surplus -= distributed;
+  }
+}
+
+/**
+ * CORP-09：企业银行董事长特别融资——若周转额超过「其他玩家存款总额」，
+ * 视为损害客户权益，须立即全额还清。不抽 RNG，保持确定性回放。
+ */
+function financingCheckHook(state: GameState): void {
+  for (const p of state.players) {
+    if (p.bankrupt || p.financing <= 0) continue;
+    const cap = financingCap(state, p);
+    if (p.financing <= cap) continue;
+    const amount = p.financing;
+    p.financing = 0;
+    log(state, `【特别融资】${p.name} 的周转额 ¥${amount} 超出客户存款总额 ¥${cap}，须立即还清`);
+    pay(state, p, amount, null, { reason: 'financing' });
+    if (isGameOver(state)) return;
+  }
 }
 
 /** TIME-04：月末存款计息（有贷款者当月不计息） */
@@ -425,8 +507,8 @@ function monthEndInterestHook(state: GameState): void {
   if (!d.isMonthEnd) return;
   for (const p of state.players) {
     if (p.bankrupt || p.deposit <= 0) continue;
-    if (p.loan) {
-      log(state, `【利息】${p.name} 因贷款在身，本月存款不计息`);
+    if (p.loan || p.financing > 0) {
+      log(state, `【利息】${p.name} 因${p.loan ? '贷款' : '特别融资周转'}在身，本月存款不计息`);
       continue;
     }
     const interest = Math.round(p.deposit * DEPOSIT_MONTHLY_INTEREST);
@@ -462,6 +544,14 @@ function expireTimedEffectsHook(state: GameState): void {
     if (p.rentBlockedTurns > 0) p.rentBlockedTurns -= 1;
     if (p.sleepwalkTurns > 0) p.sleepwalkTurns -= 1;
     if (p.turtleTurns > 0) p.turtleTurns -= 1;
+    if (p.abroadTurns > 0) p.abroadTurns -= 1;
+    if (p.insurance) {
+      p.insurance.daysLeft -= 1;
+      if (p.insurance.daysLeft <= 0) {
+        log(state, `${p.name} 的保险合同到期`);
+        p.insurance = null;
+      }
+    }
     if (p.alliance) {
       p.alliance.daysLeft -= 1;
       if (p.alliance.daysLeft <= 0) {
@@ -498,6 +588,7 @@ const DAY_HOOKS: DayHook[] = [
   dividendAndLotteryHook,
   monthEndInterestHook,
   loanDueHook,
+  financingCheckHook,
   expireTimedEffectsHook,
   researchTickHook,
   godTickHook,
@@ -941,6 +1032,28 @@ export function availableActions(state: GameState): AvailableActions {
     const holiday = gameDate(state).isHoliday;
     const bank = state.bankAccess;
     const atBank = state.phase === 'awaiting_action' && !!bank;
+    // CORP-01/09/13：公司格上的经营操作
+    const company = state.phase === 'awaiting_action' && c.type === 'company' ? companyAtCell(state, c.id) : undefined;
+    const sharePrice = company?.sharePrice ?? 0;
+    const shareQuantityLimit =
+      company && sharePrice > 0 ? Math.min(MAX_SHARES_PER_BUY, Math.floor(p.cash / sharePrice)) : 0;
+    const canBuyShares = !!company && shareQuantityLimit > 0;
+    const estateBuildCells: number[] = [];
+    if (company && c.companyKind === 'estate') {
+      for (const prop of p.properties) {
+        if (prop.grade >= MAX_GRADE) continue;
+        const target = state.board[prop.cellId];
+        if (!target || (target.type !== 'property' && target.type !== 'commercial')) continue;
+        if (target.type === 'commercial' && !prop.facility) continue;
+        estateBuildCells.push(prop.cellId);
+      }
+    }
+    const canBuildEstate = estateBuildCells.length > 0;
+    const financingRemaining =
+      company && c.companyKind === 'bank' && company.chairmanId === p.id
+        ? Math.max(0, financingCap(state, p) - p.financing)
+        : 0;
+    const canFinancing = financingRemaining > 0;
     let canBuy = false;
     let canUpgrade = false;
     const buildableFacilities: FacilityType[] = [];
@@ -993,14 +1106,21 @@ export function availableActions(state: GameState): AvailableActions {
       canBuy,
       canUpgrade,
       canEnd: state.phase === 'awaiting_action',
-      canShop: state.phase === 'awaiting_action' && c.type === 'shop',
-      canTradeStock: state.phase === 'awaiting_action' && c.type === 'bank' && !holiday,
+      canShop: state.phase === 'awaiting_action' && isShopCell(c),
+      canTradeStock: state.phase === 'awaiting_action' && isBankCell(c) && !holiday,
       canPick: state.phase === 'awaiting_pick',
       canDeposit: atBank && bank!.canDeposit && !holiday && p.cash > 0,
       canWithdraw: atBank && bank!.canDeposit && !holiday && p.deposit > 0,
       canLoan: atBank && bank!.canLoan && !holiday && p.loan === null,
       canRepayLoan: atBank && bank!.canLoan && p.loan !== null && p.cash > 0,
       isHoliday: holiday,
+      canBuyShares,
+      sharePrice,
+      shareQuantityLimit,
+      canBuildEstate,
+      estateBuildCells,
+      canFinancing,
+      financingRemaining,
       buildableFacilities,
       researchableItems,
       usableCards,
@@ -1020,6 +1140,13 @@ export function availableActions(state: GameState): AvailableActions {
     canLoan: false,
     canRepayLoan: false,
     isHoliday: gameDate(state).isHoliday,
+    canBuyShares: false,
+    sharePrice: 0,
+    shareQuantityLimit: 0,
+    canBuildEstate: false,
+    estateBuildCells: [],
+    canFinancing: false,
+    financingRemaining: 0,
     buildableFacilities: [],
     researchableItems: [],
     usableCards: [],
@@ -1304,9 +1431,13 @@ function rollDice(state: GameState, action: Extract<PlayerAction, { type: 'ROLL_
       return;
     }
 
-    // 丧失收租权（坐牢/冬眠/梦游）
-    if (owned.player.rentBlockedTurns > 0) {
-      log(state, `${owned.player.name} 正在停留中（剩余 ${owned.player.rentBlockedTurns} 天），无权收租`);
+    // 丧失收租权（坐牢/冬眠/梦游）；出国旅游期间同样不能收租（CORP-03）
+    if (owned.player.rentBlockedTurns > 0 || owned.player.abroadTurns > 0) {
+      const blocked =
+        owned.player.rentBlockedTurns > 0
+          ? `正在停留中（剩余 ${owned.player.rentBlockedTurns} 天）`
+          : `正在国外旅游（剩余 ${owned.player.abroadTurns} 天）`;
+      log(state, `${owned.player.name} ${blocked}，无权收租`);
       advanceTurn(state);
       return;
     }
@@ -1488,16 +1619,114 @@ function rollDice(state: GameState, action: Extract<PlayerAction, { type: 'ROLL_
     return;
   }
 
-  // TILE-20..30 公司企业（经营权、累积盈余与持股归波 5）
+  // TILE-20..30 公司企业（CORP-01..13）
   if (c.type === 'company') {
-    const label = c.companyKind ? COMPANIES[c.companyKind].name : c.name;
-    const charge = c.companyKind ? COMPANIES[c.companyKind].charge : '';
-    log(state, `${p.name} 经过${label}（${charge}；公司经营系统将于波 5 开放）`);
-    advanceTurn(state);
+    landOnCompany(state, p, c);
     return;
   }
 
   throw new Error(`未知格类型: ${c.type}`);
+}
+
+/**
+ * 公司企业落格结算（CORP-01..13）。
+ * - 经营权属他人 → 按消费方式缴费（费用充作累积盈余）+ 强制服务（出国/休息/投保）；
+ * - 董事长本人 → 免付费，并享受专属福利（百货赠礼）；
+ * - 银行/百货无论持股均提供公共服务；
+ * - 结算后进入 `awaiting_action`：可认购股份（CORP-01）、房地产公司可加盖（CORP-13）、
+ *   企业银行董事长可特别融资（CORP-09）。
+ */
+function landOnCompany(state: GameState, p: Player, c: BoardCell): void {
+  const company = c.companyKind ? companyAtCell(state, c.id) : undefined;
+  const def = company ? COMPANIES[company.kind] : undefined;
+  if (!company || !def) {
+    log(state, `${p.name} 来到「${c.name}」`);
+    advanceTurn(state);
+    return;
+  }
+
+  const chairmanId = company.chairmanId;
+  const isChairman = chairmanId === p.id;
+  const chairmanName = chairmanId ? state.players.find((q) => q.id === chairmanId)?.name ?? chairmanId : null;
+  log(
+    state,
+    `${p.name} 来到「${def.name}」${isChairman ? '（董事长）' : chairmanName ? `（董事长：${chairmanName}）` : '（经营权空缺）'}`,
+  );
+
+  // CORP-09 / CORP-12：银行与百货无论经营权归属，任何人都可使用公共服务
+  if (company.kind === 'bank') {
+    state.bankAccess = { canDeposit: true, canLoan: true, cellId: c.id };
+  }
+  if (isChairman && company.kind === 'department') {
+    grantDepartmentGift(state, p, def.name);
+  }
+
+  // CORP-01：经营权属他人时按消费方式缴费，费用计入累积盈余
+  if (chairmanId !== null && !isChairman) {
+    let roll = 0;
+    if (WHEEL_KINDS.has(company.kind)) {
+      const draw = nextRandom(state.rngState);
+      state.rngState = draw.nextState;
+      roll = 1 + Math.floor(draw.value * 3); // 转轮盘 1..3 天
+    }
+    const fee = companyFee(state, company.kind, p, roll);
+    if (fee > 0) {
+      const paid = pay(state, p, fee, null, { reason: 'company' });
+      company.surplus += paid;
+      log(state, `${p.name} 在「${def.name}」缴费 ¥${paid}（计入累积盈余 ¥${company.surplus}）`);
+      if (p.bankrupt || isGameOver(state)) return;
+      applyCompanyService(state, p, company.kind, roll);
+    } else {
+      log(state, `${p.name} 在「${def.name}」无需缴费`);
+    }
+  }
+
+  state.phase = 'awaiting_action';
+}
+
+/** 公司强制服务（CORP-03/04/06）：出国旅游 / 饭店休息 / 强制投保 */
+function applyCompanyService(state: GameState, p: Player, kind: CompanyKind, roll: number): void {
+  const days = Math.max(1, Math.min(3, roll));
+  switch (kind) {
+    case 'airline':
+      p.abroadTurns = Math.max(p.abroadTurns, days);
+      p.skipTurns = Math.max(p.skipTurns, days);
+      blockRent(p, days);
+      log(state, `【航空公司】${p.name} 乘机出国旅游 ${days} 天（期间不能收租）`);
+      break;
+    case 'restaurant':
+      p.skipTurns = Math.max(p.skipTurns, days);
+      blockRent(p, days);
+      log(state, `【大饭店】${p.name} 在饭店休息 ${days} 天（期间丧失收租权）`);
+      break;
+    case 'insurance':
+      p.insurance = { daysLeft: days };
+      log(state, `【保险公司】${p.name} 强制签约，投保期 ${days} 天`);
+      break;
+    default:
+      break;
+  }
+}
+
+/** CORP-12：百货公司董事长进入时获赠一张卡片或一项道具 */
+function grantDepartmentGift(state: GameState, p: Player, companyName: string): void {
+  const kindDraw = nextRandom(state.rngState);
+  state.rngState = kindDraw.nextState;
+  const pickDraw = nextRandom(state.rngState);
+  state.rngState = pickDraw.nextState;
+  if (kindDraw.value < 0.5 && p.cards.length < MAX_HAND_CARDS) {
+    const cardId = SHOP_CARD_IDS[Math.floor(pickDraw.value * SHOP_CARD_IDS.length)]!;
+    p.cards.push(cardId);
+    log(state, `【${companyName}】董事长专享：${p.name} 获赠卡片「${CARDS[cardId]?.name ?? cardId}」`);
+    return;
+  }
+  const itemId = SHOP_ITEM_IDS[Math.floor(pickDraw.value * SHOP_ITEM_IDS.length)]!;
+  if ((p.items[itemId] ?? 0) >= MAX_ITEM_COUNT) {
+    log(state, `【${companyName}】董事长专享：道具已满（上限 ${MAX_ITEM_COUNT}），赠礼作废`);
+    return;
+  }
+  p.items[itemId] = (p.items[itemId] ?? 0) + 1;
+  log(state, `【${companyName}】董事长专享：${p.name} 获赠道具「${ITEMS[itemId]?.name ?? itemId}」`);
 }
 
 function buyLand(state: GameState): void {
@@ -2132,7 +2361,7 @@ function useCard(state: GameState, action: Extract<PlayerAction, { type: 'USE_CA
 function buyCard(state: GameState, action: Extract<PlayerAction, { type: 'BUY_CARD' }>): void {
   if (state.phase !== 'awaiting_action') throw new Error('当前不能购买卡片');
   const p = currentPlayer(state);
-  if (cellAt(state, p.position).type !== 'shop') throw new Error('不在商店，不能购买卡片');
+  if (!isShopCell(cellAt(state, p.position))) throw new Error('不在商店，不能购买卡片');
   const card = CARDS[action.cardId];
   if (!card || !SHOP_CARD_IDS.includes(card.id)) throw new Error('商店不出售这张卡片');
   if (p.cards.length >= MAX_HAND_CARDS) throw new Error(`手牌已满（上限 ${MAX_HAND_CARDS}），请先舍弃卡片`);
@@ -2154,7 +2383,7 @@ function discardCard(state: GameState, action: Extract<PlayerAction, { type: 'DI
 function buyItem(state: GameState, action: Extract<PlayerAction, { type: 'BUY_ITEM' }>): void {
   if (state.phase !== 'awaiting_action') throw new Error('当前不能购买道具');
   const p = currentPlayer(state);
-  if (cellAt(state, p.position).type !== 'shop') throw new Error('不在商店，不能购买道具');
+  if (!isShopCell(cellAt(state, p.position))) throw new Error('不在商店，不能购买道具');
   const item = ITEMS[action.itemId];
   if (!item || !SHOP_ITEM_IDS.includes(item.id)) throw new Error('商店不出售这种道具');
   if ((p.items[item.id] ?? 0) >= MAX_ITEM_COUNT) throw new Error(`该道具已达上限（${MAX_ITEM_COUNT} 个）`);
@@ -2314,10 +2543,20 @@ function useItem(state: GameState, action: Extract<PlayerAction, { type: 'USE_IT
   consumeItem(p, item.id);
 }
 
+/** 银行/证交所格（含 TILE-26 企业银行，CORP-09「功能与公立银行相同」） */
+function isBankCell(c: BoardCell): boolean {
+  return c.type === 'bank' || (c.type === 'company' && c.companyKind === 'bank');
+}
+
+/** 商店格（含 TILE-29 百货公司，CORP-12「同公立百货」） */
+function isShopCell(c: BoardCell): boolean {
+  return c.type === 'shop' || (c.type === 'company' && c.companyKind === 'department');
+}
+
 function buyStock(state: GameState, action: Extract<PlayerAction, { type: 'BUY_STOCK' }>): void {
   if (state.phase !== 'awaiting_action') throw new Error('当前不能交易股票');
   const p = currentPlayer(state);
-  if (cellAt(state, p.position).type !== 'bank') throw new Error('不在银行/证交所，不能买入股票');
+  if (!isBankCell(cellAt(state, p.position))) throw new Error('不在银行/证交所，不能买入股票');
   const stock = stockById(state, action.stockId);
   if (!stock) throw new Error('未知股票');
   if (!Number.isInteger(action.quantity) || action.quantity <= 0) throw new Error('数量必须为正整数');
@@ -2325,23 +2564,126 @@ function buyStock(state: GameState, action: Extract<PlayerAction, { type: 'BUY_S
   if (p.cash < total) throw new Error('现金不足');
   p.cash -= total;
   p.stocks[stock.id] = (p.stocks[stock.id] ?? 0) + action.quantity;
+  // ECON-10：记录建仓成本（累计投入），UI 用于展示浮动盈亏
+  p.stockCost = p.stockCost ?? {};
+  p.stockCost[stock.id] = (p.stockCost[stock.id] ?? 0) + total;
   log(state, `${p.name} 以 ¥${total} 买入 ${stock.name} ×${action.quantity}（单价 ¥${stock.price}）`);
 }
 
 function sellStock(state: GameState, action: Extract<PlayerAction, { type: 'SELL_STOCK' }>): void {
   if (state.phase !== 'awaiting_action') throw new Error('当前不能交易股票');
   const p = currentPlayer(state);
-  if (cellAt(state, p.position).type !== 'bank') throw new Error('不在银行/证交所，不能卖出股票');
+  if (!isBankCell(cellAt(state, p.position))) throw new Error('不在银行/证交所，不能卖出股票');
   const stock = stockById(state, action.stockId);
   if (!stock) throw new Error('未知股票');
   if (!Number.isInteger(action.quantity) || action.quantity <= 0) throw new Error('数量必须为正整数');
   const holding = p.stocks[stock.id] ?? 0;
   if (action.quantity > holding) throw new Error('持股不足');
   const total = stock.price * action.quantity;
+  // ECON-10：按持股比例结转建仓成本
+  const costBefore = p.stockCost?.[stock.id] ?? 0;
+  const costOut = holding > 0 ? Math.round((costBefore * action.quantity) / holding) : 0;
   p.stocks[stock.id] = holding - action.quantity;
-  if (p.stocks[stock.id] === 0) delete p.stocks[stock.id];
+  if (p.stocks[stock.id] === 0) {
+    delete p.stocks[stock.id];
+    if (p.stockCost) delete p.stockCost[stock.id];
+  } else if (p.stockCost) {
+    p.stockCost[stock.id] = costBefore - costOut;
+  }
   p.cash += total;
   log(state, `${p.name} 以 ¥${total} 卖出 ${stock.name} ×${action.quantity}（单价 ¥${stock.price}）`);
+}
+
+/**
+ * CORP-01：认购公司股份。单次 ≤1000 张，按股面值现金结算。
+ * 认购后重新判定经营权（CORP-02：最大持股 + 同票先到先得），董事长换人时触发融资清算。
+ */
+function buyShares(state: GameState, action: Extract<PlayerAction, { type: 'BUY_SHARES' }>): void {
+  if (state.phase !== 'awaiting_action') throw new Error('当前不能认购股份');
+  const p = currentPlayer(state);
+  const c = cellAt(state, p.position);
+  if (c.type !== 'company' || c.id !== action.cellId) throw new Error('不在该公司格，不能认购股份');
+  const company = companyAtCell(state, c.id);
+  if (!company) throw new Error('该公司不存在');
+  if (!Number.isInteger(action.quantity) || action.quantity <= 0) throw new Error('股数必须为正整数');
+  if (action.quantity > MAX_SHARES_PER_BUY) throw new Error(`单次认购上限 ${MAX_SHARES_PER_BUY} 张`);
+  const cost = company.sharePrice * action.quantity;
+  if (p.cash < cost) throw new Error('现金不足');
+  p.cash -= cost;
+  company.shares[p.id] = (company.shares[p.id] ?? 0) + action.quantity;
+  if (company.firstHeldDayIndex[p.id] === undefined) company.firstHeldDayIndex[p.id] = state.calendar.elapsedDays;
+  log(state, `${p.name} 以 ¥${cost} 认购${COMPANIES[company.kind].name} ${action.quantity} 张（持股 ${company.shares[p.id]}）`);
+  recomputeCompanyChairman(state, company);
+}
+
+/**
+ * CORP-02：重新判定经营权。他人持股反超即自动移交；
+ * CORP-09：董事长换人时，上任董事长的特别融资须立即还清。
+ */
+function recomputeCompanyChairman(state: GameState, company: CompanyState): void {
+  const nextId = majorityHolderId(company, state.players);
+  const prevId = company.chairmanId;
+  if (nextId === prevId) return;
+  company.chairmanId = nextId;
+  if (prevId) {
+    const prev = state.players.find((q) => q.id === prevId);
+    if (prev && prev.financing > 0) {
+      const amount = prev.financing;
+      prev.financing = 0;
+      log(state, `【特别融资】${COMPANIES[company.kind].name} 董事长换人，${prev.name} 的周转融资 ¥${amount} 须立即还清`);
+      pay(state, prev, amount, null, { reason: 'financing' });
+    }
+  }
+  if (nextId) {
+    const next = state.players.find((q) => q.id === nextId);
+    log(state, `${next?.name ?? nextId} 取得${COMPANIES[company.kind].name}经营权，成为董事长`);
+  } else {
+    log(state, `${COMPANIES[company.kind].name}经营权空缺`);
+  }
+}
+
+/** CORP-09：特别融资可周转额 = 其他存活玩家存款总额 */
+function financingCap(state: GameState, self: Player): number {
+  return state.players.reduce((sum, q) => (q.id !== self.id && !q.bankrupt ? sum + q.deposit : sum), 0);
+}
+
+/** CORP-09：企业银行董事长特别融资（周转期间存款不计息） */
+function specialFinancing(state: GameState, action: Extract<PlayerAction, { type: 'SPECIAL_FINANCING' }>): void {
+  if (state.phase !== 'awaiting_action') throw new Error('当前不能特别融资');
+  const p = currentPlayer(state);
+  const c = cellAt(state, p.position);
+  if (c.type !== 'company' || c.companyKind !== 'bank') throw new Error('不在企业银行，不能特别融资');
+  const company = companyAtCell(state, c.id);
+  if (!company || company.chairmanId !== p.id) throw new Error('只有董事长可以特别融资');
+  if (!Number.isInteger(action.amount) || action.amount <= 0) throw new Error('金额必须为正整数');
+  const cap = financingCap(state, p);
+  if (p.financing + action.amount > cap) throw new Error(`特别融资上限 ¥${cap}`);
+  p.financing += action.amount;
+  p.cash += action.amount;
+  log(state, `${p.name} 以${COMPANIES.bank.name}董事长身份特别融资 ¥${action.amount}（累计 ¥${p.financing}；周转期间存款不计息）`);
+}
+
+/** CORP-13：房地产公司任选一处自有地产加盖一层，按该地地价收取施工费 */
+function buildEstate(state: GameState, action: Extract<PlayerAction, { type: 'BUILD_ESTATE' }>): void {
+  if (state.phase !== 'awaiting_action') throw new Error('当前不能加盖');
+  const p = currentPlayer(state);
+  const c = cellAt(state, p.position);
+  if (c.type !== 'company' || c.companyKind !== 'estate') throw new Error('不在房地产公司，不能加盖');
+  const prop = p.properties.find((q) => q.cellId === action.cellId);
+  if (!prop) throw new Error('只能加盖自己的地产');
+  if (prop.grade >= MAX_GRADE) throw new Error('该地产已满级');
+  const target = state.board[action.cellId];
+  if (!target || (target.type !== 'property' && target.type !== 'commercial') || target.price === undefined) {
+    throw new Error('该格不可加盖');
+  }
+  if (target.type === 'commercial' && !prop.facility) throw new Error('商业用地需先建设施');
+  const cost = scaled(state, Math.round(target.price * ESTATE_BUILD_RATIO));
+  if (p.cash < cost) throw new Error('现金不足');
+  p.cash -= cost;
+  prop.grade = (prop.grade + 1) as PlayerProperty['grade'];
+  const company = companyAtCell(state, c.id);
+  if (company) company.surplus += cost;
+  log(state, `${p.name} 通过${COMPANIES.estate.name}在「${target.name}」加盖一层（${gradeName(prop.grade)}），支付施工费 ¥${cost}`);
 }
 
 /** 测试专用：强制结束对局（其余玩家全部破产），走真实破产/胜利/战绩流程 */
@@ -2416,6 +2758,15 @@ export function applyAction(state: GameState, action: PlayerAction): GameState {
       break;
     case 'REPAY_LOAN':
       repayLoan(next, action.amount);
+      break;
+    case 'BUY_SHARES':
+      buyShares(next, action);
+      break;
+    case 'BUILD_ESTATE':
+      buildEstate(next, action);
+      break;
+    case 'SPECIAL_FINANCING':
+      specialFinancing(next, action);
       break;
     default: {
       const exhaustive: never = action;
