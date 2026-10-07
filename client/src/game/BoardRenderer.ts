@@ -1,5 +1,18 @@
 import { Application, Container, Graphics, Text } from 'pixi.js';
 import type { BoardCell, FacilityType, GameState, Player } from '@richman/shared';
+import { getSettings, SETTINGS_CHANGED_EVENT } from './settings.js';
+
+/** UI-09 速度设置：高/中/低三档映射为棋盘动画推进倍率 */
+function animationSpeed(): number {
+  switch (getSettings().gameSpeed) {
+    case 'high':
+      return 2;
+    case 'low':
+      return 0.5;
+    default:
+      return 1;
+  }
+}
 
 /** 17×17 外圈 = 64 格（波 3 扩棋盘）；每边 16 步 + 4 个角 */
 const GRID = 17;
@@ -105,6 +118,28 @@ export class BoardRenderer {
   private initPromise: Promise<void> | null = null;
   private pendingGame: GameState | null = null;
   private boardBounds = { width: 0, height: 0 };
+  /** UI-07：canvas 引用（解绑视口事件用） */
+  private canvas: HTMLCanvasElement | null = null;
+  /** UI-10：设置变更回调（解绑用） */
+  private onSettingsChanged: (() => void) | null = null;
+  /** UI-10 动画开关：随设置变化启停 ticker */
+  private applyAnimationToggle(): void {
+    if (!this.app) return;
+    if (getSettings().animations) this.app.ticker.start();
+    else this.app.ticker.stop();
+  }
+
+  /** UI-07 地图指令：用户缩放倍率（1 = 自适应满屏） */
+  private viewZoom = 1;
+  /** UI-07 地图指令：用户平移偏移（像素） */
+  private viewPanX = 0;
+  private viewPanY = 0;
+  /** UI-07：拖拽平移状态 */
+  private dragging = false;
+  private dragStartX = 0;
+  private dragStartY = 0;
+  private dragOriginX = 0;
+  private dragOriginY = 0;
 
   constructor(container: HTMLElement, board: BoardCell[]) {
     this.container = container;
@@ -128,6 +163,7 @@ export class BoardRenderer {
     }
     this.app = app;
     this.container.appendChild(app.canvas);
+    this.attachViewControls(app.canvas);
 
     app.stage.addChild(this.world);
     this.world.addChild(this.cellLayer);
@@ -161,7 +197,12 @@ export class BoardRenderer {
       this.drawCell(i);
     }
 
-    app.ticker.add((ticker) => this.update(ticker.deltaMS));
+    // UI-09 速度设置：高/中/低三档作用于棋盘动画（行走、爆炸等）的推进速度
+    app.ticker.add((ticker) => this.update(ticker.deltaMS * animationSpeed()));
+    // UI-10 动画开关：关闭后 ticker 停止推进（静止棋盘）
+    this.onSettingsChanged = () => this.applyAnimationToggle();
+    window.addEventListener(SETTINGS_CHANGED_EVENT, this.onSettingsChanged);
+    this.applyAnimationToggle();
     this.initializing = false;
   }
 
@@ -184,8 +225,63 @@ export class BoardRenderer {
     this.syncTokens(game);
   }
 
+  /** UI-07：绑定滚轮缩放与拖拽平移，观察地图各角落 */
+  private attachViewControls(canvas: HTMLCanvasElement): void {
+    this.canvas = canvas;
+    canvas.addEventListener('wheel', this.onWheel, { passive: false });
+    canvas.addEventListener('pointerdown', this.onPointerDown);
+    window.addEventListener('pointermove', this.onPointerMove);
+    window.addEventListener('pointerup', this.onPointerUp);
+  }
+
+  private detachViewControls(): void {
+    if (!this.canvas) return;
+    this.canvas.removeEventListener('wheel', this.onWheel);
+    this.canvas.removeEventListener('pointerdown', this.onPointerDown);
+    window.removeEventListener('pointermove', this.onPointerMove);
+    window.removeEventListener('pointerup', this.onPointerUp);
+    this.canvas = null;
+  }
+
+  /** 恢复「自适应满屏」视图（UI-07 的「回到全图」按钮调用） */
+  resetView(): void {
+    this.viewZoom = 1;
+    this.viewPanX = 0;
+    this.viewPanY = 0;
+  }
+
+  private readonly onWheel = (e: WheelEvent): void => {
+    e.preventDefault();
+    const factor = e.deltaY < 0 ? 1.12 : 1 / 1.12;
+    const next = Math.min(3, Math.max(1, this.viewZoom * factor));
+    this.viewZoom = next;
+  };
+
+  private readonly onPointerDown = (e: PointerEvent): void => {
+    this.dragging = true;
+    this.dragStartX = e.clientX;
+    this.dragStartY = e.clientY;
+    this.dragOriginX = this.viewPanX;
+    this.dragOriginY = this.viewPanY;
+  };
+
+  private readonly onPointerMove = (e: PointerEvent): void => {
+    if (!this.dragging) return;
+    this.viewPanX = this.dragOriginX + (e.clientX - this.dragStartX);
+    this.viewPanY = this.dragOriginY + (e.clientY - this.dragStartY);
+  };
+
+  private readonly onPointerUp = (): void => {
+    this.dragging = false;
+  };
+
   destroy(): void {
     this.destroyed = true;
+    this.detachViewControls();
+    if (this.onSettingsChanged) {
+      window.removeEventListener(SETTINGS_CHANGED_EVENT, this.onSettingsChanged);
+      this.onSettingsChanged = null;
+    }
     if (this.app) {
       this.app.destroy(true, { children: true, texture: true });
       this.app = null;
@@ -383,11 +479,15 @@ export class BoardRenderer {
     this.elapsed += deltaMS / 1000;
 
     // 棋盘居中 + 自适应缩放（64 格棋盘在窄容器里也能完整显示）
+    // UI-07 地图指令：在此基础上叠加用户的缩放（wheel）与平移（拖拽）倍率
     const availW = Math.max(80, app.renderer.width - 24);
     const availH = Math.max(80, app.renderer.height - 96);
-    const scale = Math.min(1, availW / this.boardBounds.width, availH / this.boardBounds.height);
-    this.world.scale.set(scale);
-    this.world.position.set(app.renderer.width / 2, app.renderer.height / 2 + 12);
+    const fitScale = Math.min(1, availW / this.boardBounds.width, availH / this.boardBounds.height);
+    this.world.scale.set(fitScale * this.viewZoom);
+    this.world.position.set(
+      app.renderer.width / 2 + this.viewPanX,
+      app.renderer.height / 2 + 12 + this.viewPanY,
+    );
 
     const n = this.cellPositions.length || 1;
     const dt = deltaMS / 1000;

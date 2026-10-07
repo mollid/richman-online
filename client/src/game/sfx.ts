@@ -1,5 +1,7 @@
 let ctx: AudioContext | null = null;
 let muted = localStorage.getItem('richman.muted') === '1';
+/** UI-11 全局音效音量 0..1，默认 0.7（对应设置里的 70） */
+let volume = 0.7;
 
 function audio(): AudioContext | null {
   if (muted) return null;
@@ -24,6 +26,9 @@ function tone(opts: {
 }): void {
   const ac = audio();
   if (!ac) return;
+  // 音量过低时直接跳过，省掉无意义的节点创建
+  const gain = (opts.gain ?? 0.08) * volume;
+  if (gain <= 0) return;
   const t0 = ac.currentTime + (opts.delay ?? 0);
   const osc = ac.createOscillator();
   const g = ac.createGain();
@@ -31,11 +36,16 @@ function tone(opts: {
   osc.frequency.setValueAtTime(opts.freq, t0);
   if (opts.slideTo) osc.frequency.exponentialRampToValueAtTime(Math.max(opts.slideTo, 1), t0 + opts.dur);
   g.gain.setValueAtTime(0.0001, t0);
-  g.gain.exponentialRampToValueAtTime(opts.gain ?? 0.08, t0 + 0.01);
+  g.gain.exponentialRampToValueAtTime(gain, t0 + 0.01);
   g.gain.exponentialRampToValueAtTime(0.0001, t0 + opts.dur);
   osc.connect(g).connect(ac.destination);
   osc.start(t0);
   osc.stop(t0 + opts.dur + 0.05);
+}
+
+/** UI-11：设置面板下发全局音量，v 为 0..1 */
+export function setVolume(v: number): void {
+  volume = Math.min(1, Math.max(0, v));
 }
 
 /** 程序生成的原创音效（无任何素材文件） */
@@ -105,6 +115,13 @@ export const sfx = {
   },
   isMuted(): boolean {
     return muted;
+  },
+  /** UI-11：设置面板下发音量，v 为 0..1 */
+  setVolume(v: number): void {
+    volume = Math.min(1, Math.max(0, v));
+  },
+  getVolume(): number {
+    return volume;
   },
 };
 
