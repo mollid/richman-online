@@ -81,20 +81,31 @@ function advanceOneDay(state: GameState): GameState {
   return s;
 }
 
-/** 用「请神卡」召唤神明（不掷骰，rngState 单抽决定神明） */
-function inviteGod(rngState: number): GameState {
+/**
+ * CARD-23 请神卡：召唤「视窗范围内最靠近自己」的一位神明（纯计算，零抽数）。
+ * 测试做法：把玩家摆到目标神明所在格（距离 0），必定请到该神明。
+ */
+function inviteGodAt(godId: string): GameState {
+  const def = godDef(godId);
+  if (!def) throw new Error(`没有神明 ${godId}`);
   const g = pinIndexOne(newGame(1));
   g.players[0]!.cards = ['invite-god'];
-  g.rngState = rngState;
-  return applyAction(g, { type: 'USE_CARD', cardId: 'invite-god' });
+  g.players[0]!.position = def.cellId ?? 5;
+  const r = applyAction(g, { type: 'USE_CARD', cardId: 'invite-god' });
+  if (r.players[0]!.god?.godId !== godId) {
+    throw new Error(`请神未落到 ${godId}，实际为 ${r.players[0]!.god?.godId}`);
+  }
+  return r;
 }
 
-/** 扫描 rngState，找到能召唤出指定神明的种子 */
-function seedForGod(godId: string): number {
-  for (let seed = 1; seed <= 100000; seed++) {
-    if (inviteGod(seed).players[0]!.god?.godId === godId) return seed;
-  }
-  throw new Error(`找不到召唤 ${godId} 的种子`);
+/** 请神卡前置状态（未执行），供用例自行追加手牌/道具等再执行 */
+function prepareInvite(godId: string): GameState {
+  const def = godDef(godId);
+  if (!def) throw new Error(`没有神明 ${godId}`);
+  const g = pinIndexOne(newGame(1));
+  g.players[0]!.cards = ['invite-god'];
+  g.players[0]!.position = def.cellId ?? 5;
+  return g;
 }
 
 describe('GOD-01..12 数据表与对偶转化图', () => {
@@ -137,10 +148,7 @@ describe('GOD-01..12 数据表与对偶转化图', () => {
 
 describe('GOD 附身效果（一次性结算）', () => {
   it('GOD-02 大财神：意外获得四位数现金', () => {
-    const seed = seedForGod('big-wealth');
-    const g0 = pinIndexOne(newGame(1));
-    g0.players[0]!.cards = ['invite-god'];
-    g0.rngState = seed;
+    const g0 = prepareInvite('big-wealth');
     const before = g0.players[0]!.cash;
     const r = applyAction(g0, { type: 'USE_CARD', cardId: 'invite-god' });
     const gain = r.players[0]!.cash - before;
@@ -150,10 +158,7 @@ describe('GOD 附身效果（一次性结算）', () => {
   });
 
   it('GOD-03 小财神：向其他每个人收取三位数现金', () => {
-    const seed = seedForGod('small-wealth');
-    const g0 = pinIndexOne(newGame(1));
-    g0.players[0]!.cards = ['invite-god'];
-    g0.rngState = seed;
+    const g0 = prepareInvite('small-wealth');
     const before = g0.players[0]!.cash;
     const beforeOthers = g0.players.slice(1).map((p) => p.cash);
     const r = applyAction(g0, { type: 'USE_CARD', cardId: 'invite-god' });
@@ -165,28 +170,19 @@ describe('GOD 附身效果（一次性结算）', () => {
   });
 
   it('GOD-04 大福神：赠送两张卡片', () => {
-    const seed = seedForGod('big-fortune');
-    const g0 = pinIndexOne(newGame(1));
-    g0.players[0]!.cards = ['invite-god'];
-    g0.rngState = seed;
+    const g0 = prepareInvite('big-fortune');
     const r = applyAction(g0, { type: 'USE_CARD', cardId: 'invite-god' });
     expect(r.players[0]!.cards).toHaveLength(1 + 2 - 1); // 请神卡消耗 1 张，附身再赠 2 张
   });
 
   it('GOD-05 小福神：赠送一张卡片', () => {
-    const seed = seedForGod('small-fortune');
-    const g0 = pinIndexOne(newGame(1));
-    g0.players[0]!.cards = ['invite-god'];
-    g0.rngState = seed;
+    const g0 = prepareInvite('small-fortune');
     const r = applyAction(g0, { type: 'USE_CARD', cardId: 'invite-god' });
     expect(r.players[0]!.cards).toHaveLength(1 + 1 - 1);
   });
 
   it('GOD-06 大穷神：损失四位数现金', () => {
-    const seed = seedForGod('big-poverty');
-    const g0 = pinIndexOne(newGame(1));
-    g0.players[0]!.cards = ['invite-god'];
-    g0.rngState = seed;
+    const g0 = prepareInvite('big-poverty');
     const before = g0.players[0]!.cash;
     const r = applyAction(g0, { type: 'USE_CARD', cardId: 'invite-god' });
     const loss = before - r.players[0]!.cash;
@@ -195,10 +191,7 @@ describe('GOD 附身效果（一次性结算）', () => {
   });
 
   it('GOD-07 小穷神：送给其他每个人三位数现金', () => {
-    const seed = seedForGod('small-poverty');
-    const g0 = pinIndexOne(newGame(1));
-    g0.players[0]!.cards = ['invite-god'];
-    g0.rngState = seed;
+    const g0 = prepareInvite('small-poverty');
     const before = g0.players[0]!.cash;
     const beforeOthers = g0.players.slice(1).map((p) => p.cash);
     const r = applyAction(g0, { type: 'USE_CARD', cardId: 'invite-god' });
@@ -210,30 +203,24 @@ describe('GOD 附身效果（一次性结算）', () => {
   });
 
   it('GOD-08 大衰神：卡片遗失一半', () => {
-    const seed = seedForGod('big-misfortune');
-    const g0 = pinIndexOne(newGame(1));
+    const g0 = prepareInvite('big-misfortune');
     g0.players[0]!.cards = ['invite-god', 'angel', 'devil', 'rebuild'];
-    g0.rngState = seed;
     const r = applyAction(g0, { type: 'USE_CARD', cardId: 'invite-god' });
     expect(r.log.some((e) => e.text.includes('大衰神作祟') && e.text.includes('遗失 2 张卡片'))).toBe(true);
   });
 
   it('GOD-09 小衰神：遗失一张卡片', () => {
-    const seed = seedForGod('small-misfortune');
-    const g0 = pinIndexOne(newGame(1));
+    const g0 = prepareInvite('small-misfortune');
     g0.players[0]!.cards = ['invite-god', 'angel', 'devil'];
-    g0.rngState = seed;
     const r = applyAction(g0, { type: 'USE_CARD', cardId: 'invite-god' });
     expect(r.log.some((e) => e.text.includes('小衰神作祟') && e.text.includes('遗失一张卡片'))).toBe(true);
     expect(r.players[0]!.cards.length).toBeLessThanOrEqual(2);
   });
 
   it('GOD-12 死神：遗失所有卡片与道具并遭逢倒霉事', () => {
-    const seed = seedForGod('death');
-    const g0 = pinIndexOne(newGame(1));
+    const g0 = prepareInvite('death');
     g0.players[0]!.cards = ['invite-god', 'angel'];
     g0.players[0]!.items = { foo: 2 };
-    g0.rngState = seed;
     const before = g0.players[0]!.cash;
     const r = applyAction(g0, { type: 'USE_CARD', cardId: 'invite-god' });
     expect(r.players[0]!.cards).toEqual([]);

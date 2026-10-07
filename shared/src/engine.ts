@@ -192,6 +192,9 @@ export function createGame(players: PlayerDef[], seed = Date.now() % 2147483647,
       jailed: true,
     })),
     magic: null,
+    // GOD-01 土地公隔月再现（help [40]）：初始未出现过，可随机到
+    landGodCooldownMonth: 0,
+    pendingCard: null,
   };
 }
 
@@ -1178,6 +1181,13 @@ function expireTimedEffectsHook(state: GameState): void {
     if (p.abroadTurns > 0) p.abroadTurns -= 1;
     // EVT-01 事件 0–3：在押/住院天数与 skipTurns 同处递减（skipTurns 是真正的停留门槛）
     if (p.custody) {
+      // TILE-09 住院每日医药费 1000（help [37]「入院時還要付每天一千元的醫藥費」）
+      if (p.custody.kind === 'hospital' && p.custody.daysLeft > 0) {
+        const medical = scaled(state, 1000);
+        log(state, `${p.name} 住院医药费 ¥${medical}`);
+        payCash(state, p, medical, null, 'other');
+        if (p.bankrupt) continue;
+      }
       p.custody.daysLeft -= 1;
       if (p.custody.daysLeft <= 0) p.custody = null;
     }
@@ -1448,6 +1458,7 @@ function advanceTurn(state: GameState): void {
   state.turn += 1;
   state.bankAccess = null;
   state.magic = null;
+  state.pendingCard = null;
   if (state.currentPlayerIndex < before) {
     state.round += 1;
     captureRoundSnapshot(state);
@@ -1485,10 +1496,44 @@ function loseRandomCards(state: GameState, p: Player, n: number): string[] {
 }
 
 /** 神庙随机召唤：从 12 尊中确定性地抽一位附身 */
+/**
+ * 请神卡（CARD-23）：取「视窗范围内最靠近自己」的一位神明（help/文档 CARD-23）。
+ * 原版按棋盘距离取最近，改为纯计算（零抽数）；并列时取定义序靠前者。
+ */
+function nearestGodFor(p: Player): GodDef {
+  const dist = (cellId: number): number => {
+    const d = Math.abs(cellId - p.position);
+    return Math.min(d, BOARD_SIZE - d);
+  };
+  let best = GODS[0]!;
+  let bestDist = Infinity;
+  for (const def of GODS) {
+    const d = dist(def.cellId ?? 5);
+    if (d < bestDist) {
+      bestDist = d;
+      best = def;
+    }
+  }
+  return best;
+}
+
+/** 神庙摇籤：随机召唤一位神明附身（走 RNG）；土地公受隔月冷却限制（help [40]） */
 function summonGod(state: GameState, p: Player): void {
+  const month = currentMonthIndex(state);
   const draw = nextRandom(state.rngState);
   state.rngState = draw.nextState;
-  attachGod(state, p, GODS[Math.floor(draw.value * GODS.length)]!);
+  const candidates = GODS.filter((g) => g.id !== 'land-god' || state.landGodCooldownMonth !== month);
+  // 全部候选都被冷却时（局内仅土地公且同月）退化为全池，保证总能附身
+  const pool = candidates.length > 0 ? candidates : GODS;
+  const def = pool[Math.floor(draw.value * pool.length)]!;
+  if (def.id === 'land-god') state.landGodCooldownMonth = month;
+  attachGod(state, p, def);
+}
+
+/** 当前自然月的序号（跨月即变化，用于 GOD-01 隔月冷却） */
+function currentMonthIndex(state: GameState): number {
+  const d = gameDate(state);
+  return d.year * 12 + d.month;
 }
 
 /** 神明附身（含期满对偶转化）：设置计时并一次性结算附身效果（GOD §8.1） */
@@ -1658,17 +1703,86 @@ function godTickHook(state: GameState): void {
   }
 }
 
-/** 抽卡（机会格 / 卡片屋；额满时自动舍弃最旧一张，V0 简化：原版为玩家自选） */
+/**
+ * 抽卡（机会格 / 卡片屋；ECON-12 卡片上限 15 张）。
+ * 额满时**不自动舍弃**，而是挂起 `state.pendingCard` 并把阶段切到 `awaiting_discard`，
+ * 由玩家发 `DISCARD_CARD` 选定舍弃哪一张后再把新卡入栏。
+ */
 function drawChanceCard(state: GameState, p: Player, source = '机会'): void {
   const draw = nextRandom(state.rngState);
   state.rngState = draw.nextState;
   const cardId = CHANCE_CARD_POOL[Math.floor(draw.value * CHANCE_CARD_POOL.length)]!;
   if (p.cards.length >= MAX_HAND_CARDS) {
-    const dropped = p.cards.shift()!;
-    log(state, `${p.name} 手牌已满，舍弃「${CARDS[dropped]?.name ?? dropped}」以容纳新卡`);
+    state.pendingCard = cardId;
+    state.phase = 'awaiting_discard';
+    log(state, `${p.name} 在${source}抽到卡片「${CARDS[cardId]!.name}」，但手牌已满（上限 ${MAX_HAND_CARDS} 张），请选择舍弃一张`);
+    return;
   }
   p.cards.push(cardId);
   log(state, `${p.name} 在${source}抽到卡片「${CARDS[cardId]!.name}」`);
+}
+
+/** ECON-12：完成「选择舍弃」——把 pendingCard 入栏并清空挂起态 */
+function resolvePendingCard(state: GameState): void {
+  const cardId = state.pendingCard;
+  state.pendingCard = null;
+  const p = currentPlayer(state);
+  if (!cardId) {
+    if (state.phase === 'awaiting_discard') state.phase = 'awaiting_action';
+    return;
+  }
+  p.cards.push(cardId);
+  log(state, `${p.name} 舍弃一张手牌，收下新卡「${CARDS[cardId]?.name ?? cardId}」`);
+  state.phase = 'awaiting_action';
+}
+
+/** CORE-04：认输投降 —— 走「死神附身」特殊流程后退出对局 */
+function surrender(state: GameState): void {
+  const p = currentPlayer(state);
+  if (state.phase === 'lobby' || state.phase === 'game_over') throw new Error('当前不能认输');
+  if (p.bankrupt) throw new Error('已倒闭的玩家无需认输');
+  // 死神附身：清空全部卡片与道具并扣一笔「离场费」，随后退出对局
+  const death = godDef('death');
+  const cards = p.cards.length;
+  const items = Object.values(p.items).reduce((a, b) => a + b, 0);
+  p.cards = [];
+  p.items = {};
+  const farewell = scaled(state, 3000);
+  payCash(state, p, farewell, null, 'god');
+  log(
+    state,
+    `【死神附身】${p.name} 认输投降：${death?.name ?? '死神'}带走 ${cards} 张卡片与 ${items} 件道具，并索取离场费 ¥${farewell}`,
+  );
+  state.pendingCard = null;
+  if (!p.bankrupt) {
+    p.bankrupt = true;
+    p.cash = 0;
+    p.deposit = 0;
+    p.points = 0;
+    p.loan = null;
+    p.properties = [];
+    p.items = {};
+    p.stocks = {};
+    p.stockCost = {};
+    p.god = null;
+    p.skipTurns = 0;
+    p.direction = 1;
+    p.holdTurns = 0;
+    p.rentBlockedTurns = 0;
+    p.abroadTurns = 0;
+    p.research = null;
+    p.diceCount = 1;
+    p.alliance = null;
+    p.custody = null;
+    log(state, `${p.name} 已退出对局`);
+  }
+  state.phase = 'awaiting_roll';
+  checkWinner(state);
+  if (!isGameOver(state)) {
+    state.currentPlayerIndex = (state.currentPlayerIndex + 1) % state.players.length;
+    state.dice = null;
+    state.phase = 'awaiting_roll';
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -2012,6 +2126,19 @@ function applyDisaster(
   if (target.bankrupt) return;
   const label = kind === 'frame' ? '陷害' : kind === 'sleepwalk' ? '梦游' : kind === 'turtle' ? '乌龟' : '牢狱';
 
+  // CARD-29：陷害盟友则自动解除同盟（有陷害举动的双方同盟立即失效）
+  if (kind === 'frame') {
+    if (source && source.alliance?.with === target.id) {
+      source.alliance = null;
+      target.alliance = null;
+      log(state, `${source.name} 陷害盟友 ${target.name}，同盟自动解除`);
+    }
+    if (target.alliance?.with === source?.id) {
+      target.alliance = null;
+      log(state, `${target.name} 遭盟友陷害，同盟自动解除`);
+    }
+  }
+
   // 1. 免罪卡
   if (consumeCard(target, 'absolve')) {
     log(state, `${target.name} 使用「免罪卡」，抵消了${label}之灾`);
@@ -2176,6 +2303,10 @@ export function availableActions(state: GameState): AvailableActions {
       bailableVillains: bailableVillains(state),
       bailFee: bailFee(state),
       magic: state.magic,
+      dischargeablePatients: dischargeablePatients(state),
+      dischargeFee: dischargeFee(state),
+      canSurrender: canSurrender(state),
+      pendingCard: state.pendingCard,
     };
   }
   return {
@@ -2208,6 +2339,10 @@ export function availableActions(state: GameState): AvailableActions {
     bailableVillains: bailableVillains(state),
     bailFee: bailFee(state),
     magic: state.magic,
+    dischargeablePatients: dischargeablePatients(state),
+    dischargeFee: dischargeFee(state),
+    canSurrender: canSurrender(state),
+    pendingCard: state.pendingCard,
   };
 }
 
@@ -2442,14 +2577,12 @@ function rollDice(state: GameState, action: Extract<PlayerAction, { type: 'ROLL_
   }
 
   if (c.type === 'hospital') {
-    // TILE-09：住院不能出门且丧失收租权利，每天 1000 医药费
+    // TILE-09 医院：住院不能出门且丧失收租权利，每天 1000 医药费（help [37]）
+    // 医药费按住院天数在日切钩子逐日收取；此处只办入住
     p.skipTurns = Math.max(p.skipTurns, 1);
     p.custody = { kind: 'hospital', daysLeft: Math.max(p.skipTurns, 1) };
     blockRent(p, 1);
-    const medical = scaled(state, 1000);
-    log(state, `${p.name} 住院休养 1 天（期间丧失收租权），支付医药费 ¥${medical}`);
-    payCash(state, p, medical, null, 'other');
-    if (isGameOver(state)) return;
+    log(state, `${p.name} 办理住院（住院期间丧失收租权，每天需付医药费）`);
     advanceTurn(state);
     return;
   }
@@ -2630,6 +2763,23 @@ function rollDice(state: GameState, action: Extract<PlayerAction, { type: 'ROLL_
     pay(state, p, rent, owned.player, { toDeposit: true, reason: 'rent' });
     // NPC-04 窃取租金：记录本地上次收取的租金，供窃取租金型恶人作案
     owned.property.lastRent = rent;
+
+    // CARD-29 同盟联合收费（CARD-29「與對手房地產聯合收費，所得各算各的」）：
+    // 地主有盟友、且该盟友在同一街道也持有地产时，本笔租金由地主与其盟友平分。
+    const ownerAlly = owned.player.alliance
+      ? state.players.find((q) => q.id === owned.player.alliance!.with)
+      : undefined;
+    const allyHoldsSameStreet = ownerAlly
+      && !ownerAlly.bankrupt
+      && ownerAlly.properties.some((q) => {
+        const allyCell = state.board[q.cellId];
+        return allyCell?.street != null && allyCell.street === c.street;
+      });
+    if (allyHoldsSameStreet) {
+      const allyHalf = Math.floor(rent / 2);
+      ownerAlly!.deposit += allyHalf;
+      log(state, `同盟联合收费：${allyHalf} 归盟友 ${ownerAlly!.name}，其余归 ${owned.player.name}`);
+    }
     if (isGameOver(state)) return;
     advanceTurn(state);
     return;
@@ -3199,9 +3349,21 @@ function buyLotteryTicket(state: GameState, action: Extract<PlayerAction, { type
 // NPC-01..06 特殊单位动作：保释四大恶人 + 魔法屋施法
 // ---------------------------------------------------------------------------
 
+/** CORE-04：当前玩家可否认输投降 */
+function canSurrender(state: GameState): boolean {
+  if (state.phase === 'lobby' || state.phase === 'game_over') return false;
+  const p = state.players[state.currentPlayerIndex];
+  return !!p && !p.bankrupt;
+}
+
 /** 保释金（固定 5000，随物价指数缩放） */
 function bailFee(state: GameState): number {
   return scaled(state, BAIL_FEE);
+}
+
+/** 出院费（固定 2000，随物价指数缩放） */
+function dischargeFee(state: GameState): number {
+  return scaled(state, DISCHARGE_FEE);
 }
 
 /** 魔法屋施法条件对应的候选受罚者（排除施法者本人与已倒闭玩家） */
@@ -3258,6 +3420,37 @@ function bailPrisoner(state: GameState, action: Extract<PlayerAction, { type: 'B
     state,
     `${p.name} 花费 ¥${fee} 保释了${villainDefOf(npc).name}，${VILLAIN_DAYS} 天内所获收益归 ${p.name}`,
   );
+}
+
+/** TILE-09 办理提前出院的费用（固定 2000，随物价指数缩放；原版未明确金额，标注为推断值） */
+const DISCHARGE_FEE = 2000;
+
+/** TILE-09 医院门外可办理出院的住院病人（help [37]「走到醫院門外時，可以替病人辦理出院」） */
+function dischargeablePatients(state: GameState): string[] {
+  const p = currentPlayer(state);
+  if (state.phase !== 'awaiting_action' || p.bankrupt) return [];
+  if (cellAt(state, p.position).type !== 'hospital') return [];
+  return activePlayers(state)
+    .filter((q) => q.id !== p.id && q.custody?.kind === 'hospital' && q.skipTurns > 0)
+    .map((q) => q.id);
+}
+
+/** TILE-09：在医院门外替指定病人办理提前出院 */
+function dischargePatient(state: GameState, action: Extract<PlayerAction, { type: 'DISCHARGE_PATIENT' }>): void {
+  if (state.phase !== 'awaiting_action') throw new Error('当前不能办理出院');
+  const p = currentPlayer(state);
+  if (cellAt(state, p.position).type !== 'hospital') throw new Error('不在医院门外，不能办理出院');
+  const target = state.players.find((q) => q.id === action.targetPlayerId);
+  if (!target) throw new Error('病人不存在');
+  if (target.id === p.id) throw new Error('不能为自己办理出院');
+  if (target.custody?.kind !== 'hospital') throw new Error('该角色当前并未住院');
+  const fee = dischargeFee(state);
+  if (p.cash < fee) throw new Error('现金不足以支付出院费');
+  p.cash -= fee;
+  target.custody = null;
+  target.skipTurns = 0;
+  target.rentBlockedTurns = 0;
+  log(state, `${p.name} 在医院门外为 ${target.name} 办理出院，支付出院费 ¥${fee}`);
 }
 
 /** TILE-11：女巫施法，对指定候选降下诅咒 */
@@ -3800,7 +3993,10 @@ function useCard(state: GameState, action: Extract<PlayerAction, { type: 'USE_CA
       break;
     }
     case 'invite-god': {
-      summonGod(state, p);
+      // CARD-23 请神：召唤视窗内最靠近自己的一位神明（纯计算，零抽数）
+      const def = nearestGodFor(p);
+      log(state, `${p.name} 请神，召唤了最靠近自己的 ${def.name}`);
+      attachGod(state, p, def);
       break;
     }
     case 'red-card':
@@ -3857,7 +4053,7 @@ function useCard(state: GameState, action: Extract<PlayerAction, { type: 'USE_CA
       const t = targetPlayer();
       p.alliance = { with: t.id, daysLeft: 7 };
       t.alliance = { with: p.id, daysLeft: 7 };
-      log(state, `${p.name} 与 ${t.name} 结盟 7 天，互不收过路费`);
+      log(state, `${p.name} 与 ${t.name} 结盟 7 天：互不收过路费，在对方地产上联合收费各得一半`);
       break;
     }
     case 'turtle': {
@@ -3897,10 +4093,18 @@ function buyCard(state: GameState, action: Extract<PlayerAction, { type: 'BUY_CA
 
 /** 舍弃手牌（满手时的腾位手段；仅在自己回合内可用） */
 function discardCard(state: GameState, action: Extract<PlayerAction, { type: 'DISCARD_CARD' }>): void {
-  if (state.phase !== 'awaiting_roll' && state.phase !== 'awaiting_action') throw new Error('当前不能舍弃卡片');
+  // ECON-12：额满待舍弃阶段也允许 DISCARD_CARD，选定后新卡立即入栏
+  if (
+    state.phase !== 'awaiting_roll' &&
+    state.phase !== 'awaiting_action' &&
+    state.phase !== 'awaiting_discard'
+  ) {
+    throw new Error('当前不能舍弃卡片');
+  }
   const p = currentPlayer(state);
   if (!consumeCard(p, action.cardId)) throw new Error('没有这张卡片');
   log(state, `${p.name} 舍弃了卡片「${CARDS[action.cardId]?.name ?? action.cardId}」`);
+  if (state.phase === 'awaiting_discard') resolvePendingCard(state);
 }
 
 /** 购买道具（ITEM-01..08）：点券结算，每种道具上限 9（MAX_ITEM_COUNT） */
@@ -3954,8 +4158,25 @@ function useItem(state: GameState, action: Extract<PlayerAction, { type: 'USE_IT
         }
       }
       const cleared = beforeRoad - state.roadblocks.length + (beforeMine - state.mines.length) + defused;
-      if (cleared === 0) throw new Error('前方 9 步内没有障碍物');
-      log(state, `${p.name} 使用「机器娃娃」，清除前方 9 步内 ${cleared} 处障碍`);
+      // ITEM-01 补齐：同时踢除前方 9 步内的特殊人物（恶犬 / 在外的四大恶人）与神明
+      const beforeNpc = state.npcs.length;
+      state.npcs = state.npcs.filter((n) => n.jailed || !ahead.includes(n.position));
+      const kickedNpcs = beforeNpc - state.npcs.length;
+      let kickedGods = 0;
+      for (const q of state.players) {
+        if (q.bankrupt || !q.god || !ahead.includes(q.position)) continue;
+        log(state, `${p.name} 的机器娃娃赶走了 ${q.name} 身上的${q.god.godId}神`);
+        q.god = null;
+        kickedGods += 1;
+      }
+      const total = cleared + kickedNpcs + kickedGods;
+      if (total === 0) throw new Error('前方 9 步内没有障碍物或特殊单位');
+      const detail = [
+        cleared > 0 ? `${cleared} 处障碍` : '',
+        kickedNpcs > 0 ? `${kickedNpcs} 个特殊人物` : '',
+        kickedGods > 0 ? `${kickedGods} 位神明` : '',
+      ].filter(Boolean).join('、');
+      log(state, `${p.name} 使用「机器娃娃」，清除前方 9 步内 ${detail}`);
       break;
     }
     case 'roadblock': {
@@ -3981,8 +4202,18 @@ function useItem(state: GameState, action: Extract<PlayerAction, { type: 'USE_IT
       break;
     }
     case 'time-bomb': {
-      // ITEM-04：附身走满 38 步爆炸（可蹭到他人时转手）
+      // ITEM-04：附身走满 38 步爆炸；若指定 targetPlayerId 则直接转手丢给该玩家
       if (state.bombs.some((b) => b.playerId === p.id)) throw new Error('身上已有定时炸弹');
+      if (action.targetPlayerId) {
+        const victim = state.players.find((q) => q.id === action.targetPlayerId);
+        if (!victim) throw new Error('目标玩家不存在');
+        if (victim.id === p.id) throw new Error('不能把炸弹丢给自己');
+        if (victim.bankrupt) throw new Error('不能把炸弹丢给已倒闭的玩家');
+        if (state.bombs.some((b) => b.playerId === victim.id)) throw new Error('对方身上已有定时炸弹');
+        state.bombs = [...state.bombs, { playerId: victim.id, stepsLeft: 38 }];
+        log(state, `${p.name} 把定时炸弹丢给了 ${victim.name}（38 步后爆炸）`);
+        break;
+      }
       state.bombs = [...state.bombs, { playerId: p.id, stepsLeft: 38 }];
       log(state, `${p.name} 装上定时炸弹（38 步后爆炸），快蹭给别人！`);
       break;
@@ -4039,15 +4270,25 @@ function useItem(state: GameState, action: Extract<PlayerAction, { type: 'USE_IT
       break;
     }
     case 'teleporter': {
-      // ITEM-11（研究所 Lv3）：瞬间移动到指定空道路，本回合不再前进
+      // ITEM-11（研究所 Lv3）：瞬间移动到指定空道路，本回合不再前进；
+      // 指定 targetPlayerId 时可把**他人**连同其附属一起传送到目标格（不结算落点事件）
       const id = anyCellId();
-      if (id === p.position) throw new Error('请选择与脚下不同的地点');
-      if (state.players.some((q) => !q.bankrupt && q.id !== p.id && q.position === id)) {
-        throw new Error('目标道路已有玩家停留');
+      const moved = activePlayers(state).filter((q) => !q.bankrupt);
+      if (moved.some((q) => q.position === id)) throw new Error('目标道路已有玩家停留');
+      const mover = moved.find((q) => q.id === p.id)!;
+      if (id === mover.position) throw new Error('请选择与脚下不同的地点');
+      const targets = action.targetPlayerId
+        ? moved.filter((q) => q.id === action.targetPlayerId)
+        : [mover];
+      if (targets.length === 0) throw new Error('目标玩家不存在');
+      for (const q of targets) {
+        q.position = id;
+        // 传送不结算落点事件（ITEM-11 语义），但保留在路上的人物/恶人相对关系
       }
-      p.position = id;
-      // V0 简化：传送不结算落点事件（波 3 精修）
-      log(state, `${p.name} 使用传送机，瞬间移动到「${state.board[id]!.name}」`);
+      const label = targets.length > 1
+        ? `${p.name} 使用传送机，把 ${targets.map((q) => q.name).join('、')} 一起传送到「${state.board[id]!.name}」`
+        : `${p.name} 使用传送机，瞬间移动到「${state.board[id]!.name}」`;
+      log(state, label);
       break;
     }
     case 'bulldozer':
@@ -4312,6 +4553,12 @@ export function applyAction(state: GameState, action: PlayerAction): GameState {
       break;
     case 'CAST_MAGIC':
       castMagic(next, action);
+      break;
+    case 'DISCHARGE_PATIENT':
+      dischargePatient(next, action);
+      break;
+    case 'SURRENDER':
+      surrender(next);
       break;
     default: {
       const exhaustive: never = action;

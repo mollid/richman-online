@@ -281,6 +281,7 @@ export type Phase =
   | 'awaiting_action'  // 等待当前玩家决策（买地/卡片/股票/结束）
   | 'awaiting_pick'    // 小游戏进行中：等待猜杯
   | 'awaiting_auction' // 拍卖会进行中：等待当前竞买人出价/放弃
+  | 'awaiting_discard'  // ECON-12：手牌额满，等待玩家选择舍弃哪一张
   | 'game_over';
 
 /** 小游戏状态（游戏厅随机四选一：三仙归洞 / 记忆翻牌 / 七彩气球 / 企鹅挖宝） */
@@ -417,6 +418,13 @@ export interface GameState {
   npcs: NpcUnit[];
   /** TILE-11 魔法屋：女巫水晶球的当次施法机会（NPC-06）；null 表示无 */
   magic: MagicOffer | null;
+  /**
+   * GOD-01 土地公冷却（help [40]「隔月才會再出現」）：记录本局月份序号，
+   * 同一自然月内不再随机到土地公；跨月后恢复可出现。为 0 表示尚未出现过。
+   */
+  landGodCooldownMonth: number;
+  /** ECON-12：手牌额满时待玩家选择舍弃的卡片 id；null 表示无 */
+  pendingCard: string | null;
 }
 
 /** TILE-11 魔法屋：施法条件（决定候选受罚者） */
@@ -475,7 +483,11 @@ export type PlayerAction =
   /** NPC-01..04：在监狱门外保释四大恶人（收益归保释人） */
   | { type: 'BAIL_PRISONER'; npcKind: VillainKind }
   /** TILE-11 魔法屋（NPC-06）：女巫施法，指定受罚者 */
-  | { type: 'CAST_MAGIC'; targetPlayerId: string };
+  | { type: 'CAST_MAGIC'; targetPlayerId: string }
+  /** TILE-09 医院（help [37]）：在医院门外替指定病人办理提前出院 */
+  | { type: 'DISCHARGE_PATIENT'; targetPlayerId: string }
+  /** CORE-04：认输投降（走「死神附身」特殊流程后退出对局） */
+  | { type: 'SURRENDER' };
 
 /** 可用动作集合（UI 按此渲染按钮） */
 export interface AvailableActions {
@@ -531,6 +543,14 @@ export interface AvailableActions {
   bailFee: number;
   /** TILE-11：当前魔法屋施法机会（无则 null，UI 据此渲染女巫面板） */
   magic: MagicOffer | null;
+  /** TILE-09 医院门外可办理出院的住院病人 id 列表（help [37]） */
+  dischargeablePatients: string[];
+  /** TILE-09：办理提前出院的费用（固定金额，已按物价指数缩放） */
+  dischargeFee: number;
+  /** CORE-04：当前是否可认输投降（对局进行中且自己尚未倒闭） */
+  canSurrender: boolean;
+  /** ECON-12：待舍弃的卡片 id（非 null 时 phase 为 awaiting_discard，UI 渲染舍弃弹窗） */
+  pendingCard: string | null;
 }
 
 

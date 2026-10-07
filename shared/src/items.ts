@@ -11,7 +11,14 @@
 import type { CardPhase } from './cards.js';
 
 /** 道具目标类型（决定 UI 需要收集哪些参数） */
-export type ItemTarget = 'none' | 'cell' | 'land';
+/**
+ * 道具目标类型：
+ * - none 无目标；
+ * - cell 需选地图格；
+ * - land 需选己方土地；
+ * - player 需选一名对手（可留空表示不指定，用于炸弹留给自己 / 传送机只移自己）。
+ */
+export type ItemTarget = 'none' | 'cell' | 'land' | 'player';
 
 export interface ItemDef {
   id: string;
@@ -59,10 +66,10 @@ export const ITEMS: Record<string, ItemDef> = {
   'time-bomb': {
     id: 'time-bomb',
     name: '定时炸弹',
-    description: '附身后走满 38 步自动爆炸，威力范围内人住院 5 天、房屋倒塌',
+    description: '附身后走满 38 步自动爆炸，威力范围内人住院 5 天、房屋倒塌；也可直接丢给对手',
     cost: 25,
     phase: 'any',
-    target: 'none',
+    target: 'player',
     researchLevel: null,
   },
   motorbike: {
@@ -123,7 +130,7 @@ export const ITEMS: Record<string, ItemDef> = {
   teleporter: {
     id: 'teleporter',
     name: '传送机',
-    description: '将自己瞬间移动到地图上的指定格',
+    description: '瞬间移动到地图上的指定格；也可把对手一并传送过去',
     cost: null,
     phase: 'any',
     target: 'cell',

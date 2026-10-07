@@ -21,6 +21,11 @@ export interface GodDef {
   durationDays: number;
   /** 期满对偶转化目标 godId；不填表示期满自动离开 */
   transformsTo?: string;
+  /**
+   * 神明所居格（BOARD_SIZE 圈上的格号），用于 CARD-23 请神卡「取最靠近自己的神明」。
+   * 围绕神庙（TILE 神庙格 15）左右散布；缺省表示与神庙同格。
+   */
+  cellId?: number;
 }
 
 /** 神明有效期：常规 7 天 */
@@ -39,6 +44,7 @@ export const GODS: GodDef[] = [
     possession: '所到之地均占为己有，不必缴过路费',
     travel: '',
     durationDays: GOD_DURATION_DAYS,
+    cellId: 3,
   },
   {
     id: 'big-wealth',
@@ -46,6 +52,7 @@ export const GODS: GodDef[] = [
     possession: '意外获得四位数现金',
     travel: '抵赖所有租金',
     durationDays: GOD_DURATION_DAYS,
+    cellId: 6,
     transformsTo: 'small-wealth',
   },
   {
@@ -54,6 +61,7 @@ export const GODS: GodDef[] = [
     possession: '可向其他人收取三位数现金',
     travel: '抵赖一半租金',
     durationDays: GOD_DURATION_DAYS,
+    cellId: 7,
     transformsTo: 'big-wealth',
   },
   {
@@ -62,6 +70,7 @@ export const GODS: GodDef[] = [
     possession: '送两张卡片（内容随机）',
     travel: '买地完全免费、盖房投资铁定加倍',
     durationDays: GOD_DURATION_DAYS,
+    cellId: 8,
     transformsTo: 'small-fortune',
   },
   {
@@ -70,6 +79,7 @@ export const GODS: GodDef[] = [
     possession: '送一张卡片',
     travel: '盖房投资加倍',
     durationDays: GOD_DURATION_DAYS,
+    cellId: 9,
     transformsTo: 'big-fortune',
   },
   {
@@ -78,6 +88,7 @@ export const GODS: GodDef[] = [
     possession: '损失四位数现金',
     travel: '踩到别人的地租金必定加倍',
     durationDays: GOD_DURATION_DAYS,
+    cellId: 10,
     transformsTo: 'small-poverty',
   },
   {
@@ -86,6 +97,7 @@ export const GODS: GodDef[] = [
     possession: '送给其他每个人三位数现金',
     travel: '租金加倍',
     durationDays: GOD_DURATION_DAYS,
+    cellId: 11,
     transformsTo: 'big-poverty',
   },
   {
@@ -94,6 +106,7 @@ export const GODS: GodDef[] = [
     possession: '卡片遗失一半',
     travel: '买地绝对流标、投资注定失败',
     durationDays: GOD_DURATION_DAYS,
+    cellId: 12,
     transformsTo: 'small-misfortune',
   },
   {
@@ -102,6 +115,7 @@ export const GODS: GodDef[] = [
     possession: '遗失一张卡片',
     travel: '买地流标、投资失败',
     durationDays: GOD_DURATION_DAYS,
+    cellId: 13,
     transformsTo: 'big-misfortune',
   },
   {
@@ -110,6 +124,7 @@ export const GODS: GodDef[] = [
     possession: '所到之处一律加盖一层房屋',
     travel: '',
     durationDays: GOD_DURATION_DAYS,
+    cellId: 2,
     transformsTo: 'devil',
   },
   {
@@ -118,6 +133,7 @@ export const GODS: GodDef[] = [
     possession: '所到之处一律拆掉一层房屋',
     travel: '',
     durationDays: GOD_DURATION_DAYS,
+    cellId: 4,
     transformsTo: 'angel',
   },
   {
@@ -126,6 +142,7 @@ export const GODS: GodDef[] = [
     possession: '遗失所有卡片道具，并发生一连串倒霉事',
     travel: '',
     durationDays: DEATH_DURATION_DAYS,
+    cellId: 5,
   },
 ];
 
