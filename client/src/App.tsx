@@ -3,6 +3,15 @@ import type { GameState, PlayerAction } from '@richman/shared';
 import { BoardRenderer } from './game/BoardRenderer.js';
 import { LocalHotseatSession, type GameSession } from './net/session.js';
 import { ColyseusSession, hasSavedSession, type RoomSummary } from './net/remote.js';
+import {
+  fetchLeaderboard,
+  login as apiLogin,
+  logout as apiLogout,
+  register as apiRegister,
+  getToken,
+  type AuthUser,
+  type LeaderboardEntry,
+} from './net/auth.js';
 import { PlayerList } from './ui/PlayerList.js';
 import { ControlPanel } from './ui/ControlPanel.js';
 import { LogPanel } from './ui/LogPanel.js';
@@ -99,6 +108,47 @@ function SetupScreen({
   const [roomId, setRoomId] = useState('');
   const [rooms, setRooms] = useState<RoomSummary[]>([]);
   const [canResume] = useState(() => hasSavedSession());
+  const [user, setUser] = useState<AuthUser | null>(null);
+  const [authName, setAuthName] = useState('');
+  const [authPass, setAuthPass] = useState('');
+  const [authError, setAuthError] = useState('');
+  const [authBusy, setAuthBusy] = useState(false);
+  const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
+
+  const refreshLeaderboard = async () => {
+    try {
+      setLeaderboard(await fetchLeaderboard());
+    } catch {
+      setLeaderboard([]);
+    }
+  };
+
+  const handleAuth = async (mode: 'login' | 'register') => {
+    setAuthBusy(true);
+    setAuthError('');
+    try {
+      const u = mode === 'login' ? await apiLogin(authName.trim(), authPass) : await apiRegister(authName.trim(), authPass);
+      setUser(u);
+      setPlayerName(u.username);
+      setAuthPass('');
+    } catch (e) {
+      setAuthError(e instanceof Error ? e.message : '操作失败');
+    } finally {
+      setAuthBusy(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    await apiLogout();
+    setUser(null);
+  };
+
+  useEffect(() => {
+    if (mode === 'online') {
+      void refreshRooms();
+      void refreshLeaderboard();
+    }
+  }, [mode]);
 
   const refreshRooms = async () => {
     try {
@@ -143,6 +193,38 @@ function SetupScreen({
       ) : (
         <div className="setup-card">
           <div className="setup-title">联机对战模式</div>
+          {user ? (
+            <div className="auth-bar">
+              <span>
+                账号：<b>{user.username}</b>
+              </span>
+              <button className="small ghost" onClick={() => void handleLogout()}>
+                登出
+              </button>
+            </div>
+          ) : (
+            <div className="auth-form">
+              <div className="auth-row">
+                <input placeholder="账号（2-16 位）" maxLength={16} value={authName} onChange={(e) => setAuthName(e.target.value)} />
+                <input
+                  placeholder="密码（至少 6 位）"
+                  type="password"
+                  value={authPass}
+                  onChange={(e) => setAuthPass(e.target.value)}
+                />
+              </div>
+              <div className="auth-row">
+                <button disabled={authBusy || !authName.trim() || authPass.length < 6} onClick={() => void handleAuth('login')}>
+                  登录
+                </button>
+                <button disabled={authBusy || !authName.trim() || authPass.length < 6} onClick={() => void handleAuth('register')}>
+                  注册
+                </button>
+              </div>
+              {authError && <div className="error-text">{authError}</div>}
+              <p className="hint">登录后战绩将计入排行榜；不登录也可游客游玩</p>
+            </div>
+          )}
           <input
             className="name-input"
             placeholder="输入你的昵称（最多 8 字）"
@@ -202,6 +284,20 @@ function SetupScreen({
               ))
             )}
           </div>
+          {leaderboard.length > 0 && (
+            <div className="leaderboard">
+              <div className="panel-title">排行榜</div>
+              {leaderboard.map((entry, i) => (
+                <div key={entry.username} className="lb-row">
+                  <span className="lb-rank">{i + 1}</span>
+                  <span className="lb-name">{entry.username}</span>
+                  <span className="lb-stats">
+                    {entry.wins} 胜 / {entry.games} 局
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
           <p className="hint">创建房间后把房间码发给好友，2 人即可开局（最多 4 人）</p>
         </div>
       )}
@@ -309,5 +405,6 @@ function GameScreen({ session, onExit }: { session: GameSession; onExit: () => v
     </div>
   );
 }
+
 
 

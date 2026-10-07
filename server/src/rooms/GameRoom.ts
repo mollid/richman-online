@@ -15,20 +15,43 @@ const DEFAULT_NAMES = ['阿福', '小美', '大宝', '金宝'];
 const OFFLINE_AUTO_ACT_DELAY_MS = 3000;
 const RECONNECT_TIMEOUT_SEC = 60;
 
+interface AuthResult {
+  userId?: string;
+  username?: string;
+}
+
 /**
  * 权威对战房间：
  * - 全部规则计算通过 @richman/shared 引擎完成，客户端只负责表现
  * - 每次状态变化后广播完整快照（回合制游戏足够，后续可优化为增量同步）
- * - 内置聊天、断线重连（20s 窗口）与掉线托管
+ * - 内置聊天、断线重连（60s 窗口）与掉线托管、账号绑定与战绩入库
  */
 export class GameRoom extends Room {
   maxClients = 4;
   private game!: GameState;
   private autoActTimer: ReturnType<typeof setTimeout> | null = null;
+  private seed = 0;
+  private recordSaved = false;
+  private userIds = new Map<string, string>();
+
+  /** 携带 token 的玩家绑定账号，其余以游客身份进入 */
+  async onAuth(_client: Client, options: { token?: string }): Promise<AuthResult | boolean> {
+    const token = (options.token ?? '').trim();
+    if (!token) return true;
+    try {
+      const { getSessionUser } = await import('../storage.js');
+      const user = await getSessionUser(token);
+      if (!user) return true; // token 无效时降级为游客，不阻断进入房间
+      return { userId: user.id, username: user.username };
+    } catch {
+      return true;
+    }
+  }
 
   onCreate(options: { seed?: number; maxPlayers?: number }) {
     this.maxClients = Math.min(Math.max(options.maxPlayers ?? 4, 2), 4);
-    this.game = createGame([], options.seed ?? Date.now() % 2147483647);
+    this.seed = options.seed ?? Date.now() % 2147483647;
+    this.game = createGame([], this.seed);
     this.updateMetadata('lobby');
 
     this.onMessage('start_game', (client) => {
@@ -69,12 +92,13 @@ export class GameRoom extends Room {
     });
   }
 
-  onJoin(client: Client, options: { name?: string }) {
+  onJoin(client: Client, options: { name?: string }, auth?: AuthResult) {
     if (this.game.phase !== 'lobby') {
       throw new Error('对局已开始，无法加入');
     }
     const index = this.game.players.length;
-    const rawName = (options.name ?? '').trim().slice(0, 8);
+    if (auth?.userId) this.userIds.set(client.sessionId, auth.userId);
+    const rawName = (auth?.username ?? options.name ?? '').trim().slice(0, 8);
     this.game = addPlayer(this.game, {
       id: client.sessionId,
       name: rawName || DEFAULT_NAMES[index % DEFAULT_NAMES.length]!,
@@ -87,6 +111,7 @@ export class GameRoom extends Room {
   async onLeave(client: Client, consented: boolean) {
     if (this.game.phase === 'lobby') {
       this.game = removePlayer(this.game, client.sessionId);
+      this.userIds.delete(client.sessionId);
       this.updateMetadata('lobby');
       this.broadcastState();
       return;
@@ -171,8 +196,30 @@ export class GameRoom extends Room {
   private broadcastState() {
     if (this.game.phase === 'game_over' && this.metadata?.phase !== 'finished') {
       this.updateMetadata('finished');
+      this.trySaveRecord();
     }
     this.broadcast('state', { game: this.game, actions: availableActions(this.game) });
   }
-}
 
+  /** 对局结束后写入战绩（尽力而为，不阻塞广播） */
+  private trySaveRecord(): void {
+    if (this.recordSaved) return;
+    this.recordSaved = true;
+    const winner = this.game.players.find((p) => p.id === this.game.winnerId);
+    void import('../storage.js').then(({ saveGameRecord }) =>
+      saveGameRecord({
+        roomId: this.roomId,
+        seed: this.seed,
+        winnerName: winner?.name ?? null,
+        turns: this.game.turn,
+        rounds: this.game.round,
+        players: this.game.players.map((p) => ({
+          userId: this.userIds.get(p.id) ?? null,
+          playerName: p.name,
+          cash: p.cash,
+          bankrupt: p.bankrupt,
+        })),
+      }),
+    );
+  }
+}

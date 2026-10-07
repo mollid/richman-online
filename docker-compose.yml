@@ -41,5 +41,14 @@ services:
       redis:
         condition: service_healthy
 
+  client:
+    build:
+      context: .
+      dockerfile: client/Dockerfile
+    ports:
+      - '8080:80'
+    depends_on:
+      - server
+
 volumes:
   pgdata:

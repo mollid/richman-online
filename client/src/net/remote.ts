@@ -56,9 +56,10 @@ export class ColyseusSession implements GameSession {
   /** 创建或加入房间并建立会话 */
   static async connect(opts: { playerName: string; roomId?: string; seed?: number }): Promise<ColyseusSession> {
     const client = new Client(serverUrl());
+    const token = localStorage.getItem('richman.token') ?? undefined;
     const room = opts.roomId
-      ? await client.joinById(opts.roomId, { name: opts.playerName })
-      : await client.create('game', { name: opts.playerName, seed: opts.seed });
+      ? await client.joinById(opts.roomId, { name: opts.playerName, token })
+      : await client.create('game', { name: opts.playerName, seed: opts.seed, token });
     return new ColyseusSession(room, opts.playerName, emptyState());
   }
 
@@ -271,6 +272,7 @@ function readSavedSession(): { token: string; name: string } | null {
     return null;
   }
 }
+
 
 
 
