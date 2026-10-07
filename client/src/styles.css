@@ -1677,3 +1677,371 @@ button.mini {
   padding-top: 6px;
   border-top: 1px dashed rgba(84, 110, 122, 0.35);
 }
+
+/* ---------- 弹窗通用底板（设置 / 帮助） ---------- */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.modal-card {
+  width: 100%;
+  max-width: 620px;
+  max-height: 88vh;
+  display: flex;
+  flex-direction: column;
+  background: #16211b;
+  border: 1px solid #2e4034;
+  border-radius: 12px;
+  padding: 14px;
+}
+
+.modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.modal-head .panel-title {
+  margin-bottom: 0;
+}
+
+/* ---------- 设置面板 ---------- */
+.settings-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow-y: auto;
+}
+
+.settings-group {
+  border-top: 1px dashed rgba(84, 110, 122, 0.35);
+  padding-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.settings-group-title {
+  font-size: 12px;
+  color: #81c784;
+}
+
+.settings-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  color: #eceff1;
+}
+
+.settings-row > span:first-child {
+  min-width: 96px;
+}
+
+.settings-row input[type='range'] {
+  flex: 1;
+  min-width: 0;
+  accent-color: #e91e63;
+}
+
+.settings-row input[type='checkbox'] {
+  width: 16px;
+  height: 16px;
+  accent-color: #e91e63;
+  cursor: pointer;
+}
+
+.settings-row input[type='number'] {
+  width: 72px;
+  background: #263238;
+  border: 1px solid #546e7a;
+  border-radius: 6px;
+  padding: 6px 8px;
+  color: #eceff1;
+  font-family: inherit;
+  font-size: 13px;
+}
+
+.settings-row select {
+  background: #263238;
+  border: 1px solid #546e7a;
+  border-radius: 6px;
+  padding: 6px 8px;
+  color: #eceff1;
+  font-family: inherit;
+  font-size: 13px;
+}
+
+.settings-value {
+  min-width: 30px;
+  text-align: right;
+  color: #a5d6a7;
+  font-size: 13px;
+}
+
+/* 开始界面的设置/帮助按钮与模式 tab 并排 */
+button.setup-tool {
+  padding: 8px 10px;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.settings-hint {
+  font-size: 11px;
+  color: #607d8b;
+}
+
+.settings-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.settings-actions .settings-hint {
+  flex: 1;
+  min-width: 0;
+}
+
+.settings-footer {
+  border-top: 1px dashed rgba(84, 110, 122, 0.35);
+  padding-top: 10px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* 指令热键列表 */
+.hotkey-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.hotkey-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.hotkey-row .hotkey-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+}
+
+.hotkey-row button {
+  min-width: 72px;
+}
+
+.date-row {
+  display: flex;
+  gap: 10px;
+}
+
+.date-row label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: #90a4ae;
+}
+
+/* ---------- 帮助面板（UI-08） ---------- */
+.help-panel {
+  max-width: 760px;
+}
+
+.help-filter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.help-filter input {
+  flex: 1;
+  min-width: 0;
+  background: #263238;
+  border: 1px solid #546e7a;
+  border-radius: 6px;
+  padding: 8px 10px;
+  color: #eceff1;
+  font-family: inherit;
+  font-size: 13px;
+}
+
+.help-filter input:focus {
+  border-color: #81c784;
+  outline: none;
+}
+
+.help-count {
+  font-size: 11px;
+  color: #607d8b;
+  white-space: nowrap;
+}
+
+.help-list {
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.help-group-title {
+  font-size: 12px;
+  color: #81c784;
+  position: sticky;
+  top: 0;
+  background: #16211b;
+  padding: 2px 0;
+}
+
+.help-item {
+  display: flex;
+  gap: 8px;
+  padding: 6px 0;
+  border-bottom: 1px dashed rgba(84, 110, 122, 0.25);
+}
+
+.help-no {
+  flex-shrink: 0;
+  font-size: 12px;
+  color: #ffab91;
+  font-variant-numeric: tabular-nums;
+}
+
+.help-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  line-height: 1.7;
+  color: #cfd8dc;
+}
+
+/* UI-10 动画总开关：由 SettingsPanel 写入 data-animations 到 <html> */
+html[data-animations='off'] *,
+html[data-animations='off'] *::before,
+html[data-animations='off'] *::after {
+  animation-duration: 0s !important;
+  transition-duration: 0s !important;
+}
+
+/* ---------- 公布栏交易（波 10b，UI-06） ---------- */
+.trade-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border: 1px solid rgba(129, 199, 212, 0.35);
+}
+
+.trade-section-title {
+  font-size: 12px;
+  color: #80deea;
+  margin-top: 4px;
+}
+
+.trade-list,
+.trade-assets {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.trade-assets {
+  flex-direction: row;
+  flex-wrap: wrap;
+}
+
+.trade-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  padding: 4px 6px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.trade-kind {
+  flex: none;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: rgba(128, 222, 234, 0.18);
+  color: #80deea;
+  font-size: 10px;
+}
+
+.trade-label {
+  flex: 1;
+  color: #eceff1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.trade-seller {
+  flex: none;
+  color: #90a4ae;
+}
+
+.trade-price {
+  flex: none;
+  color: #a5d6a7;
+  font-weight: 600;
+}
+
+.trade-empty,
+.trade-hint {
+  font-size: 11px;
+  color: #607d8b;
+  line-height: 1.5;
+}
+
+.trade-form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border-radius: 6px;
+  background: rgba(128, 222, 234, 0.08);
+}
+
+.trade-form-label {
+  font-size: 12px;
+  color: #e0f7fa;
+}
+
+.trade-history {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.trade-history-row {
+  font-size: 10px;
+  color: #78909c;
+}
+
+/* ---------- 地图观察（UI-07） ---------- */
+.board-reset-view {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  z-index: 5;
+  opacity: 0.75;
+}
+
+.board-reset-view:hover {
+  opacity: 1;
+}

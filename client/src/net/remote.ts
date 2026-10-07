@@ -281,6 +281,8 @@ function emptyState(): GameState {
     magic: null,
     landGodCooldownMonth: 0,
     pendingCard: null,
+    trades: [],
+    tradeHistory: [],
   };
 }
 

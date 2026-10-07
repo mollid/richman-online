@@ -1,5 +1,6 @@
 import type { ChatMessage } from './remote.js';
 import { applyAction, createGame, type DateSerial, type GameState, type PlayerAction } from '@richman/shared';
+import { getSettings } from '../game/settings.js';
 
 /** 会话抽象：本地热座与联机共用同一套 UI */
 export interface GameSession {
@@ -24,13 +25,60 @@ export interface GameSession {
   onConnectionChange?(fn: (state: 'connected' | 'reconnecting' | 'closed') => void): () => void;
 }
 
+/** UI-12 自动存档的 localStorage 键（每回合记录一次快照） */
+const AUTOSAVE_KEY = 'richman.autosave';
+
+/** 起始日期：优先取 OPTION 设置（TIME-06），缺省用系统日期 */
+function resolveStartDate(): DateSerial {
+  const configured = getSettings().startDate;
+  if (configured) {
+    return { year: configured.year, month: configured.month, day: configured.day };
+  }
+  const now = new Date();
+  return { year: now.getFullYear(), month: now.getMonth() + 1, day: now.getDate() };
+}
+
+/** UI-03 存储 / 读取：热座模式的对局存档接口 */
+export function saveHotseatGame(game: GameState, slot = 'auto'): boolean {
+  try {
+    localStorage.setItem(`${AUTOSAVE_KEY}.${slot}`, JSON.stringify({ savedAt: Date.now(), game }));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function loadHotseatGame(slot = 'auto'): GameState | null {
+  try {
+    const raw = localStorage.getItem(`${AUTOSAVE_KEY}.${slot}`);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { game?: GameState };
+    return parsed.game ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export function clearHotseatGame(slot = 'auto'): void {
+  try {
+    localStorage.removeItem(`${AUTOSAVE_KEY}.${slot}`);
+  } catch {
+    /* 忽略存储异常 */
+  }
+}
+
 /** M1：本地热座会话（所有人共用一台设备轮流操作） */
 export class LocalHotseatSession implements GameSession {
   private game: GameState;
   private listeners = new Set<(g: GameState) => void>();
   readonly myPlayerId = null;
 
-  constructor(playerCount: number, seed = Date.now() % 2147483647) {
+  constructor(playerCount: number, seed = Date.now() % 2147483647, resume?: GameState | null) {
+    if (resume) {
+      // UI-03 读档：直接沿用存档状态
+      this.game = resume;
+      return;
+    }
     const names = ['阿福', '小美', '大宝', '金宝'];
     const colors = [0xef5350, 0x42a5f5, 0x66bb6a, 0xffee58];
     const players = Array.from({ length: playerCount }, (_, i) => ({
@@ -38,9 +86,7 @@ export class LocalHotseatSession implements GameSession {
       name: names[i]!,
       color: colors[i]!,
     }));
-    const now = new Date();
-    const startDate: DateSerial = { year: now.getFullYear(), month: now.getMonth() + 1, day: now.getDate() };
-    this.game = applyAction(createGame(players, seed, { startDate }), { type: 'START_GAME' });
+    this.game = applyAction(createGame(players, seed, { startDate: resolveStartDate() }), { type: 'START_GAME' });
   }
 
   getGame(): GameState {
@@ -49,6 +95,8 @@ export class LocalHotseatSession implements GameSession {
 
   dispatch(action: PlayerAction): void {
     this.game = applyAction(this.game, action);
+    // UI-12 自动存档：每回合（turn 变化）记录一次快照
+    if (getSettings().autoSave) saveHotseatGame(this.game);
     for (const fn of this.listeners) fn(this.game);
   }
 

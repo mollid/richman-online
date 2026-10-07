@@ -1,8 +1,13 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { availableActions, type GameState, type PlayerAction } from '@richman/shared';
 import { BoardRenderer } from './game/BoardRenderer.js';
 import { sfx } from './game/sfx.js';
-import { LocalHotseatSession, type GameSession } from './net/session.js';
+import {
+  loadHotseatGame,
+  LocalHotseatSession,
+  saveHotseatGame,
+  type GameSession,
+} from './net/session.js';
 import { ColyseusSession, hasSavedSession, type RoomSummary } from './net/remote.js';
 import {
   fetchLeaderboard,
@@ -28,14 +33,18 @@ import { ShopPanel } from './ui/ShopPanel.js';
 import { LotteryPanel } from './ui/LotteryPanel.js';
 import { NpcPanel } from './ui/NpcPanel.js';
 import { ReportPanel } from './ui/ReportPanel.js';
+import { TradePanel } from './ui/TradePanel.js';
 import { AuctionPanel } from './ui/AuctionPanel.js';
 import { ChatPanel } from './ui/ChatPanel.js';
 import { ReplayScreen } from './ui/ReplayScreen.js';
 import { useGameSfx } from './ui/useGameSfx.js';
+import { useHotkeys } from './ui/useHotkeys.js';
+import { SettingsPanel } from './ui/SettingsPanel.js';
+import { HelpPanel } from './ui/HelpPanel.js';
 
 type SetupMode = 'local' | 'online' | 'replay';
 
-type SidebarTab = 'status' | 'finance' | 'shop' | 'market' | 'report' | 'log';
+type SidebarTab = 'status' | 'finance' | 'shop' | 'market' | 'report' | 'trade' | 'log';
 
 const SIDEBAR_TABS: Array<[SidebarTab, string]> = [
   ['status', '状态'],
@@ -43,6 +52,7 @@ const SIDEBAR_TABS: Array<[SidebarTab, string]> = [
   ['shop', '商店'],
   ['market', '股市'],
   ['report', '报表'],
+  ['trade', '交易'],
   ['log', '日志'],
 ];
 
@@ -51,12 +61,38 @@ export default function App() {
   const [replayRecord, setReplayRecord] = useState<ReplayRecord | null>(null);
   const [connecting, setConnecting] = useState(false);
   const [connectError, setConnectError] = useState('');
+  const [showSettings, setShowSettings] = useState(false);
+  const [showHelp, setShowHelp] = useState(false);
+
+  const { registerAction } = useHotkeys();
+
+  // UI-02：面板类热键在任何界面都可用
+  useEffect(() => registerAction('open_settings', () => setShowSettings(true)), [registerAction]);
+  useEffect(() => registerAction('open_help', () => setShowHelp(true)), [registerAction]);
 
   const startLocal = (playerCount: number) => {
     session?.destroy();
     setConnectError('');
     setSession(new LocalHotseatSession(playerCount));
   };
+
+  // UI-03 存储 / 读取：手动存 / 读档（仅热座模式）
+  const saveGame = useCallback(() => {
+    if (!session || session.roomId) return;
+    const ok = saveHotseatGame(session.getGame());
+    setConnectError(ok ? '' : '存档失败：浏览器存储不可用');
+  }, [session]);
+
+  const loadGame = useCallback(() => {
+    const restored = loadHotseatGame();
+    if (!restored) {
+      setConnectError('没有可读取的存档');
+      return;
+    }
+    session?.destroy();
+    setConnectError('');
+    setSession(new LocalHotseatSession(restored.players.length, 0, restored));
+  }, [session]);
 
   const resumeLast = async () => {
     setConnecting(true);
@@ -95,36 +131,62 @@ export default function App() {
     setSession(null);
   };
 
+  // 设置 / 帮助面板挂在最外层，任何界面都能通过热键或按钮打开
+  const overlays = (
+    <>
+      {showSettings && <SettingsPanel onClose={() => setShowSettings(false)} />}
+      {showHelp && <HelpPanel onClose={() => setShowHelp(false)} />}
+    </>
+  );
+
   if (replayRecord) {
-    return <ReplayScreen record={replayRecord} onExit={() => setReplayRecord(null)} />;
+    return (
+      <>
+        <ReplayScreen record={replayRecord} onExit={() => setReplayRecord(null)} />
+        {overlays}
+      </>
+    );
   }
 
   if (!session) {
     return (
-      <SetupScreen
-        onStartLocal={startLocal}
-        onConnect={connectRemote}
-        onResume={resumeLast}
-        onWatchReplay={async (id) => {
-          setConnectError('');
-          try {
-            setReplayRecord(await fetchRecord(id));
-          } catch (e) {
-            setConnectError(e instanceof Error ? e.message : '获取回放失败');
-          }
-        }}
-        connecting={connecting}
-        error={connectError}
-      />
+      <>
+        <SetupScreen
+          onStartLocal={startLocal}
+          onConnect={connectRemote}
+          onResume={resumeLast}
+          onWatchReplay={async (id) => {
+            setConnectError('');
+            try {
+              setReplayRecord(await fetchRecord(id));
+            } catch (e) {
+              setConnectError(e instanceof Error ? e.message : '获取回放失败');
+            }
+          }}
+          connecting={connecting}
+          error={connectError}
+          onOpenSettings={() => setShowSettings(true)}
+          onSaveGame={saveGame}
+          onLoadGame={loadGame}
+          onOpenHelp={() => setShowHelp(true)}
+        />
+        {overlays}
+      </>
     );
   }
 
   return (
-    <GameScreen
-      key={`${session.roomId ?? 'local'}:${session.myPlayerId ?? 'hotseat'}`}
-      session={session}
-      onExit={exit}
-    />
+    <>
+      <GameScreen
+        key={`${session.roomId ?? 'local'}:${session.myPlayerId ?? 'hotseat'}`}
+        session={session}
+        onExit={exit}
+        registerAction={registerAction}
+        onOpenSettings={() => setShowSettings(true)}
+        onOpenHelp={() => setShowHelp(true)}
+      />
+      {overlays}
+    </>
   );
 }
 
@@ -135,6 +197,8 @@ function SetupScreen({
   onWatchReplay,
   connecting,
   error,
+  onOpenSettings,
+  onOpenHelp,
 }: {
   onStartLocal: (playerCount: number) => void;
   onConnect: (playerName: string, roomId?: string) => void;
@@ -142,6 +206,11 @@ function SetupScreen({
   onWatchReplay: (recordId: string) => void;
   connecting: boolean;
   error: string;
+  onOpenSettings: () => void;
+  /** UI-03 存 / 读档（仅热座模式） */
+  onSaveGame?: () => void;
+  onLoadGame?: () => void;
+  onOpenHelp: () => void;
 }) {
   const [mode, setMode] = useState<SetupMode>('local');
   const [playerCount, setPlayerCount] = useState(2);
@@ -223,6 +292,12 @@ function SetupScreen({
         </button>
         <button className={mode === 'replay' ? 'active' : ''} onClick={() => setMode('replay')}>
           对局回放
+        </button>
+        <button className="ghost small setup-tool" title="设置" onClick={onOpenSettings}>
+          ⚙️
+        </button>
+        <button className="ghost small setup-tool" title="帮助" onClick={onOpenHelp}>
+          ❓
         </button>
       </div>
 
@@ -378,7 +453,24 @@ function SetupScreen({
   );
 }
 
-function GameScreen({ session, onExit }: { session: GameSession; onExit: () => void }) {
+function GameScreen({
+  session,
+  onExit,
+  registerAction,
+  onOpenSettings,
+  onOpenHelp,
+  onSaveGame,
+  onLoadGame,
+}: {
+  session: GameSession;
+  onExit: () => void;
+  registerAction: (name: string, fn: () => void) => () => void;
+  onOpenSettings: () => void;
+  /** UI-03 存 / 读档（仅热座模式） */
+  onSaveGame?: () => void;
+  onLoadGame?: () => void;
+  onOpenHelp: () => void;
+}) {
   const [game, setGame] = useState<GameState>(session.getGame());
   const [netError, setNetError] = useState('');
   const [connection, setConnection] = useState<'connected' | 'reconnecting' | 'closed'>('connected');
@@ -415,7 +507,6 @@ function GameScreen({ session, onExit }: { session: GameSession; onExit: () => v
     rendererRef.current?.setState(game);
   }, [game]);
 
-  const onAction = (action: PlayerAction) => session.dispatch(action);
   const current = game.players[game.currentPlayerIndex];
   const isMyTurn =
     session.myPlayerId == null || (current != null && current.id === session.myPlayerId);
@@ -438,9 +529,53 @@ function GameScreen({ session, onExit }: { session: GameSession; onExit: () => v
     lastContext.current = contextTab;
   }, [contextTab]);
 
+  // UI-02 指令热键：把动作名绑到真实实现。
+  // onAction 保持“收到就派发”的原语义（面板按钮依赖它，含强制舍弃手牌等流程）；
+  // 只有热键路径才额外检查当前是否轮到自己，避免非我方回合误触发。
+  const armed = useRef(false);
+  useEffect(() => {
+    armed.current = interactive && game.phase !== 'awaiting_discard';
+  }, [interactive, game.phase]);
+
+  const onAction = useCallback(
+    (action: PlayerAction) => {
+      session.dispatch(action);
+    },
+    [session],
+  );
+
+  const hotkeyAction = useCallback(
+    (action: PlayerAction) => {
+      if (!armed.current) return;
+      session.dispatch(action);
+    },
+    [session],
+  );
+
+  const doRoll = useCallback(() => hotkeyAction({ type: 'ROLL_DICE' }), [hotkeyAction]);
+  const setReportTab = useCallback(() => setTab('report'), []);
+  const toggleMute = useCallback(() => setMuted(sfx.toggleMuted()), []);
+  useEffect(() => registerAction('roll_dice', doRoll), [registerAction, doRoll]);
+  useEffect(() => registerAction('buy_land', () => hotkeyAction({ type: 'BUY_LAND' })), [registerAction, hotkeyAction]);
+  useEffect(
+    () => registerAction('upgrade_land', () => hotkeyAction({ type: 'UPGRADE_LAND' })),
+    [registerAction, hotkeyAction],
+  );
+  useEffect(() => registerAction('end_turn', () => hotkeyAction({ type: 'END_TURN' })), [registerAction, hotkeyAction]);
+  useEffect(() => registerAction('toggle_report', setReportTab), [registerAction, setReportTab]);
+  useEffect(() => registerAction('toggle_mute', toggleMute), [registerAction, toggleMute]);
+
   return (
     <div className="game-screen">
       <div className="board-area" ref={boardRef}>
+        {/* UI-07 地图指令：滚轮缩放 / 拖拽平移，此按钮回到自适应满屏 */}
+        <button
+          className="ghost small board-reset-view"
+          title="回到全图（滚轮缩放 / 拖拽平移）"
+          onClick={() => rendererRef.current?.resetView()}
+        >
+          🗺️ 全图
+        </button>
         {game.phase === 'lobby' && isRemote && (
           <div className="lobby-overlay">
             <div className="lobby-card">
@@ -484,10 +619,26 @@ function GameScreen({ session, onExit }: { session: GameSession; onExit: () => v
           <button
             className="ghost small"
             title={muted ? '开启音效' : '静音'}
-            onClick={() => setMuted(sfx.toggleMuted())}
+            onClick={toggleMute}
           >
             {muted ? '🔇' : '🔊'}
           </button>
+          <button className="ghost small" title="帮助" onClick={onOpenHelp}>
+            ❓
+          </button>
+          <button className="ghost small" title="设置" onClick={onOpenSettings}>
+            ⚙️
+          </button>
+          {!isRemote && (
+            <>
+              <button className="ghost small" title="存档" onClick={onSaveGame}>
+                💾
+              </button>
+              <button className="ghost small" title="读档" onClick={onLoadGame}>
+                📂
+              </button>
+            </>
+          )}
           <button className="ghost small" onClick={onExit}>
             退出
           </button>
@@ -537,6 +688,7 @@ function GameScreen({ session, onExit }: { session: GameSession; onExit: () => v
           ))}
         {tab === 'market' && <StockPanel game={game} onAction={onAction} interactive={interactive} />}
         {tab === 'report' && <ReportPanel game={game} myPlayerId={session.myPlayerId} />}
+        {tab === 'trade' && <TradePanel game={game} onAction={onAction} interactive={interactive} />}
         {tab === 'log' && (
           <>
             <ChatPanel session={session} myPlayerId={session.myPlayerId} />
