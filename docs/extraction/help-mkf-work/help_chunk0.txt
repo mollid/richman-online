@@ -1,0 +1,44 @@
+chunk0 SMP 数据区大小 = 344490 字节
+可读(非替换)字符总数 = 165919 (占比 48.2%)
+连续可读段(>=4字符)数量 = 3609
+样例可读段 (前 40 段，每段截断 80 字符):
+  SMPB
+  J dZo預
+  szkzkYozkyozk
+  syoXo8kXkoyo
+  swwwww
+  owwyo零yo漬www猣w漬ww猣
+  swwww製漬製w閐製
+  s製w製ww漬猣w
+  s猣w漬
+  syoyoyowwxswwyo
+  syoYo
+  sYoXoyoyo
+  sZso
+  syoyo
+  owZsyo
+  szkw
+  syow製製w
+  sZswyo猣製漬wwwww漬w漬ww漬漬閐漬製
+  漬閐漬wwwwww漬w漬閐閐ww製漬閐
+  製漬w製漬w漬
+  s漬漬猣wwo
+  sw零製ow
+  syoyowkyow
+  s猣www
+  s製w製o製wo製製製yowyoWkwwyo
+  syozkwww
+  o猣www
+  syowyo猣Zsyow
+  syozk
+  szkXkYozk
+  ozkzkzkzkXkykwyoYoYo8kXkYo9gXoYoYsyoXo8kxszk
+  ozkyozkYoyo
+  k8kzkYoYo8kYoyo9gzk
+  ozkykZszkyozkXoYsyowwykXo
+  g8czk
+  sXkXoyoykYsZszkzkYo8kXk
+  kXo9g8k9gXo6k9gYo9gYgXkYgYoXoYoYowk8k8k9ggXk8kXkYoXg9gYg8kg7g9g7g9gXk7gg9gg躖7g9g
+  sYszoys
+  kYozo
+  sw製ww

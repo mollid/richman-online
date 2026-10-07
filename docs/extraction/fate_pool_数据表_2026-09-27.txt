@@ -1,0 +1,133 @@
+# 大富翁4 命運池数据表(2026-09-27,mytbk/rich4 @ec7d70e 反汇编提取)
+# 抽签: fcn_0044db81 | 前提: fortune_check@0x44bb4b | 效果表 ref_00475ef0 共 49 项
+# 牌 id 0-32 = 公共池(table[id]);id 33-48 = 地图专属(table[map_gid*16+id])
+# 牌堆数组 0x496b38 + 游标 0x4990b4;卡面图 DATA.mkf 索引表 ref_00475fb4
+
+== 效果表 id -> 函数 -> 文本 -> 调用面 ==
+[ 0] fcn_0044be16
+     调用: ['_rich4_draw_text', '_rich4_player_say', 'fcn_0041d3f4']
+[ 1] fcn_0044bfb1
+     调用: ['_rich4_draw_text', 'fcn_0041d3f4']
+[ 2] fcn_0044c0e8
+     调用: ['_rich4_draw_text', 'fcn_0044b896', 'fcn_0044ba63']
+[ 3] fcn_0044c229
+     调用: ['_rich4_draw_text', 'fcn_0044b896']
+[ 4] fcn_0044c2c2
+     调用: ['_rich4_draw_text', 'fcn_0041d2c6']
+[ 5] fcn_0044c3b7
+     调用: ['_rich4_create_font', '_rich4_draw_text', '_rich4_player_card_num', '_rich4_player_drop_random_card', '_rich4_player_say', '_rich4_receive_card', '_rich4_string_strip_spaces']
+[ 6] fcn_0044c5d8
+     调用: ['_rich4_draw_text', '_rich4_try_mianzui_jiahuo_card', 'fcn_0044b896']
+[ 7] fcn_0044c6ed
+     调用: ['_rich4_draw_text', '_rich4_try_mianzui_jiahuo_card', 'fcn_0044b896']
+[ 8] fcn_0044c7ef
+     调用: ['_rich4_draw_text', '_rich4_sell_stock', 'fcn_0044b896']
+[ 9] fcn_0044c91f
+     调用: ['_rich4_draw_text', '_rich4_player_say', '_rich4_sell_stock', '_rich4_update_player_info_window', 'fcn_0044b896']
+[10] fcn_0044ca46
+     调用: ['_rich4_draw_text', '_rich4_player_say', '_rich4_update_player_sprite', 'fcn_0044b896']
+[11] fcn_0044cb53
+     调用: ['_rich4_draw_text', '_rich4_player_say', '_rich4_update_player_sprite', 'fcn_0044b896']
+[12] fcn_0044cc53
+     调用: ['_rich4_add_player_days_in_hospital', '_rich4_draw_text', '_rich4_try_mianzui_jiahuo_card', 'fcn_0044b896']
+[13] fcn_0044cd6c
+[14] fcn_0044cd99
+     调用: ['_rich4_draw_text', 'fcn_0041d2c6', 'fcn_0044b896', 'fcn_0044ba63']
+[15] fcn_0044cf1e
+     调用: ['_rich4_draw_text', 'fcn_0044b896']
+[16] fcn_0044d06d
+[17] fcn_0044d0d6
+     调用: ['_rich4_draw_text', 'fcn_0044b896']
+[18] fcn_0044d1a5
+[19] fcn_0044d1e0
+[20] fcn_0044d224
+     调用: ['_rich4_draw_text', 'fcn_0041d3f4', 'fcn_0044b896']
+[21] fcn_0044d33b
+     调用: ['_rich4_draw_text']
+[22] fcn_0044d3db
+[23] fcn_0044d41e
+[24] fcn_0044d462
+[25] fcn_0044d4a6
+[26] fcn_0044d4e7
+[27] fcn_0044d52b
+[28] fcn_0044d56e
+[29] fcn_0044d5b1
+[30] fcn_0044d5f4
+[31] fcn_0044d636
+[32] fcn_0044d677
+     调用: ['_rich4_draw_text', '_rich4_player_say', '_rich4_player_sell_all_the_card', '_rich4_player_sell_all_tools', '_rich4_update_player_info_window', 'fcn_0044b896']
+[33] fcn_0044d783
+     调用: ['_rich4_add_player_days_in_prison', '_rich4_draw_text', '_rich4_player_say', '_rich4_try_mianzui_jiahuo_card', 'fcn_0044b896']
+[34] fcn_0044d8cf
+[35] fcn_0044d8fd
+[36] fcn_0044d92b
+[37] fcn_0044d959
+[38] fcn_0044d987
+[39] fcn_0044d9b5
+[40] fcn_0044d9e3
+[41] fcn_0044da11
+[42] fcn_0044da3f
+[43] fcn_0044da6d
+[44] fcn_0044da9b
+[45] fcn_0044dac9
+[46] fcn_0044daf7
+[47] fcn_0044db25
+[48] fcn_0044db53
+
+== 全部字符串 ==
+0x465915: #0185強制拆除房屋一棟
+0x46592b: #0186強制徵收土地一處
+0x465941: #0187人頭被盜用冒貸%d元
+0x465959: #0188支票跳票
+銀行拒絕往來一個月
+0x46597a: #0189侵入銀行電腦
+挪用其他人存款%d％
+0x4659a2: �B#0190今天是你生日
+向每人收取一張卡片
+0x4659c9: 向%s收一張卡片
+0x4659d8: #0191強迫出國觀光%d天
+0x4659ee: #0192被外星人綁架%d天
+0x465a04: #0193股票違約交割損失股票%d％
+0x465a26: �B#0194變賣所有股票求現
+0x465a3e: #0195機車被偷遺失
+0x465a50: #0196汽車撞電線桿全毀
+0x465a66: #0197掉進水溝就醫%d天
+0x465a7c: #0198騎機車摔傷住院%d天
+0x465a94: #0199行人闖越馬路罰款%d元
+0x465aae: #0200騎機車未戴安全帽
+罰款%d元
+0x465acd: #0201汽車超速罰款%d元
+0x465ae3: #0202請所有人吃大餐
+花費%d元
+0x465b00: #0203亂丟垃圾罰款%d元
+0x465b16: #0204你家小狗亂大小便
+罰款%d元
+0x465b35: #0205在路邊撿到%d元
+0x465b49: #0206在路邊撿到%d元
+0x465b5d: #0207在路邊撿到%d元
+0x465b71: #0208遺失錢包損失%d元
+0x465b87: #0209遺失錢包損失%d元
+0x465b9d: #0210意外獲得遺產%d元
+0x465bb3: #0211被倒會損失%d元
+0x465bc7: #0212發票中獎%d元
+0x465bd9: #0213發票中獎%d元
+0x465beb: #0214發票中獎%d元
+0x465bfd: #0215付保險金%d元
+0x465c0f: #0216領取保險金%d元
+0x465c23: #0217變賣所有卡片道具
+0x465c39: #0218酒醉大鬧警局坐牢%d天
+0x465c53: #0219防礙風化坐牢%d天
+0x465c69: #0220走私毒品坐牢%d天
+0x465c7f: #0221販賣大補帖坐牢%d天
+0x465c97: #0222酒醉大鬧警局坐牢%d天
+0x465cb1: #0223違法聚眾示威坐牢%d天
+0x465ccb: #0224獵捕保育動物坐牢%d天
+0x465ce5: #0225盜賣國寶坐牢%d天
+0x465cfb: #0226誘騙未成年少女拘役%d天
+0x465d17: #0227防礙風化坐牢%d天
+0x465d2d: #0228走私毒品坐牢%d天
+0x465d43: #0229施放毒氣坐牢%d天
+0x465d59: #0230非法持有槍械坐牢%d天
+0x465d73: #0231毆打警員坐牢%d天
+0x465d89: #0232獵捕保育動物坐牢%d天
+0x465da3: #0233盜賣國家機密坐牢%d天

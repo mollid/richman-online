@@ -1,0 +1,22 @@
+
+=== docs ===
+  characters.txt
+  global_vars.txt
+  libwine
+  map.txt
+  radare2_tips.txt
+  rich4_cfg.txt
+  saveload.txt
+  special_place.txt
+=== csrc/mkf ===
+  Makefile
+  graph_struct.c
+  graph_struct.h
+  mkf-format.md
+  mkf.c
+  mkf.h
+  mkf_decompress.c
+  mkf_decompress.h
+  qt_viewer
+  test
+DONE
