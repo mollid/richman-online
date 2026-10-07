@@ -17,6 +17,7 @@ export function PlayerList({ game, myPlayerId }: { game: GameState; myPlayerId?:
             <div className="player-info">
               <div className="player-name">
                 {p.name}
+                {p.id.startsWith('bot-') && <span className="badge bot">AI</span>}
                 {myPlayerId != null && p.id === myPlayerId && <span className="me-tag">你</span>}
                 {god && p.god && (
                   <span className="badge god" title={god.description}>

@@ -935,3 +935,19 @@ button.mini {
   gap: 6px;
   font-size: 16px;
 }
+
+
+/* ---------- 大厅按钮组 / AI 徽章 ---------- */
+.lobby-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.lobby-actions .primary {
+  flex: 1;
+}
+
+.badge.bot {
+  background: #37474f;
+  color: #b0bec5;
+}

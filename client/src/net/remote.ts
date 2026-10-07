@@ -206,6 +206,10 @@ export class ColyseusSession implements GameSession {
     this.room.send('start_game', {});
   }
 
+  addBot(): void {
+    this.room.send('add_bot', {});
+  }
+
   onError(fn: (message: string) => void): () => void {
     this.messageHandlers.add(fn);
     return () => this.messageHandlers.delete(fn);

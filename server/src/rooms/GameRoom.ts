@@ -4,8 +4,10 @@ import {
   addPlayer,
   applyAction,
   availableActions,
+  botDecide,
   createGame,
   forceGameOver,
+  nextRandom,
   removePlayer,
   type GameState,
   type PlayerAction,
@@ -35,6 +37,10 @@ export class GameRoom extends Room {
   private recordSaved = false;
   private userIds = new Map<string, string>();
   private actionLog: Array<{ turn: number; action: PlayerAction }> = [];
+  private botIds = new Set<string>();
+  private botTimer: ReturnType<typeof setTimeout> | null = null;
+  private botRngState = 1;
+  private botCounter = 0;
 
   /** 携带 token 的玩家绑定账号，其余以游客身份进入 */
   async onAuth(_client: Client, options: { token?: string }): Promise<AuthResult | boolean> {
@@ -53,8 +59,29 @@ export class GameRoom extends Room {
   onCreate(options: { seed?: number; maxPlayers?: number }) {
     this.maxClients = Math.min(Math.max(options.maxPlayers ?? 4, 2), 4);
     this.seed = options.seed ?? Date.now() % 2147483647;
+    this.botRngState = this.seed;
     this.game = createGame([], this.seed);
     this.updateMetadata('lobby');
+
+    this.onMessage('add_bot', (client) => {
+      try {
+        if (this.game.phase !== 'lobby') throw new Error('对局已开始，无法添加 AI');
+        if (this.game.players.length >= this.maxClients) throw new Error('房间已满');
+        const BOT_NAMES = ['阿智', '小灵', '阿巧'];
+        const idx = this.game.players.length;
+        const botId = `bot-${idx}-${this.botCounter++}`;
+        this.game = addPlayer(this.game, {
+          id: botId,
+          name: `AI·${BOT_NAMES[(idx - 1 + BOT_NAMES.length) % BOT_NAMES.length]!}`,
+          color: PLAYER_COLORS[idx % PLAYER_COLORS.length]!,
+        });
+        this.botIds.add(botId);
+        this.updateMetadata('lobby');
+        this.broadcastState();
+      } catch (e) {
+        this.sendError(client, e);
+      }
+    });
 
     this.onMessage('start_game', (client) => {
       try {
@@ -145,6 +172,7 @@ export class GameRoom extends Room {
 
   onDispose() {
     if (this.autoActTimer) clearTimeout(this.autoActTimer);
+    if (this.botTimer) clearTimeout(this.botTimer);
   }
 
   private setOnline(sessionId: string, online: boolean) {
@@ -211,6 +239,47 @@ export class GameRoom extends Room {
       this.trySaveRecord();
     }
     this.broadcast('state', { game: this.game, actions: availableActions(this.game) });
+    this.maybeScheduleBotAct();
+  }
+
+  /** 若当前行动者是 AI，安排其行动 */
+  private maybeScheduleBotAct() {
+    if (this.botTimer) return;
+    if (this.game.phase === 'lobby' || this.game.phase === 'game_over') return;
+    const current = this.game.players[this.game.currentPlayerIndex];
+    if (!current || !this.botIds.has(current.id)) return;
+    this.botTimer = setTimeout(() => {
+      this.botTimer = null;
+      this.botAct();
+    }, 700);
+  }
+
+  /** 执行一次 AI 动作（动作会进入 actionLog，因此回放完全一致） */
+  private botAct() {
+    if (this.game.phase === 'lobby' || this.game.phase === 'game_over') return;
+    const current = this.game.players[this.game.currentPlayerIndex];
+    if (!current || !this.botIds.has(current.id)) return;
+    const rng = () => {
+      const draw = nextRandom(this.botRngState);
+      this.botRngState = draw.nextState;
+      return draw.value;
+    };
+    const action = botDecide(this.game, current.id, rng);
+    if (!action) return;
+    try {
+      this.game = applyAction(this.game, action);
+      this.actionLog.push({ turn: this.game.turn, action });
+      this.broadcastState();
+    } catch (e) {
+      // 决策与规则冲突时降级为结束回合，避免 AI 卡死
+      if (this.game.phase === 'awaiting_action') {
+        this.game = applyAction(this.game, { type: 'END_TURN' });
+        this.actionLog.push({ turn: this.game.turn, action: { type: 'END_TURN' } });
+        this.broadcastState();
+      } else {
+        console.warn('[bot] 决策执行失败:', e instanceof Error ? e.message : e);
+      }
+    }
   }
 
   /** 对局结束后写入战绩（尽力而为，不阻塞广播） */

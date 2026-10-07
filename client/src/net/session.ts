@@ -13,6 +13,8 @@ export interface GameSession {
   readonly roomId?: string;
   /** 联机模式由房主触发开局 */
   startGame?(): void;
+  /** 联机模式：向房间添加 AI 玩家 */
+  addBot?(): void;
   /** 联机模式：服务器错误消息订阅 */
   onError?(fn: (message: string) => void): () => void;
   /** 联机模式：聊天 */

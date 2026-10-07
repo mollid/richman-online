@@ -7,3 +7,5 @@ export * from './cards.js';
 
 export * from './replay.js';
 
+export * from './bot.js';
+

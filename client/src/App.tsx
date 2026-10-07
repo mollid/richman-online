@@ -422,13 +422,22 @@ function GameScreen({ session, onExit }: { session: GameSession; onExit: () => v
                   </div>
                 ))}
               </div>
-              <button
-                className="primary"
-                disabled={game.players.length < 2}
-                onClick={() => session.startGame?.()}
-              >
-                开始对局{game.players.length < 2 ? '（至少 2 人）' : ''}
-              </button>
+              <div className="lobby-actions">
+                <button
+                  className="primary"
+                  disabled={game.players.length < 2}
+                  onClick={() => session.startGame?.()}
+                >
+                  开始对局{game.players.length < 2 ? '（至少 2 人）' : ''}
+                </button>
+                <button
+                  className="ghost"
+                  disabled={game.players.length >= 4 || !session.addBot}
+                  onClick={() => session.addBot?.()}
+                >
+                  🤖 添加 AI
+                </button>
+              </div>
               <p className="hint">把上方房间码发给好友即可加入</p>
             </div>
           </div>
