@@ -6,6 +6,7 @@ export type CellType =
   | 'tax'      // 缴税
   | 'hospital' // 医院：停留 1 回合
   | 'jail'     // 监狱：停留 2 回合
+  | 'game'     // 游戏厅：三仙归洞猜杯小游戏
   | 'shop'     // 商店：购买卡片
   | 'bank'     // 银行/证交所：买卖股票
   | 'god'      // 神庙：召唤神仙附身
@@ -75,7 +76,16 @@ export type Phase =
   | 'lobby'        // 等待玩家加入/开始
   | 'awaiting_roll'    // 等待当前玩家掷骰
   | 'awaiting_action'  // 等待当前玩家决策（买地/卡片/股票/结束）
+  | 'awaiting_pick'    // 小游戏进行中：等待猜杯
   | 'game_over';
+
+/** 三仙归洞小游戏状态 */
+export interface MinigameState {
+  /** 当前第几轮（0-2，共 3 轮） */
+  round: 0 | 1 | 2;
+  /** 每轮命中记录 */
+  hits: boolean[];
+}
 
 export interface LogEntry {
   turn: number;
@@ -115,6 +125,8 @@ export interface GameState {
   pendingFixedDice: number | null;
   /** 路障所在格（其他玩家经过必须停下，锥筒随之消失） */
   roadblocks: number[];
+  /** 进行中的小游戏 */
+  minigame: MinigameState | null;
 }
 
 export type PlayerAction =
@@ -126,7 +138,8 @@ export type PlayerAction =
   | { type: 'USE_CARD'; cardId: string; targetPlayerId?: string; stockId?: string; diceValue?: number }
   | { type: 'BUY_CARD'; cardId: string }
   | { type: 'BUY_STOCK'; stockId: string; quantity: number }
-  | { type: 'SELL_STOCK'; stockId: string; quantity: number };
+  | { type: 'SELL_STOCK'; stockId: string; quantity: number }
+  | { type: 'MINIGAME_PICK'; hole: 0 | 1 | 2 };
 
 /** 可用动作集合（UI 按此渲染按钮） */
 export interface AvailableActions {
@@ -136,8 +149,12 @@ export interface AvailableActions {
   canEnd: boolean;
   canShop: boolean;
   canTradeStock: boolean;
+  /** 小游戏猜杯可用 */
+  canPick: boolean;
   /** 当前阶段可使用的卡片 id 列表 */
   usableCards: string[];
 }
+
+
 
 

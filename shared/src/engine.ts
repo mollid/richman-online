@@ -37,6 +37,7 @@ export function createGame(players: PlayerDef[], seed = Date.now() % 2147483647)
     },
     pendingFixedDice: null,
     roadblocks: [],
+    minigame: null,
   };
 }
 
@@ -326,7 +327,11 @@ function mostValuableProperty(state: GameState, p: Player): PlayerProperty | und
 }
 
 export function availableActions(state: GameState): AvailableActions {
-  if (state.phase === 'awaiting_roll' || state.phase === 'awaiting_action') {
+  if (
+    state.phase === 'awaiting_roll' ||
+    state.phase === 'awaiting_action' ||
+    state.phase === 'awaiting_pick'
+  ) {
     const p = currentPlayer(state);
     const c = cellAt(state, p.position);
     const owned = cellOwner(state, c.id);
@@ -352,10 +357,20 @@ export function availableActions(state: GameState): AvailableActions {
       canEnd: state.phase === 'awaiting_action',
       canShop: state.phase === 'awaiting_action' && c.type === 'shop',
       canTradeStock: state.phase === 'awaiting_action' && c.type === 'bank',
+      canPick: state.phase === 'awaiting_pick',
       usableCards,
     };
   }
-  return { canRoll: false, canBuy: false, canUpgrade: false, canEnd: false, canShop: false, canTradeStock: false, usableCards: [] };
+  return {
+    canRoll: false,
+    canBuy: false,
+    canUpgrade: false,
+    canEnd: false,
+    canShop: false,
+    canTradeStock: false,
+    canPick: false,
+    usableCards: [],
+  };
 }
 
 function startGame(state: GameState): void {
@@ -487,6 +502,13 @@ function rollDice(state: GameState): void {
     return;
   }
 
+  if (c.type === 'game') {
+    state.minigame = { round: 0, hits: [] };
+    state.phase = 'awaiting_pick';
+    log(state, `${p.name} 进入游戏厅玩「三仙归洞」：共 3 轮，猜中越多奖励越高！`);
+    return;
+  }
+
   // property
   if (c.type === 'property' && c.price !== undefined && c.baseRent !== undefined) {
     const owned = cellOwner(state, c.id);
@@ -549,6 +571,45 @@ function upgradeLand(state: GameState): void {
   owned.property.grade = (owned.property.grade + 1) as 1 | 2 | 3;
   const levelName = owned.property.grade === 2 ? '小屋' : '大厦';
   log(state, `${p.name} 花费 ¥${cost} 将「${c.name}」升级为${levelName}（${owned.property.grade} 级）`);
+  advanceTurn(state);
+}
+
+/** 三仙归洞：猜杯（球的位置由引擎确定性 RNG 决定，可回放） */
+function minigamePick(state: GameState, action: Extract<PlayerAction, { type: 'MINIGAME_PICK' }>): void {
+  if (state.phase !== 'awaiting_pick' || !state.minigame) throw new Error('当前没有进行中的小游戏');
+  const p = currentPlayer(state);
+  const hole = action.hole;
+  if (hole !== 0 && hole !== 1 && hole !== 2) throw new Error('杯号必须是 0-2');
+  const draw = nextRandom(state.rngState);
+  state.rngState = draw.nextState;
+  const ball = Math.floor(draw.value * 3) as 0 | 1 | 2;
+  const hit = hole === ball;
+  state.minigame.hits.push(hit);
+  const roundNo = state.minigame.round + 1;
+  if (hit) {
+    log(state, `${p.name} 第 ${roundNo} 轮猜中了！`);
+  } else {
+    log(state, `${p.name} 第 ${roundNo} 轮猜错，球在 ${ball + 1} 号杯`);
+  }
+
+  if (state.minigame.round < 2) {
+    state.minigame.round = (state.minigame.round + 1) as 0 | 1 | 2;
+    return;
+  }
+
+  // 3 轮结束，结算奖励
+  const hits = state.minigame.hits.filter(Boolean).length;
+  const payoutTable = [-200, 100, 500, 1200];
+  const payout = payoutTable[hits]!;
+  if (payout >= 0) {
+    p.cash += payout;
+    log(state, `小游戏结束：命中 ${hits}/3，${p.name} 获得 ¥${payout}`);
+  } else {
+    log(state, `小游戏结束：全军覆没，${p.name} 支付门票 ¥${-payout}`);
+    payCash(state, p, -payout, null);
+  }
+  state.minigame = null;
+  if (isGameOver(state)) return;
   advanceTurn(state);
 }
 
@@ -775,6 +836,9 @@ export function applyAction(state: GameState, action: PlayerAction): GameState {
     case 'SELL_STOCK':
       sellStock(next, action);
       break;
+    case 'MINIGAME_PICK':
+      minigamePick(next, action);
+      break;
     default: {
       const exhaustive: never = action;
       throw new Error(`未知动作: ${JSON.stringify(exhaustive)}`);
@@ -782,6 +846,7 @@ export function applyAction(state: GameState, action: PlayerAction): GameState {
   }
   return next;
 }
+
 
 
 

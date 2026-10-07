@@ -491,3 +491,54 @@ describe('M6 福神', () => {
   });
 });
 
+
+describe('M7 小游戏：三仙归洞', () => {
+  it('落地游戏厅进入猜杯阶段', () => {
+    const g = setupLanding(newGame(301), 17, 5); // 17 号游戏厅
+    const rolled = applyAction(g, { type: 'ROLL_DICE' });
+    expect(rolled.phase).toBe('awaiting_pick');
+    expect(rolled.minigame).toEqual({ round: 0, hits: [] });
+    expect(availableActions(rolled).canPick).toBe(true);
+  });
+
+  it('三轮猜杯按确定性 RNG 结算奖励并回到正常流程', () => {
+    const g = setupLanding(newGame(303), 17, 5);
+    const rolled = applyAction(g, { type: 'ROLL_DICE' });
+    const before = rolled.players[0]!.cash;
+
+    // 与引擎同步推演球的位置
+    let cur = rolled;
+    const hits: boolean[] = [];
+    for (let round = 0; round < 3; round++) {
+      // 引擎用确定性 RNG 定球：同步观察命中记录
+      cur = applyAction(cur, { type: 'MINIGAME_PICK', hole: 0 });
+      hits.push(hitsOf(cur));
+    }
+    function hitsOf(s: GameState): boolean {
+      return (s.log.at(-1)?.text ?? '').includes('猜中');
+    }
+    const hitsCount = hits.filter(Boolean).length;
+    const payoutTable = [-200, 100, 500, 1200];
+    const payout = payoutTable[hitsCount]!;
+    expect(cur.minigame).toBeNull();
+    expect(cur.phase).toBe('awaiting_roll');
+    expect(cur.currentPlayerIndex).toBe(1);
+    if (payout >= 0) {
+      expect(cur.players[0]!.cash).toBe(before + payout);
+    } else {
+      expect(cur.players[0]!.cash).toBe(before + payout);
+    }
+  });
+
+  it('非法杯号被拒绝', () => {
+    const g = setupLanding(newGame(305), 17, 5);
+    const rolled = applyAction(g, { type: 'ROLL_DICE' });
+    expect(() => applyAction(rolled, { type: 'MINIGAME_PICK', hole: 5 as 0 | 1 | 2 })).toThrow();
+  });
+
+  it('非猜杯阶段不能猜', () => {
+    const g = newGame(307);
+    expect(() => applyAction(g, { type: 'MINIGAME_PICK', hole: 0 })).toThrow('当前没有进行中的小游戏');
+  });
+});
+

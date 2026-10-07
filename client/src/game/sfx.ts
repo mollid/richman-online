@@ -55,6 +55,13 @@ export const sfx = {
   bankrupt() {
     tone({ freq: 400, dur: 0.5, type: 'sawtooth', gain: 0.07, slideTo: 80 });
   },
+  hit() {
+    tone({ freq: 880, dur: 0.08, type: 'triangle', gain: 0.07 });
+    tone({ freq: 1175, dur: 0.12, type: 'triangle', gain: 0.07, delay: 0.08 });
+  },
+  miss() {
+    tone({ freq: 220, dur: 0.18, type: 'square', gain: 0.05 });
+  },
   win() {
     [523, 659, 784, 1047].forEach((freq, i) => tone({ freq, dur: 0.16, type: 'triangle', gain: 0.07, delay: i * 0.13 }));
   },
@@ -67,3 +74,4 @@ export const sfx = {
     return muted;
   },
 };
+

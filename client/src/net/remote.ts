@@ -254,6 +254,7 @@ function emptyState(): GameState {
     stockMarket: { stocks: [] },
     pendingFixedDice: null,
     roadblocks: [],
+    minigame: null,
   };
 }
 

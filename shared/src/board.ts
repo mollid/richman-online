@@ -35,7 +35,7 @@ export const DEFAULT_BOARD: BoardCell[] = [
   cell(14, 'hospital', '医院'),
   P(15, '高新区', 500, 125, 'industrial'),
   P(16, '科学城', 520, 130, 'industrial'),
-  cell(17, 'chance', '机会'),
+  cell(17, 'game', '游戏厅'),
   P(18, '中关村', 700, 180, 'tech'),
   P(19, '张江', 720, 185, 'tech'),
   P(20, '深圳湾', 750, 195, 'tech'),
@@ -84,4 +84,5 @@ export const GODS: GodDef[] = [
   { id: 'land', name: '土地公', description: '每回合开始时免费升级一处自有地产', durationTurns: 5 },
   { id: 'fortune', name: '福神', description: '每回合开始时获得 ¥200-600 随机红包', durationTurns: 5 },
 ];
+
 

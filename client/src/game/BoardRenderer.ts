@@ -25,6 +25,7 @@ const CELL_ICONS: Partial<Record<BoardCell['type'], string>> = {
   shop: '🛒',
   bank: '🏦',
   god: '⛩️',
+  game: '🎮',
   neutral: '🌳',
 };
 
@@ -56,6 +57,7 @@ function cellColor(cell: BoardCell): number {
 export class BoardRenderer {
   private app: Application | null = null;
   private world = new Container();
+  private cellLayer = new Container();
   private overlayLayer = new Container();
   private tokenLayer = new Container();
   private cellPositions: { x: number; y: number }[] = [];
@@ -92,6 +94,7 @@ export class BoardRenderer {
     this.container.appendChild(app.canvas);
 
     app.stage.addChild(this.world);
+    this.world.addChild(this.cellLayer);
     this.world.addChild(this.overlayLayer);
     this.world.addChild(this.tokenLayer);
 
@@ -146,7 +149,7 @@ export class BoardRenderer {
     tile.fill({ color: cellColor(cell) });
     tile.stroke({ width: 1.5, color: 0x263238, alpha: 0.8 });
     tile.position.set(pos.x, pos.y);
-    this.world.addChild(tile);
+    this.cellLayer.addChild(tile);
 
     const label = new Text({
       text: cell.name,
@@ -159,7 +162,7 @@ export class BoardRenderer {
     });
     label.anchor.set(0.5);
     label.position.set(pos.x, pos.y - (cell.type === 'property' ? 5 : 0));
-    this.world.addChild(label);
+    this.cellLayer.addChild(label);
 
     const icon = CELL_ICONS[cell.type];
     if (icon) {
@@ -169,7 +172,7 @@ export class BoardRenderer {
       });
       iconText.anchor.set(0.5);
       iconText.position.set(pos.x, pos.y + 6);
-      this.world.addChild(iconText);
+      this.cellLayer.addChild(iconText);
     }
 
     if (cell.type === 'property' && cell.price !== undefined) {
@@ -179,7 +182,7 @@ export class BoardRenderer {
       });
       price.anchor.set(0.5);
       price.position.set(pos.x, pos.y + 8);
-      this.world.addChild(price);
+      this.cellLayer.addChild(price);
     }
   }
 
@@ -240,9 +243,11 @@ export class BoardRenderer {
   private createToken(player: Player): { container: Container; ring: Graphics; displayIndex: number; targetIndex: number } {
     const container = new Container();
     const circle = new Graphics();
+    circle.circle(0, 0, 11);
+    circle.fill({ color: 0x0d1512, alpha: 0.55 });
     circle.circle(0, 0, 9);
     circle.fill({ color: player.color });
-    circle.stroke({ width: 2, color: 0xffffff });
+    circle.stroke({ width: 2.5, color: 0xffffff });
     container.addChild(circle);
 
     const ring = new Graphics();
@@ -292,5 +297,6 @@ export class BoardRenderer {
     }
   }
 }
+
 
 
