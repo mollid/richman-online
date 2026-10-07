@@ -19,4 +19,5 @@ export * from './bot.js';
 
 export * from './fate.js';
 export * from './npc.js';
+export * from './report.js';
 
