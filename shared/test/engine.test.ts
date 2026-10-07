@@ -508,18 +508,43 @@ describe('M6 福神', () => {
 });
 
 
+/** 找第 n 个"两骰之和为 target"的种子 */
+function nthSeedForSum(target: number, n: number): number {
+  let found = 0;
+  for (let seed = 1; seed <= 500000; seed++) {
+    const a = rollDie(seed);
+    const b = rollDie(a.nextState);
+    if (a.value + b.value === target) {
+      found += 1;
+      if (found === n) return seed;
+    }
+  }
+  throw new Error('找不到种子');
+}
+
+/** 落地游戏厅，扫描不同骰子种子直到随机到三仙归洞 */
+function landingShells(seedBase: number): GameState {
+  for (let k = 1; k < 40; k++) {
+    const g = newGame(seedBase);
+    g.rngState = nthSeedForSum(5, k);
+    g.players[g.currentPlayerIndex]!.position = 12; // 12 + 5 = 17
+    const rolled = applyAction(g, { type: 'ROLL_DICE' });
+    if (rolled.minigame?.kind === 'shells') return rolled;
+  }
+  throw new Error('找不到三仙归洞种子');
+}
+
 describe('M7 小游戏：三仙归洞', () => {
   it('落地游戏厅进入猜杯阶段', () => {
-    const g = setupLanding(newGame(301), 17, 5); // 17 号游戏厅
-    const rolled = applyAction(g, { type: 'ROLL_DICE' });
+    const rolled = landingShells(301);
     expect(rolled.phase).toBe('awaiting_pick');
-    expect(rolled.minigame).toEqual({ round: 0, hits: [] });
+    expect(rolled.minigame?.kind).toBe('shells');
+    expect(rolled.minigame?.round).toBe(0);
     expect(availableActions(rolled).canPick).toBe(true);
   });
 
   it('三轮猜杯按确定性 RNG 结算奖励并回到正常流程', () => {
-    const g = setupLanding(newGame(303), 17, 5);
-    const rolled = applyAction(g, { type: 'ROLL_DICE' });
+    const rolled = landingShells(303);
     const before = rolled.players[0]!.cash;
 
     // 与引擎同步推演球的位置
@@ -547,9 +572,8 @@ describe('M7 小游戏：三仙归洞', () => {
   });
 
   it('非法杯号被拒绝', () => {
-    const g = setupLanding(newGame(305), 17, 5);
-    const rolled = applyAction(g, { type: 'ROLL_DICE' });
-    expect(() => applyAction(rolled, { type: 'MINIGAME_PICK', hole: 5 as 0 | 1 | 2 })).toThrow();
+    const rolled = landingShells(305);
+    expect(() => applyAction(rolled, { type: 'MINIGAME_PICK', hole: 5 as 0 | 1 | 2 })).toThrow('杯号必须是 0-2');
   });
 
   it('非猜杯阶段不能猜', () => {
@@ -582,6 +606,104 @@ describe('M8 新闻事件扩充', () => {
     expect(chosen).not.toBeNull();
     const newsTexts = chosen!.log.filter((e) => e.text.startsWith('【新闻】')).map((e) => e.text);
     expect(newsTexts.some((t) => t.includes('所得税') || t.includes('有奖竞猜') || t.includes('蓝屏') || t.includes('加息'))).toBe(true);
+  });
+});
+
+
+
+describe('M10 小游戏：记忆翻牌', () => {
+  it('落地游戏厅可随机到记忆翻牌（8 张牌 4 对）', () => {
+    let found: GameState | null = null;
+    for (let seed = 401; seed < 1200 && !found; seed++) {
+      const rolled = applyAction(setupLanding(newGame(seed), 17, 5), { type: 'ROLL_DICE' });
+      if (rolled.minigame?.kind === 'memory') found = rolled;
+    }
+    expect(found).not.toBeNull();
+    const mg = found!.minigame!;
+    expect(mg.symbols).toHaveLength(8);
+    expect(mg.symbols.slice().sort()).toEqual([0, 0, 1, 1, 2, 2, 3, 3]);
+    expect(mg.flips).toBe(0);
+  });
+
+  it('翻牌配对与不配对逻辑正确（确定性种子直推）', () => {
+    // 用受控状态直接构造：symbols 已知
+    const g = applyAction(createGame(PLAYERS, 421), { type: 'START_GAME' });
+    g.players[0]!.position = 17;
+    g.phase = 'awaiting_pick';
+    g.minigame = {
+      kind: 'memory',
+      round: 0,
+      hits: [],
+      symbols: [0, 0, 1, 1, 2, 2, 3, 3],
+      revealed: [],
+      matched: Array(8).fill(false),
+      flips: 0,
+    };
+    // 翻 0、1 → 配对
+    let cur = applyAction(g, { type: 'MINIGAME_PICK', hole: 0 });
+    cur = applyAction(cur, { type: 'MINIGAME_PICK', hole: 1 });
+    expect(cur.minigame!.matched[0]).toBe(true);
+    expect(cur.minigame!.matched[1]).toBe(true);
+    expect(cur.minigame!.revealed).toEqual([]);
+    // 翻 2、4 → 不配对（1 vs 2）
+    cur = applyAction(cur, { type: 'MINIGAME_PICK', hole: 2 });
+    cur = applyAction(cur, { type: 'MINIGAME_PICK', hole: 4 });
+    expect(cur.minigame!.revealed).toEqual([]);
+    expect(cur.minigame!.matched[2]).toBe(false);
+    expect(cur.minigame!.flips).toBe(4); // 每次翻牌计 1 次
+  });
+
+  it('全部配对立即结算，奖励 = 对数×500 − 翻牌×100', () => {
+    const g = applyAction(createGame(PLAYERS, 423), { type: 'START_GAME' });
+    g.players[0]!.position = 17;
+    g.phase = 'awaiting_pick';
+    g.minigame = {
+      kind: 'memory',
+      round: 0,
+      hits: [],
+      symbols: [0, 0, 1, 1, 2, 2, 3, 3],
+      revealed: [],
+      matched: Array(8).fill(false),
+      flips: 0,
+    };
+    const before = g.players[0]!.cash;
+    let cur = g;
+    // 完美配对顺序：4 对，8 次翻牌
+    const pairs: Array<[number, number]> = [
+      [0, 1],
+      [2, 3],
+      [4, 5],
+      [6, 7],
+    ];
+    for (const [a, b] of pairs) {
+      cur = applyAction(cur, { type: 'MINIGAME_PICK', hole: a as 0 | 1 | 2 });
+      cur = applyAction(cur, { type: 'MINIGAME_PICK', hole: b as 0 | 1 | 2 });
+    }
+    expect(cur.minigame).toBeNull();
+    expect(cur.phase).toBe('awaiting_roll');
+    const payout = 4 * 500 - 8 * 100; // 1200
+    expect(cur.players[0]!.cash).toBe(before + payout);
+  });
+
+  it('翻牌次数用尽（8 次）强制结算', () => {
+    const g = applyAction(createGame(PLAYERS, 425), { type: 'START_GAME' });
+    g.players[0]!.position = 17;
+    g.phase = 'awaiting_pick';
+    g.minigame = {
+      kind: 'memory',
+      round: 0,
+      hits: [],
+      // 故意让 0/7、1/6、2/5、3/4 都不成对：symbols 两两错开
+      symbols: [0, 1, 2, 3, 1, 0, 3, 2],
+      revealed: [],
+      matched: Array(8).fill(false),
+      flips: 6, // 只剩 2 次机会
+    };
+    // 翻 0(0) 和 4(1) → 不配对 → flips=8 → 强制结算
+    let cur = applyAction(g, { type: 'MINIGAME_PICK', hole: 0 });
+    cur = applyAction(cur, { type: 'MINIGAME_PICK', hole: 4 });
+    expect(cur.minigame).toBeNull();
+    expect(cur.phase).toBe('awaiting_roll');
   });
 });
 

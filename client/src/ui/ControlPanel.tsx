@@ -33,7 +33,31 @@ export function ControlPanel({
 
       {current && <div className="current-name">当前：{current.name}</div>}
 
-      {game.phase === 'awaiting_pick' && game.minigame ? (
+      {game.phase === 'awaiting_pick' && game.minigame?.kind === 'memory' ? (
+        <div className="minigame-box">
+          <div className="minigame-hint">
+            记忆翻牌 · 已翻 {game.minigame.flips} 次 · 配对 {game.minigame.matched.filter(Boolean).length / 2}/4
+          </div>
+          <div className="memory-grid">
+            {game.minigame.symbols.map((sym, i) => {
+              const isMatched = game.minigame!.matched[i]!;
+              const isRevealed = game.minigame!.revealed.includes(i);
+              const faceUp = isMatched || isRevealed;
+              return (
+                <button
+                  key={i}
+                  className={`memory-card ${faceUp ? 'up' : ''} ${isMatched ? 'matched' : ''}`}
+                  disabled={!interactive || isMatched || isRevealed}
+                  onClick={() => onAction({ type: 'MINIGAME_PICK', hole: i })}
+                >
+                  {faceUp ? ['🍎', '🍋', '🍇', '🍉'][sym] : '❓'}
+                </button>
+              );
+            })}
+          </div>
+          <div className="cell-hint">奖励：配对×¥500 − 翻牌×¥100（全部配对奖励最高）</div>
+        </div>
+      ) : game.phase === 'awaiting_pick' && game.minigame?.kind === 'shells' ? (
         <div className="minigame-box">
           <div className="minigame-hint">
             第 {game.minigame.round + 1}/3 轮 · 猜中 +∞ 奖励
@@ -101,3 +125,4 @@ export function ControlPanel({
     </div>
   );
 }
+

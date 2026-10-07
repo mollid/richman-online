@@ -951,3 +951,26 @@ button.mini {
   background: #37474f;
   color: #b0bec5;
 }
+
+/* ---------- 记忆翻牌 ---------- */
+.memory-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+}
+
+.memory-card {
+  height: 52px;
+  font-size: 20px;
+  background: #263238;
+  border: 1px solid #546e7a;
+}
+
+.memory-card.up {
+  background: #eceff1;
+}
+
+.memory-card.matched {
+  opacity: 0.45;
+  border-color: #66bb6a;
+}

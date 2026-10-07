@@ -46,7 +46,7 @@ describe('M9 AI 托管决策', () => {
     let g = applyAction(createGame(BOTS, 409), { type: 'START_GAME' });
     g.players[0]!.position = 17;
     g.phase = 'awaiting_pick';
-    g.minigame = { round: 0, hits: [] };
+    g.minigame = { kind: 'shells', round: 0, hits: [], symbols: [], revealed: [], matched: [], flips: 0 };
     const action = botDecide(g, 'b1', () => 0.99) as PlayerAction & { hole: number };
     expect(action.type).toBe('MINIGAME_PICK');
     expect(action.hole).toBe(2);
@@ -58,3 +58,4 @@ describe('M9 AI 托管决策', () => {
     expect(botDecide(g, 'ghost', () => 0.5)).toBeNull();
   });
 });
+

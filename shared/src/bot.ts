@@ -25,7 +25,7 @@ export function botDecide(state: GameState, botId: string, rng: () => number): P
   }
 
   if (state.phase === 'awaiting_pick') {
-    return { type: 'MINIGAME_PICK', hole: (Math.floor(rng() * 3) as 0 | 1 | 2) };
+    return { type: 'MINIGAME_PICK', hole: Math.floor(rng() * 3) };
   }
 
   // awaiting_action
@@ -66,6 +66,7 @@ export function botDecide(state: GameState, botId: string, rng: () => number): P
   if (acts.canEnd) return { type: 'END_TURN' };
   return null;
 }
+
 
 
 

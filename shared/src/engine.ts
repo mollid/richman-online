@@ -542,9 +542,44 @@ function rollDice(state: GameState): void {
   }
 
   if (c.type === 'game') {
-    state.minigame = { round: 0, hits: [] };
-    state.phase = 'awaiting_pick';
-    log(state, `${p.name} 进入游戏厅玩「三仙归洞」：共 3 轮，猜中越多奖励越高！`);
+    const kindRoll = nextRandom(state.rngState);
+    state.rngState = kindRoll.nextState;
+    if (kindRoll.value < 0.5) {
+      state.minigame = {
+        kind: 'shells',
+        round: 0,
+        hits: [],
+        symbols: [],
+        revealed: [],
+        matched: [],
+        flips: 0,
+      };
+      state.phase = 'awaiting_pick';
+      log(state, `${p.name} 进入游戏厅玩「三仙归洞」：共 3 轮，猜中越多奖励越高！`);
+    } else {
+      // 记忆翻牌：4 对图案洗牌
+      const symbols: number[] = [];
+      for (let i = 0; i < 4; i++) symbols.push(i, i);
+      for (let i = symbols.length - 1; i > 0; i--) {
+        const draw = nextRandom(state.rngState);
+        state.rngState = draw.nextState;
+        const j = Math.floor(draw.value * (i + 1));
+        const tmp = symbols[i]!;
+        symbols[i] = symbols[j]!;
+        symbols[j] = tmp;
+      }
+      state.minigame = {
+        kind: 'memory',
+        round: 0,
+        hits: [],
+        symbols,
+        revealed: [],
+        matched: Array(8).fill(false),
+        flips: 0,
+      };
+      state.phase = 'awaiting_pick';
+      log(state, `${p.name} 进入游戏厅玩「记忆翻牌」：8 张牌 4 对图案，翻完全部配对奖励翻倍！`);
+    }
     return;
   }
 
@@ -616,12 +651,16 @@ function upgradeLand(state: GameState): void {
 /** 三仙归洞：猜杯（球的位置由引擎确定性 RNG 决定，可回放） */
 function minigamePick(state: GameState, action: Extract<PlayerAction, { type: 'MINIGAME_PICK' }>): void {
   if (state.phase !== 'awaiting_pick' || !state.minigame) throw new Error('当前没有进行中的小游戏');
+  if (state.minigame.kind === 'memory') {
+    memoryFlip(state, action.hole);
+    return;
+  }
   const p = currentPlayer(state);
   const hole = action.hole;
   if (hole !== 0 && hole !== 1 && hole !== 2) throw new Error('杯号必须是 0-2');
   const draw = nextRandom(state.rngState);
   state.rngState = draw.nextState;
-  const ball = Math.floor(draw.value * 3) as 0 | 1 | 2;
+  const ball = Math.floor(draw.value * 3);
   const hit = hole === ball;
   state.minigame.hits.push(hit);
   const roundNo = state.minigame.round + 1;
@@ -650,6 +689,51 @@ function minigamePick(state: GameState, action: Extract<PlayerAction, { type: 'M
   state.minigame = null;
   if (isGameOver(state)) return;
   advanceTurn(state);
+}
+
+/** 记忆翻牌：hole 为 0-7 的牌下标 */
+function memoryFlip(state: GameState, index: number): void {
+  const mg = state.minigame!;
+  if (!Number.isInteger(index) || index < 0 || index > 7) throw new Error('牌下标必须是 0-7');
+  if (mg.matched[index]) throw new Error('这张牌已配对消除');
+  if (mg.revealed.includes(index)) throw new Error('这张牌已经翻开');
+  if (mg.flips >= 8) throw new Error('翻牌次数已用完');
+  const p = currentPlayer(state);
+
+  mg.revealed.push(index);
+  mg.flips += 1;
+  if (mg.revealed.length < 2) {
+    log(state, `${p.name} 翻开第 ${index + 1} 张牌`);
+    return;
+  }
+
+  // 第二张：判定配对
+  const [a, b] = mg.revealed;
+  if (mg.symbols[a!] === mg.symbols[b!]) {
+    mg.matched[a!] = true;
+    mg.matched[b!] = true;
+    mg.revealed = [];
+    log(state, `${p.name} 翻牌配对成功！（${mg.matched.filter(Boolean).length / 2}/4 对）`);
+  } else {
+    mg.revealed = [];
+    log(state, `${p.name} 翻牌未配对，牌面重新盖回`);
+  }
+
+  // 终局判定：全部配对 或 翻牌次数用尽
+  const pairs = mg.matched.filter(Boolean).length / 2;
+  if (pairs === 4 || mg.flips >= 8) {
+    const payout = pairs * 500 - mg.flips * 100;
+    if (payout >= 0) {
+      p.cash += payout;
+      log(state, `记忆翻牌结束：配对 ${pairs}/4（翻牌 ${mg.flips} 次），${p.name} 获得 ¥${payout}`);
+    } else {
+      log(state, `记忆翻牌结束：配对 ${pairs}/4（翻牌 ${mg.flips} 次），${p.name} 支付 ¥${-payout}`);
+      payCash(state, p, -payout, null);
+    }
+    state.minigame = null;
+    if (isGameOver(state)) return;
+    advanceTurn(state);
+  }
 }
 
 function endTurn(state: GameState): void {
@@ -885,6 +969,7 @@ export function applyAction(state: GameState, action: PlayerAction): GameState {
   }
   return next;
 }
+
 
 
 

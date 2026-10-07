@@ -79,12 +79,21 @@ export type Phase =
   | 'awaiting_pick'    // 小游戏进行中：等待猜杯
   | 'game_over';
 
-/** 三仙归洞小游戏状态 */
+/** 小游戏状态（游戏厅随机二选一） */
 export interface MinigameState {
-  /** 当前第几轮（0-2，共 3 轮） */
+  kind: 'shells' | 'memory';
+  /** shells：当前第几轮（0-2，共 3 轮） */
   round: 0 | 1 | 2;
-  /** 每轮命中记录 */
+  /** shells：每轮命中记录 */
   hits: boolean[];
+  /** memory：8 张牌的图案（0-3 各两张，已洗牌） */
+  symbols: number[];
+  /** memory：当前翻开未配对的牌下标 */
+  revealed: number[];
+  /** memory：每张牌是否已配对消除 */
+  matched: boolean[];
+  /** memory：已用翻牌次数 */
+  flips: number;
 }
 
 export interface LogEntry {
@@ -139,7 +148,7 @@ export type PlayerAction =
   | { type: 'BUY_CARD'; cardId: string }
   | { type: 'BUY_STOCK'; stockId: string; quantity: number }
   | { type: 'SELL_STOCK'; stockId: string; quantity: number }
-  | { type: 'MINIGAME_PICK'; hole: 0 | 1 | 2 };
+  | { type: 'MINIGAME_PICK'; hole: number };
 
 /** 可用动作集合（UI 按此渲染按钮） */
 export interface AvailableActions {
@@ -154,6 +163,8 @@ export interface AvailableActions {
   /** 当前阶段可使用的卡片 id 列表 */
   usableCards: string[];
 }
+
+
 
 
 
