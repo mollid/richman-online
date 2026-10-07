@@ -193,6 +193,37 @@ export interface PendingAuction {
   trigger: AuctionTrigger;
 }
 
+/** UI-06 公布栏可公开交易的标的种类 */
+export type TradeKind = 'land' | 'stock' | 'card' | 'item';
+
+/** 公布栏上的一条公开挂牌（help [11]「透過公佈欄，與其他的玩家公開的交易房地產、股票、卡片、道具」） */
+export interface TradeListing {
+  id: string;
+  sellerId: string;
+  kind: TradeKind;
+  /** land：格号；stock：股票 id；card：卡片 id；item：道具 id */
+  targetId: string;
+  /** land：挂牌格号（冗余便于 UI 直接渲染）；其余为 0 */
+  cellId: number;
+  /** land：单价；stock：单价；card：单价；item：单价 */
+  price: number;
+  /** 挂牌时回合号（用于排序与过期判定） */
+  postedTurn: number;
+  /** 是否已被成交/撤下 */
+  closed: boolean;
+}
+
+/** 成交记录（报表与日志用） */
+export interface TradeRecord {
+  listingId: string;
+  sellerId: string;
+  buyerId: string;
+  kind: TradeKind;
+  targetId: string;
+  price: number;
+  turn: number;
+}
+
 export interface Player {
   id: string;
   name: string;
@@ -425,6 +456,10 @@ export interface GameState {
   landGodCooldownMonth: number;
   /** ECON-12：手牌额满时待玩家选择舍弃的卡片 id；null 表示无 */
   pendingCard: string | null;
+  /** UI-06 公布栏：当前所有公开挂牌 */
+  trades: TradeListing[];
+  /** UI-06 成交记录（保留最近 50 条） */
+  tradeHistory: TradeRecord[];
 }
 
 /** TILE-11 魔法屋：施法条件（决定候选受罚者） */
@@ -487,7 +522,13 @@ export type PlayerAction =
   /** TILE-09 医院（help [37]）：在医院门外替指定病人办理提前出院 */
   | { type: 'DISCHARGE_PATIENT'; targetPlayerId: string }
   /** CORE-04：认输投降（走「死神附身」特殊流程后退出对局） */
-  | { type: 'SURRENDER' };
+  | { type: 'SURRENDER' }
+  /** UI-06 公布栏：挂出标的公开求售 */
+  | { type: 'POST_TRADE'; kind: TradeKind; targetId: string; price: number }
+  /** UI-06 公布栏：买下他人挂牌 */
+  | { type: 'BUY_TRADE'; listingId: string }
+  /** UI-06 公布栏：撤下自己的挂牌 */
+  | { type: 'CANCEL_TRADE'; listingId: string };
 
 /** 可用动作集合（UI 按此渲染按钮） */
 export interface AvailableActions {
@@ -551,6 +592,10 @@ export interface AvailableActions {
   canSurrender: boolean;
   /** ECON-12：待舍弃的卡片 id（非 null 时 phase 为 awaiting_discard，UI 渲染舍弃弹窗） */
   pendingCard: string | null;
+  /** UI-06：当前玩家可挂出的标的（_owned 且未挂牌），UI 据此渲染「我要挂出」 */
+  tradableAssets: Array<{ kind: TradeKind; targetId: string; label: string; suggestPrice: number }>;
+  /** UI-06：当前玩家现金（决定能否买入） */
+  tradeCash: number;
 }
 
 

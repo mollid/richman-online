@@ -34,6 +34,7 @@ import {
   renderFateText,
   type FateCardDef,
 } from './fate.js';
+import { buyTrade, cancelTrade, postTrade, refreshTrades, tradableAssets } from './trade.js';
 import {
   BAIL_FEE,
   CURSE_ORDER,
@@ -195,6 +196,9 @@ export function createGame(players: PlayerDef[], seed = Date.now() % 2147483647,
     // GOD-01 土地公隔月再现（help [40]）：初始未出现过，可随机到
     landGodCooldownMonth: 0,
     pendingCard: null,
+    // UI-06 公布栏：初始无挂牌、无成交记录
+    trades: [],
+    tradeHistory: [],
   };
 }
 
@@ -1459,6 +1463,8 @@ function advanceTurn(state: GameState): void {
   state.bankAccess = null;
   state.magic = null;
   state.pendingCard = null;
+  // UI-06：回合推进时刷新公布栏（标的被消耗/转手的挂牌自动失效）
+  refreshTrades(state);
   if (state.currentPlayerIndex < before) {
     state.round += 1;
     captureRoundSnapshot(state);
@@ -2307,6 +2313,8 @@ export function availableActions(state: GameState): AvailableActions {
       dischargeFee: dischargeFee(state),
       canSurrender: canSurrender(state),
       pendingCard: state.pendingCard,
+      tradableAssets: tradableAssets(state, p),
+      tradeCash: p.cash,
     };
   }
   return {
@@ -2343,7 +2351,15 @@ export function availableActions(state: GameState): AvailableActions {
     dischargeFee: dischargeFee(state),
     canSurrender: canSurrender(state),
     pendingCard: state.pendingCard,
+    // UI-06：非本人操作阶段（如拍卖/小游戏）时不给可挂标的
+    tradableAssets: [],
+    tradeCash: currentPlayerSafe(state)?.cash ?? 0,
   };
+}
+
+/** 取当前玩家；不存在时返回 undefined（availableActions 的兜底分支用） */
+function currentPlayerSafe(state: GameState): Player | undefined {
+  return state.players[state.currentPlayerIndex];
 }
 
 function startGame(state: GameState): void {
@@ -4559,6 +4575,15 @@ export function applyAction(state: GameState, action: PlayerAction): GameState {
       break;
     case 'SURRENDER':
       surrender(next);
+      break;
+    case 'POST_TRADE':
+      postTrade(next, action, currentPlayer(next), (t) => log(next, t));
+      break;
+    case 'BUY_TRADE':
+      buyTrade(next, action, currentPlayer(next), (t) => log(next, t));
+      break;
+    case 'CANCEL_TRADE':
+      cancelTrade(next, action, currentPlayer(next), (t) => log(next, t));
       break;
     default: {
       const exhaustive: never = action;
