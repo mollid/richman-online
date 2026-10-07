@@ -1,0 +1,77 @@
+import type { BoardCell, GameState, Player, PlayerProperty } from './types.js';
+
+/**
+ * 经济系统（ECON-01..06）与物价指数。
+ *
+ * 设计要点（打断自指循环）：
+ * - `propertyValue` 只按**基础价**计价（购地价 + 各级升级基础成本），绝不乘物价指数；
+ * - 物价指数 = Σ玩家总资产 / (单人初始资金 × 开局人数)，分母开局冻结；
+ * - 所有「交易金额」（买地、升级、租金、缴税、事件赔付…）统一过 `scaled()`，单点取整避免误差累积。
+ */
+
+/** 单次升级的基础成本（不含指数） */
+export function upgradeCost(price: number, grade: number): number {
+  return grade === 1 ? Math.round(price * 0.6) : Math.round(price * 0.8);
+}
+
+/** 基础租金（不含指数）：租金 = 级数 × 基数 */
+export function rentOf(baseRent: number, grade: number): number {
+  return baseRent * grade;
+}
+
+/** 地产账面价值：基础地价 + 已投入的升级成本（不含指数） */
+export function propertyValue(state: GameState, prop: PlayerProperty): number {
+  const cell = state.board[prop.cellId];
+  const base = cell?.price ?? 0;
+  let upgrades = 0;
+  for (let g = 1; g < prop.grade; g++) upgrades += upgradeCost(base, g);
+  return base + upgrades;
+}
+
+/** 玩家总资产：现金 + 存款 + 股票现值 + 不动产现值 − 贷款本金 */
+export function totalAssets(state: GameState, p: Player): number {
+  let sum = p.cash + p.deposit;
+  for (const [stockId, qty] of Object.entries(p.stocks)) {
+    const stock = state.stockMarket.stocks.find((s) => s.id === stockId);
+    if (stock) sum += stock.price * qty;
+  }
+  for (const prop of p.properties) sum += propertyValue(state, prop);
+  if (p.loan) sum -= p.loan.principal;
+  return sum;
+}
+
+const MAX_INDEX = 107374;
+
+/**
+ * 物价指数：全体存活玩家总资产 / 开局货币总量，clamp [0.01, 107374]。
+ * 纯函数不缓存（客户端可用 useMemo 做表现层缓存）。
+ */
+export function priceIndex(state: GameState): number {
+  const denom = Math.max(1, state.initialCashPerPlayer * state.initialPlayerCount);
+  let total = 0;
+  for (const p of state.players) {
+    if (!p.bankrupt) total += totalAssets(state, p);
+  }
+  const idx = total / denom;
+  return Math.min(MAX_INDEX, Math.max(0.01, idx));
+}
+
+/** 按物价指数缩放一个基础金额（单点取整） */
+export function scaled(state: GameState, amount: number): number {
+  return Math.round(amount * priceIndex(state));
+}
+
+/** 地价（含指数），UI 与引擎同源 */
+export function landPrice(state: GameState, cell: BoardCell): number {
+  return scaled(state, cell.price ?? 0);
+}
+
+/** 升级价（含指数） */
+export function landUpgradeCost(state: GameState, cell: BoardCell, grade: number): number {
+  return scaled(state, upgradeCost(cell.price ?? 0, grade));
+}
+
+/** 租金（含指数） */
+export function landRent(state: GameState, cell: BoardCell, grade: number): number {
+  return scaled(state, rentOf(cell.baseRent ?? 0, grade));
+}
