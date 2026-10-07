@@ -5,6 +5,9 @@ import { LocalHotseatSession, type GameSession } from './net/session.js';
 import { PlayerList } from './ui/PlayerList.js';
 import { ControlPanel } from './ui/ControlPanel.js';
 import { LogPanel } from './ui/LogPanel.js';
+import { HandPanel } from './ui/HandPanel.js';
+import { StockPanel } from './ui/StockPanel.js';
+import { ShopPanel } from './ui/ShopPanel.js';
 
 export default function App() {
   const [session, setSession] = useState<GameSession | null>(null);
@@ -87,9 +90,13 @@ function GameScreen({ session, onExit }: { session: GameSession; onExit: () => v
           </button>
         </div>
         <PlayerList game={game} />
+        <HandPanel game={game} onAction={onAction} />
         <ControlPanel game={game} onAction={onAction} />
+        <ShopPanel game={game} onAction={onAction} />
+        <StockPanel game={game} onAction={onAction} />
         <LogPanel game={game} />
       </aside>
     </div>
   );
 }
+

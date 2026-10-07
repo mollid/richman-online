@@ -47,9 +47,12 @@ export class ColyseusSession implements GameSession {
       phase: 'lobby',
       dice: null,
       turn: 0,
+      round: 1,
       rngState: 0,
       log: [{ turn: 0, text: '正在连接房间…' }],
       winnerId: null,
+      stockMarket: { stocks: [] },
+      pendingFixedDice: null,
     } as GameState;
     return new ColyseusSession(room, placeholder);
   }
@@ -86,4 +89,5 @@ export class ColyseusSession implements GameSession {
     void this.room.leave(true);
   }
 }
+
 

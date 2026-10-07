@@ -1,4 +1,4 @@
-import type { BoardCell } from './types.js';
+import type { BoardCell, Stock } from './types.js';
 
 /**
  * 40 格环形棋盘（11x11 网格外圈，顺时针行走）。
@@ -8,6 +8,7 @@ export const BOARD_SIZE = 40;
 
 export const STARTING_CASH = 15000;
 export const PASS_START_SALARY = 2000;
+export const MAX_HAND_CARDS = 6;
 
 function cell(id: number, type: BoardCell['type'], name: string, extra: Partial<BoardCell> = {}): BoardCell {
   return { id, type, name, ...extra };
@@ -19,10 +20,10 @@ const P = (id: number, name: string, price: number, baseRent: number, group: Boa
 export const DEFAULT_BOARD: BoardCell[] = [
   cell(0, 'start', '起点'),
   P(1, '桃园路', 300, 80, 'residential'),
-  P(2, '中山路', 320, 85, 'residential'),
+  cell(2, 'shop', '商店'),
   cell(3, 'chance', '机会'),
   P(4, '成都路', 350, 90, 'residential'),
-  cell(5, 'neutral', '中央公园'),
+  cell(5, 'god', '神庙'),
   P(6, '南京路', 500, 130, 'commercial'),
   cell(7, 'chance', '机会'),
   P(8, '淮海路', 520, 135, 'commercial'),
@@ -52,24 +53,33 @@ export const DEFAULT_BOARD: BoardCell[] = [
   P(32, '中环', 920, 235, 'financial'),
   P(33, '曼哈顿', 950, 240, 'financial'),
   cell(34, 'chance', '机会'),
-  cell(35, 'neutral', '银行'),
+  cell(35, 'bank', '银行'),
   P(36, '西门町', 340, 88, 'residential'),
-  P(37, '士林夜市', 360, 92, 'residential'),
-  cell(38, 'neutral', '新闻社'),
+  cell(37, 'shop', '百货'),
+  cell(38, 'bank', '证交所'),
   P(39, '迪化街', 380, 95, 'residential'),
 ];
 
-/** 机会格随机事件表（M1 简化为现金事件，M2 替换为完整卡片系统） */
-export interface ChanceEvent {
-  text: string;
-  amount: number;
+/** 股票初始定义（每局价格随机波动） */
+export const STOCK_DEFS: Array<Pick<Stock, 'id' | 'name'> & { initialPrice: number }> = [
+  { id: 'tech', name: '科技股', initialPrice: 120 },
+  { id: 'food', name: '食品股', initialPrice: 80 },
+  { id: 'estate', name: '地产股', initialPrice: 200 },
+  { id: 'energy', name: '能源股', initialPrice: 150 },
+  { id: 'media', name: '传媒股', initialPrice: 100 },
+  { id: 'finance', name: '金融股', initialPrice: 260 },
+];
+
+/** 神仙定义 */
+export interface GodDef {
+  id: string;
+  name: string;
+  description: string;
+  durationTurns: number;
 }
 
-export const CHANCE_EVENTS: ChanceEvent[] = [
-  { text: '中了彩票小奖，获得 ¥1000', amount: 1000 },
-  { text: '捡到钱包，交还失主获酬谢 ¥500', amount: 500 },
-  { text: '收到公司分红 ¥800', amount: 800 },
-  { text: '违章停车被罚款 ¥300', amount: -300 },
-  { text: '感冒看病花了 ¥600', amount: -600 },
-  { text: '请朋友吃饭花了 ¥400', amount: -400 },
+export const GODS: GodDef[] = [
+  { id: 'wealth', name: '财神', description: '每回合开始时获得 ¥800', durationTurns: 5 },
+  { id: 'poverty', name: '穷神', description: '每回合开始时损失 ¥400', durationTurns: 5 },
+  { id: 'land', name: '土地公', description: '每回合开始时免费升级一处自有地产', durationTurns: 5 },
 ];

@@ -22,6 +22,9 @@ const TYPE_COLORS: Partial<Record<BoardCell['type'], number>> = {
   hospital: 0xf5f5f5,
   jail: 0xb0bec5,
   neutral: 0xd7ccc8,
+  shop: 0xffcc80,
+  bank: 0xa5d6a7,
+  god: 0xb39ddb,
 };
 
 function perimeterGrid(index: number): { x: number; y: number } {
@@ -242,3 +245,4 @@ export class BoardRenderer {
     }
   }
 }
+

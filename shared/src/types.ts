@@ -2,13 +2,16 @@
 export type CellType =
   | 'start'    // 起点：经过/停留发放薪水
   | 'property' // 地产：可购买/升级/收租
-  | 'chance'   // 机会：随机现金事件（后续版本替换为卡片系统）
+  | 'chance'   // 机会：抽卡片
   | 'tax'      // 缴税
   | 'hospital' // 医院：停留 1 回合
   | 'jail'     // 监狱：停留 2 回合
-  | 'neutral'; // 中性格：银行/公园等，暂无效果
+  | 'shop'     // 商店：购买卡片
+  | 'bank'     // 银行/证交所：买卖股票
+  | 'god'      // 神庙：召唤神仙附身
+  | 'neutral'; // 中性格：暂无效果
 
-/** 地产分区（同分区后续可做垄断加成） */
+/** 地产分区 */
 export type PropertyGroup = 'residential' | 'commercial' | 'industrial' | 'tech' | 'coastal' | 'financial';
 
 export interface BoardCell {
@@ -28,6 +31,20 @@ export interface PlayerProperty {
   grade: 1 | 2 | 3;
 }
 
+/** 神仙附身状态 */
+export interface GodStatus {
+  godId: string;
+  /** 剩余生效回合数（每次自己回合开始时 -1） */
+  remainingTurns: number;
+}
+
+/** 创建玩家时的定义 */
+export interface PlayerDef {
+  id: string;
+  name: string;
+  color: number;
+}
+
 export interface Player {
   id: string;
   name: string;
@@ -36,6 +53,12 @@ export interface Player {
   cash: number;
   position: number;
   properties: PlayerProperty[];
+  /** 手持卡片（cardId 列表，上限 6 张） */
+  cards: string[];
+  /** 持股：stockId -> 数量 */
+  stocks: Record<string, number>;
+  /** 神仙附身状态 */
+  god: GodStatus | null;
   /** 剩余跳过回合数（医院/监狱） */
   skipTurns: number;
   bankrupt: boolean;
@@ -45,12 +68,25 @@ export interface Player {
 export type Phase =
   | 'lobby'        // 等待玩家加入/开始
   | 'awaiting_roll'    // 等待当前玩家掷骰
-  | 'awaiting_action'  // 等待当前玩家决策（买地/升级/结束）
+  | 'awaiting_action'  // 等待当前玩家决策（买地/卡片/股票/结束）
   | 'game_over';
 
 export interface LogEntry {
   turn: number;
   text: string;
+}
+
+export interface Stock {
+  id: string;
+  name: string;
+  /** 当前股价 */
+  price: number;
+  /** 最近一次波动百分比（含新闻影响） */
+  lastChangePct: number;
+}
+
+export interface StockMarket {
+  stocks: Stock[];
 }
 
 export interface GameState {
@@ -61,10 +97,16 @@ export interface GameState {
   /** 最近一次掷骰结果（用于客户端走格子动画） */
   dice: [number, number] | null;
   turn: number;
+  /** 回合数（每循环一圈 +1，股票随回合波动） */
+  round: number;
   /** 确定性 RNG 状态（可回放/防作弊校验） */
   rngState: number;
   log: LogEntry[];
   winnerId: string | null;
+  /** 股票市场 */
+  stockMarket: StockMarket;
+  /** 遥控骰子等效果锁定的下一次骰子点数 */
+  pendingFixedDice: number | null;
 }
 
 export type PlayerAction =
@@ -72,4 +114,21 @@ export type PlayerAction =
   | { type: 'ROLL_DICE' }
   | { type: 'BUY_LAND' }
   | { type: 'UPGRADE_LAND' }
-  | { type: 'END_TURN' };
+  | { type: 'END_TURN' }
+  | { type: 'USE_CARD'; cardId: string; targetPlayerId?: string; stockId?: string; diceValue?: number }
+  | { type: 'BUY_CARD'; cardId: string }
+  | { type: 'BUY_STOCK'; stockId: string; quantity: number }
+  | { type: 'SELL_STOCK'; stockId: string; quantity: number };
+
+/** 可用动作集合（UI 按此渲染按钮） */
+export interface AvailableActions {
+  canRoll: boolean;
+  canBuy: boolean;
+  canUpgrade: boolean;
+  canEnd: boolean;
+  canShop: boolean;
+  canTradeStock: boolean;
+  /** 当前阶段可使用的卡片 id 列表 */
+  usableCards: string[];
+}
+
