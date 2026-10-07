@@ -4,6 +4,8 @@ import {
   availableActions,
   BOARD_SIZE,
   createGame,
+  applyFateEffect,
+  FATE_CARDS,
   gameDate,
   totalAssets,
   type GameState,
@@ -366,7 +368,7 @@ describe('现金只够买地与升级：股市独立账户', () => {
 });
 
 
-describe('负债时强制变卖股票：股票不变现就倒闭', () => {
+describe('负债不自动变卖股票：股票只能靠随机事件兑现', () => {
   /** 让 p1 现金存款归零、只剩股票 */
   function poorWithStock(state: GameState, stockId: string, qty: number): GameState {
     const p = state.players[0]!;
@@ -378,8 +380,8 @@ describe('负债时强制变卖股票：股票不变现就倒闭', () => {
     return state;
   }
 
-  /** p2 拥有一块 5 级地，p1 踩上去必须付租金（走 pay 变卖链路） */
-  function withRentBill(state: GameState): { state: GameState; landId: number } {
+  /** p2 拥有一块 5 级地，p1 踩上去必须付租金（走 pay 链路） */
+  function withRentBill(state: GameState): GameState {
     const land = state.board.find((c) => c.type === 'property' && c.price)!;
     state.players[1]!.properties.push({ cellId: land.id, grade: 5 });
     state.players[1]!.cash = 0;
@@ -389,58 +391,69 @@ describe('负债时强制变卖股票：股票不变现就倒闭', () => {
     cur.position = (land.id - 1 + BOARD_SIZE) % BOARD_SIZE;
     state.pendingFixedDice = 1;
     cur.diceCount = 1;
-    return { state, landId: land.id };
+    return state;
   }
 
-  it('现金存款花光后付租金：强制变卖股票偿债，不倒闭', () => {
+  it('现金存款不足以付租金时直接破产，股票不会被自动卖掉', () => {
     const g = poorWithStock(newGame(107), 'tech', 5);
-    const { state } = withRentBill(g);
-    const r = applyAction(state, { type: 'ROLL_DICE' });
+    const r = applyAction(withRentBill(g), { type: 'ROLL_DICE' });
     const p = r.players[0]!;
-    // 股票被变卖换现金用于支付租金
-    expect(p.stocks.tech ?? 0).toBeLessThan(5);
-    expect(r.log.some((l) => l.text.includes('变卖'))).toBe(true);
-    expect(p.bankrupt).toBe(false);
-    // 债权人收到了钱
-    expect(r.players[1]!.deposit).toBeGreaterThan(0);
+    expect(p.bankrupt).toBe(true);
+    // 关键：日志里没有「变卖股票」这一动作
+    expect(r.log.some((l) => l.text.includes('变卖 科技股'))).toBe(false);
+    expect(r.log.some((l) => l.text.includes('无力支付'))).toBe(true);
   });
 
-  it('股票不足以偿债时变卖地产；全空则倒闭', () => {
-    const g = poorWithStock(newGame(109), 'food', 1); // 只持1 张低价股
-    const { state } = withRentBill(g);
-    const r = applyAction(state, { type: 'ROLL_DICE' });
-    const p = r.players[0]!;
-    expect(p.stocks.food).toBeUndefined();
-    // 地产也在变卖链路中被处置，或直接破产
-    if (p.bankrupt) {
-      expect(r.log.some((l) => l.text.includes('破产'))).toBe(true);
-      expect(p.properties).toHaveLength(0);
-    } else {
-      expect(p.deposit).toBe(0);
-      expect(p.cash).toBeLessThan(10000);
-    }
-  });
-
-  it('手里只有股票、无现金存款，一旦被强制偿债就连环变卖并可能倒闭', () => {
-    const g = poorWithStock(newGame(111), 'finance', 1);
-    const { state } = withRentBill(g);
-    const r = applyAction(state, { type: 'ROLL_DICE' });
-    const p = r.players[0]!;
-    // 关键不变量：股票一定优先于地产被变卖；卖光后若仍不足必然破产
-    expect(p.stocks.finance).toBeUndefined();
-    expect(p.cash).toBeLessThan(100000);
-    // 玩家不会「凭空有钱」——总资产不得因变卖而增加
-    expect(p.deposit).toBe(0);
-  });
-
-  it('正常有现金时不会被动变卖股票', () => {
-    const g = withDeposit(newGame(113));
+  it('现金存款足够付租金时，股票分毫不动', () => {
+    const g = newGame(113);
     const p = g.players[0]!;
     p.stocks = { tech: 3 };
     p.stockCost = { tech: 3 * priceOf(g, 'tech') };
-    const { state } = withRentBill(g);
-    const r = applyAction(state, { type: 'ROLL_DICE' });
-    // 现金充足 → 股票不动
+    p.cash = 100000; // 现金充足
+    const r = applyAction(withRentBill(g), { type: 'ROLL_DICE' });
     expect(r.players[0]!.stocks.tech).toBe(3);
+    expect(r.players[0]!.bankrupt).toBe(false);
+  });
+
+  it('存款可支付租金时优先扣存款，同样不动股票', () => {
+    const g = poorWithStock(newGame(115), 'food', 4);
+    g.players[0]!.deposit = 100000;
+    const r = applyAction(withRentBill(g), { type: 'ROLL_DICE' });
+    const p = r.players[0]!;
+    expect(p.bankrupt).toBe(false);
+    expect(p.stocks.food).toBe(4);
+    expect(p.cash).toBe(0);
+    expect(p.deposit).toBeLessThan(100000);
+  });
+
+  it('随机事件「变卖所有股票求现」是股票兑现途径（存在性）', () => {
+    expect(FATE_CARDS.some((c) => c.effect === 'sell-all-stocks')).toBe(true);
+  });
+
+  it('该事件生效时股票全部变现为现金', () => {
+    const g = poorWithStock(newGame(117), 'tech', 8);
+    g.players[0]!.stocks.media = 4;
+    const before = 8 * priceOf(g, 'tech') + 4 * priceOf(g, 'media');
+    const def = FATE_CARDS.find((c) => c.effect === 'sell-all-stocks')!;
+    applyFateEffect(g, g.players[0]!, def); // 原地结算
+    const p = g.players[0]!;
+    expect(p.stocks).toEqual({});
+    expect(p.cash).toBe(before);
+    expect(p.stockCost).toEqual({});
+    expect(g.log.some((l) => l.text.includes('变卖所有股票求现'))).toBe(true);
+  });
+
+  it('股票违约交割事件：损失部分股票（另一条股票消减途径）', () => {
+    const g = newGame(119);
+    const p = g.players[0]!;
+    p.cash = 1000;
+    p.deposit = 1000;
+    p.stocks = { tech: 100, food: 100 };
+    p.stockCost = { tech: 10000, food: 8000 };
+    const def = FATE_CARDS.find((c) => c.effect === 'stock-default')!;
+    applyFateEffect(g, p, def); // 原地结算
+    // 20% 交割 → 至少有一支被削
+    const total = (p.stocks.tech ?? 0) + (p.stocks.food ?? 0);
+    expect(total).toBeLessThan(200);
   });
 });

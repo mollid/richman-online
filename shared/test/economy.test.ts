@@ -339,7 +339,7 @@ describe('ECON-02 / ECON-03 三货币支付管道', () => {
     expect(rolled.players[0]!.deposit).toBe(rent);
   });
 
-  it('现金与存款耗尽仍不足则变卖资产，再不足则破产并清空三货币', () => {
+  it('现金与存款耗尽即破产（不自动变卖资产）并清空三货币', () => {
     const g = newGame(183, SATURDAY);
     g.currentPlayerIndex = 1;
     g.rngState = seedForSum(6);
@@ -347,17 +347,20 @@ describe('ECON-02 / ECON-03 三货币支付管道', () => {
     g.players[0]!.properties = [{ cellId: 30, grade: 3 }];
     g.players[1]!.cash = 100;
     g.players[1]!.deposit = 100;
-    g.players[1]!.properties = [{ cellId: 6, grade: 1 }]; // 变卖回收 250
+    g.players[1]!.properties = [{ cellId: 6, grade: 1 }];
+    g.players[1]!.stocks = { tech: 10 }; // 有股票也不会被自动变卖
     pinIndexOne(g);
 
     const rolled = applyAction(g, { type: 'ROLL_DICE' });
-    const paidOut = 100 + 100 + 250; // 450 < 690
+    const paidOut = 200; // 现金100 + 存款100 = 200 < 690，不再变卖地产回收
     expect(rolled.players[1]!.bankrupt).toBe(true);
     expect(rolled.players[1]!.cash).toBe(0);
     expect(rolled.players[1]!.deposit).toBe(0);
     expect(rolled.players[1]!.points).toBe(0);
     expect(rolled.players[1]!.loan).toBeNull();
     expect(rolled.players[0]!.deposit).toBe(paidOut); // 收款方只按实付入账
+    // 地产未被自动变卖（破产清算才清空）
+    expect(rolled.log.some((e) => e.text.includes('出售'))).toBe(false);
     expect(rolled.winnerId).toBe('p1');
     expect(rolled.phase).toBe('game_over');
   });

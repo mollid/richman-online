@@ -532,8 +532,9 @@ describe('M2 股票系统', () => {
 });
 
 describe('M2 资产变卖', () => {
-  it('付租金时优先变卖股票而非直接破产', () => {
+  it('付租金时现金存款不足即破产，**不自动变卖股票**', () => {
     // p1 落到 p0 满级陆家嘴（租金 690），仅有 100 现金 + 10 股科技股(价值1200) + 一处 2 级地产
+    // 规则：负债不自动变卖资产，股票只能通过随机事件兑现
     const g = newGame(125);
     g.currentPlayerIndex = 1;
     g.rngState = seedForSum(6);
@@ -545,25 +546,27 @@ describe('M2 资产变卖', () => {
     pinIndexOne(g);
     const rolled = applyAction(g, { type: 'ROLL_DICE' });
     const p1 = rolled.players[1]!;
-    expect(p1.bankrupt).toBe(false);
-    expect(p1.stocks['tech']).toBeUndefined();
-    expect(p1.cash).toBe(100 + 1200 - 690); // 卖股后支付租金
-    expect(p1.properties[0]!.grade).toBe(2); // 地产未被降级
+    // 现金 100 < 租金 690，存款为 0 → 支付不起 → 破产
+    expect(p1.bankrupt).toBe(true);
+    // 股票**没有被自动卖掉**（破产清算才清空，与"自动变卖"是两回事）
+    expect(rolled.log.some((e) => e.text.includes('无力支付'))).toBe(true);
+    expect(rolled.log.some((e) => e.text.includes('变卖 科技股'))).toBe(false);
   });
 
-  it('资产耗尽仍不足则破产', () => {
-    const g = newGame(127);
+  it('现金存款恰好够付租金时不破产，股票保持不动', () => {
+    const g = newGame(126);
     g.currentPlayerIndex = 1;
     g.rngState = seedForSum(6);
     g.players[1]!.position = 24;
     g.players[0]!.properties = [{ cellId: 30, grade: 3 }];
-    g.players[1]!.cash = 100;
-    g.players[1]!.properties = [{ cellId: 6, grade: 1 }]; // 变卖仅回收 250
+    g.players[1]!.cash = 1000; // 足够付 690
+    g.players[1]!.stocks = { tech: 10 };
     pinIndexOne(g);
     const rolled = applyAction(g, { type: 'ROLL_DICE' });
-    expect(rolled.players[1]!.bankrupt).toBe(true);
-    expect(rolled.winnerId).toBe('p1');
-    expect(rolled.log.some((e) => e.text.includes('变卖全部资产'))).toBe(true);
+    const p1 = rolled.players[1]!;
+    expect(p1.bankrupt).toBe(false);
+    expect(p1.stocks['tech']).toBe(10); // 股票分毫未动
+    expect(p1.cash).toBe(1000 - 690);
   });
 });
 

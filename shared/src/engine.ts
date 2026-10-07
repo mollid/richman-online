@@ -314,7 +314,12 @@ function bankruptPlayer(state: GameState, p: Player): void {
   log(state, `${p.name} 破产出局，名下资产被银行没收`);
 }
 
-/** 资产变卖：优先卖股票，再降级地产，最后出售地产，直到凑够金额 */
+/**
+ * 资产变卖阶梯：优先卖股票 → 降级地产 → 出售地产。
+ *
+ * **注意：负债支付时不会调用本函数**（见 `pay`）。保留供将来新增的
+ * 随机事件/卡牌效果复用（如需"变卖资产偿债"类效果时调用）。
+ */
 function liquidateFor(state: GameState, p: Player, needed: number): void {
   // 1. 变卖全部股票
   for (const [stockId, qty] of Object.entries(p.stocks)) {
@@ -422,7 +427,10 @@ const DOG_HOSPITAL_DAYS = 3;
 const BEGGAR_ALMS = 1000;
 
 /**
- * 三货币支付管道：现金 → 存款 → 变卖（股票→降级→售地）→ 破产。
+ * 三货币支付管道：**现金 → 存款 → 破产**。
+ *
+ * 关键规则：**负债时不自动变卖资产**（含股票、建筑）。玩家若因支付不起而破产，
+ * 只能通过随机事件（如危险格「变卖所有股票求现」）主动兑现股票 —— 与原版一致。
  * 收款方按「实付 paid」入账，不凭空造钱；`toDeposit` 为真时租金等入收款方存款（ECON-02）。
  */
 function pay(
@@ -448,14 +456,7 @@ function pay(
     remaining -= fromDeposit;
   }
 
-  // 3. 变卖资产
-  if (remaining > 0) {
-    liquidateFor(state, from, remaining);
-    const afterLiquidate = Math.min(from.cash, remaining);
-    from.cash -= afterLiquidate;
-    remaining -= afterLiquidate;
-  }
-
+  // 3. 现金与存款都用尽即告不足——**不自动变卖股票或建筑**（用户规则 + 原版口径）
   const paid = amount - remaining;
 
   // ECON-08：运气/事件等意外损失（无收款方）的钱汇总进乐透奖池
@@ -466,7 +467,7 @@ function pay(
   creditPayee(to, paid, opts.toDeposit === true);
 
   if (remaining > 0) {
-    log(state, `${from.name} 变卖全部资产后仍不足，只能支付 ¥${paid}`);
+    log(state, `${from.name} 现金与存款均已用尽，无力支付 ¥${amount}（实付 ¥${paid}），宣告破产`);
     bankruptPlayer(state, from);
     checkWinner(state);
   }
@@ -1843,7 +1844,11 @@ function resolveFateCard(state: GameState, p: Player): void {
 }
 
 /** 结算单张命运卡效果；金额类过 `scaled()`（固定金额），百分比类直接作用于名义值 */
-function applyFateEffect(state: GameState, p: Player, def: FateCardDef): void {
+/**
+ * 结算单张命运卡效果（导出供测试直接验证单个事件，如「变卖所有股票求现」）。
+ * 生产路径请走 `resolveFateCard`（含抽签 + 落格），不要直接调用。
+ */
+export function applyFateEffect(state: GameState, p: Player, def: FateCardDef): void {
   // 日志占位符参数（金额默认按物价指数缩放，百分比类在分支内改回原值）
   const renderParams: Record<string, string | number> = {
     amount: scaled(state, def.amount ?? 0),
