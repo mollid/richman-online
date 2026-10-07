@@ -2,13 +2,14 @@ import { useEffect, useRef, useState } from 'react';
 import type { GameState, PlayerAction } from '@richman/shared';
 import { BoardRenderer } from './game/BoardRenderer.js';
 import { LocalHotseatSession, type GameSession } from './net/session.js';
-import { ColyseusSession } from './net/remote.js';
+import { ColyseusSession, hasSavedSession, type RoomSummary } from './net/remote.js';
 import { PlayerList } from './ui/PlayerList.js';
 import { ControlPanel } from './ui/ControlPanel.js';
 import { LogPanel } from './ui/LogPanel.js';
 import { HandPanel } from './ui/HandPanel.js';
 import { StockPanel } from './ui/StockPanel.js';
 import { ShopPanel } from './ui/ShopPanel.js';
+import { ChatPanel } from './ui/ChatPanel.js';
 
 export default function App() {
   const [session, setSession] = useState<GameSession | null>(null);
@@ -19,6 +20,24 @@ export default function App() {
     session?.destroy();
     setConnectError('');
     setSession(new LocalHotseatSession(playerCount));
+  };
+
+  const resumeLast = async () => {
+    setConnecting(true);
+    setConnectError('');
+    try {
+      const restored = await ColyseusSession.resumeLast();
+      if (restored) {
+        session?.destroy();
+        setSession(restored);
+      } else {
+        setConnectError('没有可恢复的对局，请重新创建或加入房间');
+      }
+    } catch {
+      setConnectError('恢复对局失败，请重新加入房间');
+    } finally {
+      setConnecting(false);
+    }
   };
 
   const connectRemote = async (playerName: string, roomId?: string) => {
@@ -45,6 +64,7 @@ export default function App() {
       <SetupScreen
         onStartLocal={startLocal}
         onConnect={connectRemote}
+        onResume={resumeLast}
         connecting={connecting}
         error={connectError}
       />
@@ -63,11 +83,13 @@ export default function App() {
 function SetupScreen({
   onStartLocal,
   onConnect,
+  onResume,
   connecting,
   error,
 }: {
   onStartLocal: (playerCount: number) => void;
   onConnect: (playerName: string, roomId?: string) => void;
+  onResume: () => void;
   connecting: boolean;
   error: string;
 }) {
@@ -75,6 +97,20 @@ function SetupScreen({
   const [playerCount, setPlayerCount] = useState(2);
   const [playerName, setPlayerName] = useState('');
   const [roomId, setRoomId] = useState('');
+  const [rooms, setRooms] = useState<RoomSummary[]>([]);
+  const [canResume] = useState(() => hasSavedSession());
+
+  const refreshRooms = async () => {
+    try {
+      setRooms(await ColyseusSession.listRooms());
+    } catch {
+      setRooms([]);
+    }
+  };
+
+  useEffect(() => {
+    if (mode === 'online') void refreshRooms();
+  }, [mode]);
 
   return (
     <div className="setup-screen">
@@ -134,7 +170,38 @@ function SetupScreen({
               加入房间
             </button>
           </div>
+          {canResume && (
+            <button className="ghost resume-btn" disabled={connecting} onClick={onResume}>
+              回到上次对局
+            </button>
+          )}
           {error && <div className="error-text">{error}</div>}
+          <div className="room-browser">
+            <div className="room-browser-header">
+              <span className="panel-title">公开房间</span>
+              <button className="small ghost" onClick={() => void refreshRooms()}>
+                刷新
+              </button>
+            </div>
+            {rooms.length === 0 ? (
+              <div className="room-empty">暂无等待中的房间</div>
+            ) : (
+              rooms.map((room) => (
+                <div key={room.roomId} className="room-row">
+                  <span className="room-id">{room.roomId}</span>
+                  <span className="room-players">
+                    {room.players}/{room.maxPlayers} 人
+                  </span>
+                  <button
+                    disabled={!playerName.trim() || connecting || room.players >= room.maxPlayers}
+                    onClick={() => onConnect(playerName.trim(), room.roomId)}
+                  >
+                    加入
+                  </button>
+                </div>
+              ))
+            )}
+          </div>
           <p className="hint">创建房间后把房间码发给好友，2 人即可开局（最多 4 人）</p>
         </div>
       )}
@@ -145,15 +212,18 @@ function SetupScreen({
 function GameScreen({ session, onExit }: { session: GameSession; onExit: () => void }) {
   const [game, setGame] = useState<GameState>(session.getGame());
   const [netError, setNetError] = useState('');
+  const [connection, setConnection] = useState<'connected' | 'reconnecting' | 'closed'>('connected');
   const boardRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<BoardRenderer | null>(null);
 
   useEffect(() => {
     const unsubscribe = session.subscribe(setGame);
     const unsubscribeError = session.onError?.(setNetError);
+    const unsubscribeConnection = session.onConnectionChange?.(setConnection);
     return () => {
       unsubscribe();
       unsubscribeError?.();
+      unsubscribeConnection?.();
     };
   }, [session]);
 
@@ -218,17 +288,26 @@ function GameScreen({ session, onExit }: { session: GameSession; onExit: () => v
             退出
           </button>
         </div>
+        {connection === 'reconnecting' && (
+          <div className="conn-banner">⚡ 连接已断开，正在尝试重新连接…</div>
+        )}
         {netError && <div className="error-text">{netError}</div>}
-        {!isMyTurn && game.phase !== 'lobby' && game.phase !== 'game_over' && (
-          <div className="wait-banner">等待 {current?.name ?? '对方'} 操作…</div>
+        {!isMyTurn && current && !current.online && game.phase !== 'game_over' && (
+          <div className="wait-banner offline">{current.name} 掉线了，稍后将自动托管…</div>
+        )}
+        {!isMyTurn && current?.online && game.phase !== 'lobby' && game.phase !== 'game_over' && (
+          <div className="wait-banner">等待 {current.name} 操作…</div>
         )}
         <PlayerList game={game} myPlayerId={session.myPlayerId} />
         <HandPanel game={game} onAction={onAction} interactive={interactive} />
         <ControlPanel game={game} onAction={onAction} interactive={interactive} />
         <ShopPanel game={game} onAction={onAction} interactive={interactive} />
         <StockPanel game={game} onAction={onAction} interactive={interactive} />
+        <ChatPanel session={session} myPlayerId={session.myPlayerId} />
         <LogPanel game={game} />
       </aside>
     </div>
   );
 }
+
+

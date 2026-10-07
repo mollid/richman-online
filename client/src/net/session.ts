@@ -1,3 +1,4 @@
+import type { ChatMessage } from './remote.js';
 import { applyAction, createGame, type GameState, type PlayerAction } from '@richman/shared';
 
 /** 会话抽象：本地热座与联机共用同一套 UI */
@@ -14,6 +15,11 @@ export interface GameSession {
   startGame?(): void;
   /** 联机模式：服务器错误消息订阅 */
   onError?(fn: (message: string) => void): () => void;
+  /** 联机模式：聊天 */
+  sendChat?(text: string): void;
+  onChat?(fn: (messages: ChatMessage[]) => void): () => void;
+  /** 联机模式：连接状态变化 */
+  onConnectionChange?(fn: (state: 'connected' | 'reconnecting' | 'closed') => void): () => void;
 }
 
 /** M1：本地热座会话（所有人共用一台设备轮流操作） */
@@ -52,4 +58,5 @@ export class LocalHotseatSession implements GameSession {
     this.listeners.clear();
   }
 }
+
 

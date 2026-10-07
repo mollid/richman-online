@@ -581,3 +581,141 @@ button.mini {
   text-align: center;
   font-size: 13px;
 }
+
+/* ---------- 聊天 ---------- */
+.chat-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.chat-list {
+  height: 130px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.chat-empty {
+  color: #607d8b;
+  text-align: center;
+  padding-top: 40px;
+  font-size: 11px;
+}
+
+.chat-msg {
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+}
+
+.chat-msg.mine .chat-name {
+  color: #ffe082;
+}
+
+.chat-name {
+  color: #80cbc4;
+  flex-shrink: 0;
+  font-size: 11px;
+}
+
+.chat-text {
+  color: #cfd8dc;
+  word-break: break-all;
+}
+
+.chat-input-row {
+  display: flex;
+  gap: 6px;
+}
+
+.chat-input-row input {
+  flex: 1;
+  background: #263238;
+  border: 1px solid #546e7a;
+  border-radius: 6px;
+  padding: 6px 8px;
+  color: #eceff1;
+  font-family: inherit;
+  font-size: 12px;
+  outline: none;
+}
+
+.chat-input-row input:focus {
+  border-color: #e91e63;
+}
+
+.chat-input-row button {
+  padding: 6px 10px;
+  font-size: 12px;
+}
+
+/* ---------- 房间列表 ---------- */
+.room-browser {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.room-browser-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.room-empty {
+  font-size: 12px;
+  color: #607d8b;
+  text-align: center;
+  padding: 8px;
+  border: 1px dashed #37474f;
+  border-radius: 8px;
+}
+
+.room-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(38, 50, 56, 0.6);
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-size: 13px;
+}
+
+.room-id {
+  font-family: Consolas, monospace;
+  color: #ffe082;
+  letter-spacing: 1px;
+}
+
+.room-players {
+  flex: 1;
+  color: #90a4ae;
+  font-size: 12px;
+}
+
+.resume-btn {
+  width: 100%;
+}
+
+/* ---------- 连接状态 ---------- */
+.conn-banner {
+  background: rgba(239, 154, 154, 0.12);
+  border: 1px solid rgba(239, 154, 154, 0.4);
+  color: #ef9a9a;
+  border-radius: 8px;
+  padding: 8px;
+  text-align: center;
+  font-size: 13px;
+  animation: pulse 1.6s infinite;
+}
+
+.wait-banner.offline {
+  background: rgba(239, 154, 154, 0.08);
+  border-color: rgba(239, 154, 154, 0.3);
+  color: #ef9a9a;
+}
