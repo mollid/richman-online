@@ -18,6 +18,7 @@ import {
 } from './net/auth.js';
 import { PlayerList } from './ui/PlayerList.js';
 import { ControlPanel } from './ui/ControlPanel.js';
+import { CompanyPanel } from './ui/CompanyPanel.js';
 import { CalendarPanel } from './ui/CalendarPanel.js';
 import { BankPanel } from './ui/BankPanel.js';
 import { LogPanel } from './ui/LogPanel.js';
@@ -497,6 +498,7 @@ function GameScreen({ session, onExit }: { session: GameSession; onExit: () => v
           <div className="wait-banner">等待 {current.name} 操作…</div>
         )}
         <ControlPanel game={game} onAction={onAction} interactive={interactive} />
+        <CompanyPanel game={game} onAction={onAction} interactive={interactive} />
 
         <div className="sidebar-tabs">
           {SIDEBAR_TABS.map(([id, label]) => (

@@ -14,6 +14,8 @@ export function StockPanel({ game, onAction, interactive = true }: { game: GameS
     const stock = game.stockMarket.stocks.find((s) => s.id === id);
     return sum + (stock?.price ?? 0) * qty;
   }, 0);
+  const portfolioCost = Object.values(current.stockCost ?? {}).reduce((sum, v) => sum + v, 0);
+  const controlled = game.companies.filter((c) => c.chairmanId === current.id).length;
 
   const trade = (stockId: string, type: 'BUY_STOCK' | 'SELL_STOCK', quantity: number) => {
     onAction({ type, stockId, quantity });
@@ -61,7 +63,8 @@ export function StockPanel({ game, onAction, interactive = true }: { game: GameS
         </tbody>
       </table>
       <div className="stock-summary">
-        持仓市值 ¥{portfolioValue.toLocaleString('zh-CN')} · 现金 ¥{current.cash.toLocaleString('zh-CN')}
+        持仓市值 ¥{portfolioValue.toLocaleString('zh-CN')} · 成本 ¥{portfolioCost.toLocaleString('zh-CN')} · 现金 ¥
+        {current.cash.toLocaleString('zh-CN')} · 控股公司 {controlled} 家
       </div>
       {actions.isHoliday ? (
         <div className="stock-hint holiday-hint">例假日休市，今日无法交易</div>

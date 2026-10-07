@@ -1267,3 +1267,86 @@ button.mini {
   font-size: 11px;
   color: #607d8b;
 }
+
+/* ---------- 公司企业（波 5） ---------- */
+.company-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border: 1px solid rgba(233, 30, 99, 0.35);
+}
+
+.company-hint {
+  font-size: 11px;
+  color: #90a4ae;
+}
+
+.company-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  font-size: 12px;
+  color: #a5d6a7;
+}
+
+.company-shareholders {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.company-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: #cfd8dc;
+}
+
+.company-label {
+  font-size: 12px;
+  color: #81c784;
+}
+
+.company-buy {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.company-buy input {
+  flex: 1;
+  min-width: 0;
+  background: #263238;
+  border: 1px solid #546e7a;
+  border-radius: 6px;
+  padding: 6px 8px;
+  color: #eceff1;
+  font-family: inherit;
+  font-size: 13px;
+  outline: none;
+}
+
+.company-buy input:focus {
+  border-color: #e91e63;
+}
+
+.company-buy select {
+  flex: 1;
+  min-width: 0;
+  background: #263238;
+  border: 1px solid #546e7a;
+  border-radius: 6px;
+  padding: 6px 8px;
+  color: #eceff1;
+  font-family: inherit;
+  font-size: 13px;
+}
+
+.company-estate,
+.company-financing {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 6px;
+  border-top: 1px dashed rgba(84, 110, 122, 0.35);
+}

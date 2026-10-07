@@ -14,6 +14,7 @@ export function PlayerList({ game, myPlayerId }: { game: GameState; myPlayerId?:
         const stockCount = Object.values(p.stocks).reduce((a, b) => a + b, 0);
         const itemCount = Object.values(p.items).reduce((a, b) => a + b, 0);
         const bomb = game.bombs.find((b) => b.playerId === p.id);
+        const chairmanCount = game.companies.filter((c) => c.chairmanId === p.id).length;
         return (
           <div key={p.id} className={`player-card ${p.id === currentId ? 'current' : ''} ${p.bankrupt ? 'bankrupt' : ''}`}>
             <span className="dot" style={{ background: toCssColor(p.color) }} />
@@ -45,6 +46,26 @@ export function PlayerList({ game, myPlayerId }: { game: GameState; myPlayerId?:
                 {p.loan && (
                   <span className="badge loan" title={`未还本金 ¥${p.loan.principal}`}>
                     贷 ¥{p.loan.principal.toLocaleString('zh-CN')}（剩 {p.loan.dueDayIndex - dayIndex} 天）
+                  </span>
+                )}
+                {p.financing > 0 && (
+                  <span className="badge loan" title="董事长特别融资（周转期间存款不计息）">
+                    融资 ¥{p.financing.toLocaleString('zh-CN')}
+                  </span>
+                )}
+                {chairmanCount > 0 && (
+                  <span className="badge" title="公司董事长（享免付费特权）">
+                    董事长×{chairmanCount}
+                  </span>
+                )}
+                {p.abroadTurns > 0 && (
+                  <span className="badge skip" title="出国旅游：期间不能收租">
+                    ✈️出国{p.abroadTurns}
+                  </span>
+                )}
+                {p.insurance && (
+                  <span className="badge" title="保险期间：可理赔灾害损失">
+                    🛡️保险{p.insurance.daysLeft}
                   </span>
                 )}
                 {p.bankrupt && <span className="badge bankrupt">破产</span>}
