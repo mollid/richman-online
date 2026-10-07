@@ -273,6 +273,10 @@ function emptyState(): GameState {
     auction: null,
     auctionQueue: [],
     companies: [],
+    newsCursor: 0,
+    streetPriceFactors: {},
+    stockHaltAllDays: 0,
+    loanBanDays: 0,
   };
 }
 

@@ -29,6 +29,15 @@ export function PlayerList({ game, myPlayerId }: { game: GameState; myPlayerId?:
                   </span>
                 )}
                 {!p.online && <span className="badge off">离线</span>}
+                {p.custody && (
+                  <span
+                    className="badge skip"
+                    title={p.custody.kind === 'jail' ? '在押：暂停行动并丧失收租权' : '住院：暂停行动并丧失收租权'}
+                  >
+                    {p.custody.kind === 'jail' ? '🚔在押' : '🏥住院'}
+                    {p.custody.daysLeft}
+                  </span>
+                )}
                 {p.skipTurns > 0 && <span className="badge skip">停留{p.skipTurns}</span>}
                 {p.holdTurns > 0 && <span className="badge skip">驻留{p.holdTurns}</span>}
                 {p.rentBlockedTurns > 0 && <span className="badge skip" title="丧失收租权">禁租{p.rentBlockedTurns}</span>}

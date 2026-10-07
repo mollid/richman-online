@@ -28,7 +28,7 @@ const PHASE_LABEL: Record<GameState['phase'], string> = {
   lobby: '等待开始',
   awaiting_roll: '等待掷骰',
   awaiting_action: '等待决策',
-  awaiting_pick: '小游戏：三仙归洞',
+  awaiting_pick: '小游戏进行中',
   awaiting_auction: '拍卖会竞价',
   game_over: '游戏结束',
 };
@@ -128,6 +128,42 @@ export function ControlPanel({
             ))}
           </div>
           <div className="cell-hint">奖励表：0中 -200 · 1中 +100 · 2中 +500 · 3中 +1200</div>
+        </div>
+      ) : game.phase === 'awaiting_pick' && (game.minigame?.kind === 'balloon' || game.minigame?.kind === 'penguin') ? (
+        <div className="minigame-box">
+          <div className="minigame-hint">
+            第 {game.minigame.round + 1}/3 轮 ·{' '}
+            {game.minigame.kind === 'balloon' ? '3 个气球中 1 个是炸弹，别踩到它！' : '帮企鹅挖出冰下的宝物'}
+          </div>
+          <div className="cup-row">
+            {([0, 1, 2] as const).map((hole) => (
+              <button
+                key={hole}
+                className="cup-btn"
+                disabled={!interactive}
+                onClick={() => onAction({ type: 'MINIGAME_PICK', hole })}
+              >
+                {game.minigame!.kind === 'balloon' ? '🎈' : '🐧'}
+                <span>
+                  {game.minigame!.kind === 'balloon' ? '气球' : '冰窟'} {hole + 1}
+                </span>
+              </button>
+            ))}
+          </div>
+          {game.minigame.hits.length > 0 && (
+            <div className="minigame-score">
+              {game.minigame.hits.map((hit, i) => (
+                <span key={i} className={hit ? 'up' : 'down'}>
+                  {hit ? '✅' : '❌'}
+                </span>
+              ))}
+            </div>
+          )}
+          <div className="cell-hint">
+            {game.minigame.kind === 'balloon'
+              ? '踩中炸弹立即结束并付门票 ¥300；3 轮全过 +¥1500'
+              : '奖励表：0中 -200 · 1中 +200 · 2中 +800 · 3中 +2000'}
+          </div>
         </div>
       ) : (
         <>
