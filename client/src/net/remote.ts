@@ -289,6 +289,7 @@ function emptyState(): GameState {
     pendingCard: null,
     trades: [],
     tradeHistory: [],
+    surrenderVote: null,
   };
 }
 

@@ -250,21 +250,45 @@ export function ControlPanel({
         </>
       )}
 
-      {/* CORE-04 认输投降：走「死神附身」流程后退出对局 */}
+      {/* CORE-04 / UI-13 认输：投票决定死神落在哪位「复仇者」身上 */}
       {actions.canSurrender && (
         <div className="surrender-row">
           <button
             className="ghost danger"
             disabled={!interactive}
             onClick={() => {
-              if (window.confirm('确定认输投降吗？将走「死神附身」流程，卡牌道具被带走并支付离场费。')) {
+              if (window.confirm('确定认输投降吗？你将退出对局，并由全体投票决定谁被死神附身。')) {
                 onAction({ type: 'SURRENDER' });
               }
             }}
           >
             认输投降
           </button>
-          <span className="surrender-hint">投降后死神会带走你全部卡牌道具，并索取离场费</span>
+          <span className="surrender-hint">你将退出对局；全体投票选出的复仇者会被死神附身</span>
+        </div>
+      )}
+
+      {/* UI-13 认输投票：选出被死神附身的复仇者 */}
+      {actions.inSurrenderVote && (
+        <div className="revenge-vote">
+          <div className="revenge-title">认输投票 · 把死神引向谁？</div>
+          <div className="revenge-hint">
+            死神会清空该玩家全部卡片与道具，并让他 13 天霉运不断（倒霉事加倍）。
+            {actions.myRevengeVote ? '（你已投票，可改投）' : ''}
+          </div>
+          <div className="revenge-list">
+            {actions.revengeCandidates.map((cand) => (
+              <button
+                key={cand.id}
+                className={`mini ${actions.myRevengeVote === cand.id ? 'primary' : ''}`}
+                disabled={!interactive}
+                onClick={() => onAction({ type: 'VOTE_REVENGE', revengeTargetId: cand.id })}
+              >
+                {actions.myRevengeVote === cand.id ? '✓ ' : ''}
+                {cand.name}
+              </button>
+            ))}
+          </div>
         </div>
       )}
 
