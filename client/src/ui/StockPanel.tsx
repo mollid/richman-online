@@ -39,7 +39,8 @@ export function StockPanel({
   const portfolioCost = Object.values(current.stockCost ?? {}).reduce((sum, v) => sum + v, 0);
   const profit = portfolioValue - portfolioCost;
   const controlled = game.companies.filter((c) => c.chairmanId === current.id).length;
-  const funds = current.cash + current.deposit; // help[07]：现金不足时自动扣存款
+  // 原版规则：股票只能用存款买（现金仅用于买地与升级建筑）
+  const funds = current.deposit;
 
   // 停牌原因诊断（用于给玩家明确提示）
   const haltAll = game.stockHaltAllDays > 0;
@@ -53,6 +54,7 @@ export function StockPanel({
   };
 
   const maxBuy = (price: number) => (price > 0 ? Math.floor(funds / price) : 0);
+  const affordable = funds > 0;
 
   return (
     <div className="panel stock-panel">
@@ -61,8 +63,10 @@ export function StockPanel({
       {/* 市场状态条 */}
       <div className="stock-market-bar">
         <span className={`badge weekday ${date.isHoliday ? 'holiday' : ''}`}>{date.weekdayLabel}</span>
-        {actions.canTradeStock ? (
-          <span className="stock-open">● 交易中 · 随时可买卖</span>
+        {actions.canTradeStock && !affordable ? (
+          <span className="stock-closed">存款不足，暂无法买股（现金不能炒股）</span>
+        ) : actions.canTradeStock ? (
+          <span className="stock-open">● 交易中 · 随时可买卖（用存款）</span>
         ) : haltAll ? (
           <span className="stock-closed">全市场停牌（剩余 {game.stockHaltAllDays} 天）</span>
         ) : date.isHoliday ? (
@@ -109,7 +113,7 @@ export function StockPanel({
                   <button
                     className="mini"
                     disabled={!canTrade || cap < 1}
-                    title={cap < 1 ? '资金不足' : `买入 ${qty} 张（需 ¥${fmt(s.price * qty)}）`}
+                    title={cap < 1 ? '存款不足（股票只能用存款购买）' : `以存款买入 ${qty} 张（需 ¥${fmt(s.price * qty)}）`}
                     onClick={() => trade(s.id, 'BUY_STOCK', qty)}
                   >
                     买{qty}
@@ -187,15 +191,19 @@ export function StockPanel({
           <b>{controlled} 家</b>
         </div>
         <div className="stock-summary-row">
-          <span>可用资金</span>
-          <b>
-            现金 ¥{fmt(current.cash)} · 存款 ¥{fmt(current.deposit)}
-          </b>
+          <span>可用存款（炒股）</span>
+          <b className={affordable ? '' : 'down'}>¥{fmt(current.deposit)}</b>
+        </div>
+        <div className="stock-summary-row">
+          <span>现金（仅买地/升级）</span>
+          <b>¥{fmt(current.cash)}</b>
         </div>
       </div>
 
       <div className="stock-hint">
-        买卖股票的收支由银行自动转扣：现金优先，不足自动从存款扣除（help[07]）。本面板在任何格型均可交易。
+        <b>股票只能用存款买卖</b>，现金仅用于购买土地与升级建筑；现金不足时无法买地或升级。
+        持有股票期间若需支付租金等支出而现金与存款不足，系统会按「股票 → 降级建筑 → 售地」的顺序自动变卖，
+        全部变卖后仍不够则破产。本面板在任何格型均可交易。
       </div>
     </div>
   );
