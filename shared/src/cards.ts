@@ -84,10 +84,63 @@ export const CARDS: Record<string, CardDef> = {
     phase: 'any',
     needsTarget: false,
   },
+  roadblock: {
+    id: 'roadblock',
+    name: '路障卡',
+    description: '在当前格放置路障，其他玩家经过必须停下',
+    cost: 800,
+    phase: 'post_roll',
+    needsTarget: false,
+  },
+  turnaround: {
+    id: 'turnaround',
+    name: '转向卡',
+    description: '反转自己的行进方向',
+    cost: 600,
+    phase: 'pre_roll',
+    needsTarget: false,
+  },
+  turtle: {
+    id: 'turtle',
+    name: '乌龟卡',
+    description: '目标玩家接下来 2 次掷骰步数减半',
+    cost: 1000,
+    phase: 'any',
+    needsTarget: true,
+  },
+  'rent-free': {
+    id: 'rent-free',
+    name: '免租卡',
+    description: '接下来 1 次进入他人地产免付租金',
+    cost: 900,
+    phase: 'any',
+    needsTarget: false,
+  },
+  angel: {
+    id: 'angel',
+    name: '天使卡',
+    description: '立即出狱/出院，并送走穷神',
+    cost: 1100,
+    phase: 'any',
+    needsTarget: false,
+  },
 };
 
 /** 商店在售卡片 */
-export const SHOP_CARD_IDS = ['equalize', 'swap', 'demolish', 'remote-dice', 'seize', 'red-card', 'black-card'];
+export const SHOP_CARD_IDS = [
+  'equalize',
+  'swap',
+  'demolish',
+  'remote-dice',
+  'seize',
+  'red-card',
+  'black-card',
+  'roadblock',
+  'turnaround',
+  'turtle',
+  'rent-free',
+  'angel',
+];
 
 /** 机会格抽卡池（请神卡只能抽取，不在商店出售） */
 export const CHANCE_CARD_POOL = [
@@ -99,4 +152,8 @@ export const CHANCE_CARD_POOL = [
   'red-card',
   'black-card',
   'god-summon',
+  'roadblock',
+  'rent-free',
+  'angel',
 ];
+

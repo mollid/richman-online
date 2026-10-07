@@ -405,3 +405,89 @@ describe('M5 确定性回放（ReplayEngine）', () => {
 });
 
 
+
+describe('M6 移动系统（路障/转向/乌龟）', () => {
+  it('路障卡：他人经过被截停且路障消失', () => {
+    const g = setupLanding(newGame(201), 4, 3); // p0 落到无主成都路 → 决策阶段
+    const rolled = applyAction(g, { type: 'ROLL_DICE' });
+    rolled.players[0]!.cards = ['roadblock'];
+    const used = applyAction(rolled, { type: 'USE_CARD', cardId: 'roadblock' });
+    expect(used.roadblocks).toEqual([4]);
+    // 放置路障不消耗回合，仍需显式结束回合
+    const ended = applyAction(used, { type: 'END_TURN' });
+    expect(ended.currentPlayerIndex).toBe(1);
+
+    // p2 从 0 出发掷 6 点，途中经过 4 号路障 → 停在 4
+    ended.rngState = seedForSum(6);
+    ended.players[1]!.position = 0;
+    const rolled2 = applyAction(ended, { type: 'ROLL_DICE' });
+    expect(rolled2.players[1]!.position).toBe(4);
+    expect(rolled2.roadblocks).toEqual([]);
+    expect(rolled2.log.some((e) => e.text.includes('撞上路障'))).toBe(true);
+  });
+
+  it('转向卡：方向反转后向反方向移动', () => {
+    const g = newGame(203);
+    g.players[0]!.cards = ['turnaround'];
+    const used = applyAction(g, { type: 'USE_CARD', cardId: 'turnaround' });
+    expect(used.players[0]!.direction).toBe(-1);
+    used.rngState = seedForSum(3);
+    used.players[0]!.position = 10;
+    const rolled = applyAction(used, { type: 'ROLL_DICE' });
+    expect(rolled.players[0]!.position).toBe(7); // 10 - 3
+  });
+
+  it('乌龟卡：目标掷骰步数减半', () => {
+    const g = newGame(205);
+    g.players[0]!.cards = ['turtle'];
+    const used = applyAction(g, { type: 'USE_CARD', cardId: 'turtle', targetPlayerId: 'p2' });
+    expect(used.players[1]!.slowTurns).toBe(2);
+
+    // 切到 p2 掷骰：总和 7 → 实际移动 ceil(7/2)=4
+    used.rngState = seedForSum(7);
+    used.currentPlayerIndex = 1;
+    used.players[1]!.position = 10;
+    const rolled = applyAction(used, { type: 'ROLL_DICE' });
+    expect(rolled.players[1]!.position).toBe(14);
+    expect(rolled.players[1]!.slowTurns).toBe(1);
+  });
+});
+
+describe('M6 新卡片', () => {
+  it('免租卡：落地他人地产时一次租金全免', () => {
+    const g = setupLanding(newGame(209), 6, 3); // p0 即将落到 p1 的 6 号南京路（2 级，租金 260）
+    g.players[0]!.cards = ['rent-free'];
+    g.players[1]!.properties = [{ cellId: 6, grade: 2 }];
+    // 先在掷骰前使用免租卡（phase=any，awaiting_roll 可用）
+    const used = applyAction(g, { type: 'USE_CARD', cardId: 'rent-free' });
+    expect(used.players[0]!.freeRentTurns).toBe(1);
+    const rolled = applyAction(used, { type: 'ROLL_DICE' });
+    expect(rolled.players[0]!.cash).toBe(15000); // 租金 260 被免除
+    expect(rolled.players[0]!.freeRentTurns).toBe(0);
+    expect(rolled.log.some((e) => e.text.includes('免租卡生效'))).toBe(true);
+  });
+
+  it('天使卡：解除停留并送走穷神', () => {
+    const g = newGame(211);
+    g.players[0]!.cards = ['angel'];
+    g.players[0]!.skipTurns = 3;
+    g.players[0]!.god = { godId: 'poverty', remainingTurns: 3 };
+    const used = applyAction(g, { type: 'USE_CARD', cardId: 'angel' });
+    expect(used.players[0]!.skipTurns).toBe(0);
+    expect(used.players[0]!.god).toBeNull();
+  });
+});
+
+describe('M6 福神', () => {
+  it('福神每回合发放 200-600 随机红包', () => {
+    const g = newGame(213);
+    g.players[0]!.god = { godId: 'fortune', remainingTurns: 2 };
+    const before = g.players[0]!.cash;
+    const rolled = applyAction(g, { type: 'ROLL_DICE' });
+    const gain = rolled.players[0]!.cash - before - 0;
+    expect(gain).toBeGreaterThanOrEqual(200);
+    expect(gain).toBeLessThanOrEqual(600);
+    expect(rolled.players[0]!.god).toEqual({ godId: 'fortune', remainingTurns: 1 });
+  });
+});
+

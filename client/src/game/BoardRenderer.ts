@@ -15,6 +15,19 @@ const GROUP_COLORS: Record<string, number> = {
   financial: 0xba68c8,
 };
 
+/** 非地产格的示意图标（系统字体 emoji，无素材依赖） */
+const CELL_ICONS: Partial<Record<BoardCell['type'], string>> = {
+  start: '🏁',
+  chance: '❓',
+  tax: '🧾',
+  hospital: '🏥',
+  jail: '🚓',
+  shop: '🛒',
+  bank: '🏦',
+  god: '⛩️',
+  neutral: '🌳',
+};
+
 const TYPE_COLORS: Partial<Record<BoardCell['type'], number>> = {
   start: 0xffe082,
   chance: 0xf48fb1,
@@ -148,6 +161,17 @@ export class BoardRenderer {
     label.position.set(pos.x, pos.y - (cell.type === 'property' ? 5 : 0));
     this.world.addChild(label);
 
+    const icon = CELL_ICONS[cell.type];
+    if (icon) {
+      const iconText = new Text({
+        text: icon,
+        style: { fontSize: 13 },
+      });
+      iconText.anchor.set(0.5);
+      iconText.position.set(pos.x, pos.y + 6);
+      this.world.addChild(iconText);
+    }
+
     if (cell.type === 'property' && cell.price !== undefined) {
       const price = new Text({
         text: `¥${cell.price}`,
@@ -173,14 +197,17 @@ export class BoardRenderer {
         border.position.set(pos.x, pos.y);
         this.overlayLayer.addChild(border);
 
-        // 等级标记：1~3 个小方块
+        // 等级标记：1~3 栋小屋（屋顶颜色 = 拥有者颜色）
         for (let i = 0; i < prop.grade; i++) {
-          const mark = new Graphics();
-          mark.rect(-4, -4, 8, 8);
-          mark.fill({ color: 0x263238 });
-          mark.stroke({ width: 1.5, color: player.color });
-          mark.position.set(pos.x - (prop.grade - 1) * 7 + i * 14, pos.y + 2);
-          this.overlayLayer.addChild(mark);
+          const bx = pos.x - (prop.grade - 1) * 8 + i * 16;
+          const house = new Graphics();
+          house.rect(bx - 4, pos.y, 8, 5);
+          house.fill({ color: 0xfff3e0 });
+          house.stroke({ width: 1, color: 0x263238 });
+          house.poly([bx - 5, pos.y, bx, pos.y - 6, bx + 5, pos.y]);
+          house.fill({ color: player.color });
+          house.stroke({ width: 1, color: 0x263238 });
+          this.overlayLayer.addChild(house);
         }
       }
     }

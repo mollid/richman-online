@@ -17,6 +17,9 @@ export function createGame(players: PlayerDef[], seed = Date.now() % 2147483647)
       stocks: {},
       god: null,
       skipTurns: 0,
+      direction: 1 as 1 | -1,
+      slowTurns: 0,
+      freeRentTurns: 0,
       bankrupt: false,
       online: true,
     })),
@@ -33,6 +36,7 @@ export function createGame(players: PlayerDef[], seed = Date.now() % 2147483647)
       stocks: STOCK_DEFS.map((s) => ({ id: s.id, name: s.name, price: s.initialPrice, lastChangePct: 0 })),
     },
     pendingFixedDice: null,
+    roadblocks: [],
   };
 }
 
@@ -55,6 +59,9 @@ export function addPlayer(state: GameState, def: PlayerDef): GameState {
     stocks: {},
     god: null,
     skipTurns: 0,
+    direction: 1 as 1 | -1,
+    slowTurns: 0,
+    freeRentTurns: 0,
     bankrupt: false,
     online: true,
   });
@@ -122,6 +129,9 @@ function bankruptPlayer(state: GameState, p: Player): void {
   p.bankrupt = true;
   p.cash = 0;
   p.skipTurns = 0;
+  p.direction = 1;
+  p.slowTurns = 0;
+  p.freeRentTurns = 0;
   p.properties = [];
   p.cards = [];
   p.stocks = {};
@@ -265,6 +275,12 @@ function applyGodEffect(state: GameState, p: Player): void {
   } else if (def?.id === 'poverty') {
     log(state, `穷神作祟，${p.name} 损失 ¥400`);
     payCash(state, p, 400, null);
+  } else if (def?.id === 'fortune') {
+    const draw = nextRandom(state.rngState);
+    state.rngState = draw.nextState;
+    const amount = 200 + Math.floor(draw.value * 400);
+    p.cash += amount;
+    log(state, `福神送来红包，${p.name} 获得 ¥${amount}`);
   } else if (def?.id === 'land') {
     const upgradable = p.properties.filter((q) => q.grade < 3);
     if (upgradable.length > 0) {
@@ -381,18 +397,35 @@ function rollDice(state: GameState): void {
   const r2 = rollDie(state.rngState);
   state.rngState = r2.nextState;
   state.dice = [d1 as 1 | 2 | 3 | 4 | 5 | 6, r2.value];
-  const steps = d1 + r2.value;
-  log(state, `${p.name} 掷出 ${d1} + ${r2.value} = ${steps} 点`);
+  let steps = d1 + r2.value;
+  if (p.slowTurns > 0) {
+    steps = Math.max(1, Math.ceil(steps / 2));
+    p.slowTurns -= 1;
+    log(state, `${p.name} 受乌龟卡影响，本次只移动 ${steps} 格`);
+  }
+  log(state, `${p.name} 掷出 ${d1} + ${r2.value} = ${d1 + r2.value} 点`);
 
+  // 逐格移动：支持方向反转与路障截停
   const oldPos = p.position;
-  const newPos = (oldPos + steps) % BOARD_SIZE;
-  if (oldPos + steps >= BOARD_SIZE) {
+  let pos = oldPos;
+  let crossedStart = false;
+  for (let i = 0; i < steps; i++) {
+    pos = (pos + p.direction + BOARD_SIZE) % BOARD_SIZE;
+    if (pos === 0) crossedStart = true;
+    if (state.roadblocks.includes(pos)) {
+      state.roadblocks = state.roadblocks.filter((id) => id !== pos);
+      const coneCell = state.board[pos]!;
+      log(state, `${p.name} 撞上路障，被迫停在「${coneCell.name}」`);
+      break;
+    }
+  }
+  if (crossedStart) {
     p.cash += PASS_START_SALARY;
     log(state, `${p.name} 经过起点，领取薪水 ¥${PASS_START_SALARY}`);
   }
-  p.position = newPos;
+  p.position = pos;
 
-  const c = cellAt(state, newPos);
+  const c = cellAt(state, pos);
 
   if (c.type === 'start') {
     log(state, `${p.name} 正好停在起点`);
@@ -470,6 +503,12 @@ function rollDice(state: GameState): void {
         log(state, `${p.name} 回到满级地产「${c.name}」`);
         advanceTurn(state);
       }
+      return;
+    }
+    if (p.freeRentTurns > 0) {
+      p.freeRentTurns -= 1;
+      log(state, `${p.name} 的免租卡生效，免除「${c.name}」租金`);
+      advanceTurn(state);
       return;
     }
     const rent = rentOf(c.baseRent, owned.property.grade);
@@ -610,6 +649,40 @@ function useCard(state: GameState, action: Extract<PlayerAction, { type: 'USE_CA
       summonGod(state, p);
       break;
     }
+    case 'roadblock': {
+      const pos = p.position;
+      if (state.roadblocks.includes(pos)) throw new Error('此格已有路障');
+      const cellR = cellAt(state, pos);
+      state.roadblocks.push(pos);
+      log(state, `${p.name} 在「${cellR.name}」放置了路障`);
+      break;
+    }
+    case 'turnaround': {
+      p.direction = p.direction === 1 ? -1 : 1;
+      log(state, `${p.name} 使用「转向卡」，行进方向反转`);
+      break;
+    }
+    case 'turtle': {
+      const target = state.players.find((q) => q.id === action.targetPlayerId);
+      if (!target || target.id === p.id || target.bankrupt) throw new Error('请选择有效的目标玩家');
+      target.slowTurns += 2;
+      log(state, `${p.name} 对 ${target.name} 使用「乌龟卡」，其接下来 2 次掷骰步数减半`);
+      break;
+    }
+    case 'rent-free': {
+      p.freeRentTurns += 1;
+      log(state, `${p.name} 使用「免租卡」，下一次租金全免`);
+      break;
+    }
+    case 'angel': {
+      p.skipTurns = 0;
+      if (p.god?.godId === 'poverty') {
+        p.god = null;
+        log(state, `穷神被天使卡送走了`);
+      }
+      log(state, `${p.name} 使用「天使卡」，恢复自由身`);
+      break;
+    }
     default:
       throw new Error('未知卡片效果');
   }
@@ -709,6 +782,7 @@ export function applyAction(state: GameState, action: PlayerAction): GameState {
   }
   return next;
 }
+
 
 
 

@@ -61,6 +61,12 @@ export interface Player {
   god: GodStatus | null;
   /** 剩余跳过回合数（医院/监狱） */
   skipTurns: number;
+  /** 行进方向：1=顺时针 -1=逆时针（转向卡改变） */
+  direction: 1 | -1;
+  /** 乌龟卡减速剩余次数（掷骰步数减半） */
+  slowTurns: number;
+  /** 免租剩余次数（经过他人地产免租） */
+  freeRentTurns: number;
   bankrupt: boolean;
   online: boolean;
 }
@@ -107,6 +113,8 @@ export interface GameState {
   stockMarket: StockMarket;
   /** 遥控骰子等效果锁定的下一次骰子点数 */
   pendingFixedDice: number | null;
+  /** 路障所在格（其他玩家经过必须停下，锥筒随之消失） */
+  roadblocks: number[];
 }
 
 export type PlayerAction =
@@ -131,4 +139,5 @@ export interface AvailableActions {
   /** 当前阶段可使用的卡片 id 列表 */
   usableCards: string[];
 }
+
 

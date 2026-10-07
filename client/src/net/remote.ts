@@ -253,6 +253,7 @@ function emptyState(): GameState {
     winnerId: null,
     stockMarket: { stocks: [] },
     pendingFixedDice: null,
+    roadblocks: [],
   };
 }
 
@@ -272,6 +273,8 @@ function readSavedSession(): { token: string; name: string } | null {
     return null;
   }
 }
+
+
 
 
 

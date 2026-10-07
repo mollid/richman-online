@@ -82,4 +82,6 @@ export const GODS: GodDef[] = [
   { id: 'wealth', name: '财神', description: '每回合开始时获得 ¥800', durationTurns: 5 },
   { id: 'poverty', name: '穷神', description: '每回合开始时损失 ¥400', durationTurns: 5 },
   { id: 'land', name: '土地公', description: '每回合开始时免费升级一处自有地产', durationTurns: 5 },
+  { id: 'fortune', name: '福神', description: '每回合开始时获得 ¥200-600 随机红包', durationTurns: 5 },
 ];
+
