@@ -277,6 +277,7 @@ function emptyState(): GameState {
     streetPriceFactors: {},
     stockHaltAllDays: 0,
     loanBanDays: 0,
+    npcs: [],
   };
 }
 

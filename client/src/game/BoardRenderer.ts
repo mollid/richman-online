@@ -309,6 +309,19 @@ export class BoardRenderer {
         }
       }
     }
+
+    // NPC 单位（波 8）：恶犬随机出没于棋盘，步行者会被咬伤
+    for (const npc of game.npcs) {
+      const pos = this.cellPositions[npc.position];
+      if (!pos) continue;
+      const mark = new Text({
+        text: npc.kind === 'dog' ? '🐕' : '😈',
+        style: { fontSize: 14 },
+      });
+      mark.anchor.set(0.5);
+      mark.position.set(pos.x, pos.y - TILE_H / 2 - 4);
+      this.overlayLayer.addChild(mark);
+    }
   }
 
   private syncTokens(game: GameState): void {
