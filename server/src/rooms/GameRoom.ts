@@ -38,6 +38,10 @@ export class GameRoom extends Room {
       }
     });
 
+    this.onMessage('get_state', (client) => {
+      client.send('state', { game: this.game, actions: availableActions(this.game) });
+    });
+
     this.onMessage('action', (client, message: { action: PlayerAction }) => {
       try {
         if (message.action.type !== 'START_GAME') {
@@ -144,5 +148,6 @@ export class GameRoom extends Room {
     this.broadcast('state', { game: this.game, actions: availableActions(this.game) });
   }
 }
+
 
 

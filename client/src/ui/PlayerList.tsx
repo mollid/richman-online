@@ -4,7 +4,7 @@ function toCssColor(color: number): string {
   return `#${color.toString(16).padStart(6, '0')}`;
 }
 
-export function PlayerList({ game }: { game: GameState }) {
+export function PlayerList({ game, myPlayerId }: { game: GameState; myPlayerId?: string | null }) {
   const currentId = game.players[game.currentPlayerIndex]?.id;
   return (
     <div className="panel player-list">
@@ -17,6 +17,7 @@ export function PlayerList({ game }: { game: GameState }) {
             <div className="player-info">
               <div className="player-name">
                 {p.name}
+                {myPlayerId != null && p.id === myPlayerId && <span className="me-tag">你</span>}
                 {god && p.god && (
                   <span className="badge god" title={god.description}>
                     {god.name}·{p.god.remainingTurns}
@@ -37,3 +38,4 @@ export function PlayerList({ game }: { game: GameState }) {
     </div>
   );
 }
+

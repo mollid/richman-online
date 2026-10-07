@@ -26,6 +26,9 @@ export class ColyseusSession implements GameSession {
     room.onMessage<{ message: string }>('error', (message) => {
       for (const fn of this.messageHandlers) fn(message.message);
     });
+
+    // 主动拉取一次当前状态，避免错过加入时的首次广播
+    room.send('get_state', {});
   }
 
   /** 创建或加入房间并建立会话 */
@@ -35,12 +38,13 @@ export class ColyseusSession implements GameSession {
     roomId?: string;
     seed?: number;
   }): Promise<ColyseusSession> {
-    const client = new Client(opts.serverUrl ?? `ws://${window.location.hostname}:2567`);
+    const envUrl = (import.meta.env?.VITE_SERVER_URL as string | undefined) ?? undefined;
+    const serverUrl = opts.serverUrl ?? envUrl ?? `ws://${window.location.hostname}:2567`;
+    const client = new Client(serverUrl);
     const room = opts.roomId
       ? await client.joinById(opts.roomId, { name: opts.playerName })
       : await client.create('game', { name: opts.playerName, seed: opts.seed });
-    // onJoin 后服务器会立刻广播快照；这里先给一个占位状态，等首个快照覆盖
-    const placeholder = {
+    const placeholder: GameState = {
       players: [],
       board: [],
       currentPlayerIndex: 0,
@@ -49,12 +53,20 @@ export class ColyseusSession implements GameSession {
       turn: 0,
       round: 1,
       rngState: 0,
-      log: [{ turn: 0, text: '正在连接房间…' }],
+      log: [{ turn: 0, text: '正在同步房间状态…' }],
       winnerId: null,
       stockMarket: { stocks: [] },
       pendingFixedDice: null,
-    } as GameState;
+    };
     return new ColyseusSession(room, placeholder);
+  }
+
+  get myPlayerId(): string | null {
+    return this.room.sessionId;
+  }
+
+  get roomId(): string {
+    return this.room.roomId;
   }
 
   getGame(): GameState {
@@ -74,10 +86,6 @@ export class ColyseusSession implements GameSession {
     return () => this.messageHandlers.delete(fn);
   }
 
-  get roomId(): string {
-    return this.room.roomId;
-  }
-
   subscribe(fn: (g: GameState) => void): () => void {
     this.listeners.add(fn);
     fn(this.game);
@@ -89,5 +97,3 @@ export class ColyseusSession implements GameSession {
     void this.room.leave(true);
   }
 }
-
-

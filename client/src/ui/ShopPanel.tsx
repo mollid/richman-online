@@ -2,7 +2,7 @@ import { CARDS, SHOP_CARD_IDS } from '@richman/shared';
 import { availableActions, type GameState, type PlayerAction } from '@richman/shared';
 
 /** 商店面板：落地商店时可购买卡片 */
-export function ShopPanel({ game, onAction }: { game: GameState; onAction: (a: PlayerAction) => void }) {
+export function ShopPanel({ game, onAction, interactive = true }: { game: GameState; onAction: (a: PlayerAction) => void; interactive?: boolean }) {
   const current = game.players[game.currentPlayerIndex];
   const actions = availableActions(game);
   if (!current || !actions.canShop) return null;
@@ -21,7 +21,7 @@ export function ShopPanel({ game, onAction }: { game: GameState; onAction: (a: P
               </div>
               <div className="card-desc">{card.description}</div>
             </div>
-            <button disabled={!affordable} onClick={() => onAction({ type: 'BUY_CARD', cardId })}>
+            <button disabled={!interactive || !affordable} onClick={() => onAction({ type: 'BUY_CARD', cardId })}>
               购买
             </button>
           </div>
@@ -30,3 +30,4 @@ export function ShopPanel({ game, onAction }: { game: GameState; onAction: (a: P
     </div>
   );
 }
+

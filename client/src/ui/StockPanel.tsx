@@ -5,7 +5,7 @@ function fmtPct(pct: number): string {
 }
 
 /** 股票面板：行情 + 持仓，银行格可交易 */
-export function StockPanel({ game, onAction }: { game: GameState; onAction: (a: PlayerAction) => void }) {
+export function StockPanel({ game, onAction, interactive = true }: { game: GameState; onAction: (a: PlayerAction) => void; interactive?: boolean }) {
   const current = game.players[game.currentPlayerIndex];
   const actions = availableActions(game);
   if (!current) return null;
@@ -42,16 +42,16 @@ export function StockPanel({ game, onAction }: { game: GameState; onAction: (a: 
                 <td className={s.lastChangePct >= 0 ? 'up' : 'down'}>{fmtPct(s.lastChangePct)}</td>
                 <td>{holding}</td>
                 <td className="trade-cell">
-                  <button className="mini" disabled={!actions.canTradeStock} onClick={() => trade(s.id, 'BUY_STOCK', 1)}>
+                  <button className="mini" disabled={!interactive || !actions.canTradeStock} onClick={() => trade(s.id, 'BUY_STOCK', 1)}>
                     买1
                   </button>
-                  <button className="mini" disabled={!actions.canTradeStock || current.cash < s.price * 10} onClick={() => trade(s.id, 'BUY_STOCK', 10)}>
+                  <button className="mini" disabled={!interactive || !actions.canTradeStock || current.cash < s.price * 10} onClick={() => trade(s.id, 'BUY_STOCK', 10)}>
                     买10
                   </button>
-                  <button className="mini" disabled={!actions.canTradeStock || holding < 1} onClick={() => trade(s.id, 'SELL_STOCK', 1)}>
+                  <button className="mini" disabled={!interactive || !actions.canTradeStock || holding < 1} onClick={() => trade(s.id, 'SELL_STOCK', 1)}>
                     卖1
                   </button>
-                  <button className="mini" disabled={!actions.canTradeStock || holding < 1} onClick={() => trade(s.id, 'SELL_STOCK', holding)}>
+                  <button className="mini" disabled={!interactive || !actions.canTradeStock || holding < 1} onClick={() => trade(s.id, 'SELL_STOCK', holding)}>
                     全卖
                   </button>
                 </td>
@@ -67,3 +67,4 @@ export function StockPanel({ game, onAction }: { game: GameState; onAction: (a: 
     </div>
   );
 }
+

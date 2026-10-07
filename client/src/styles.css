@@ -451,3 +451,133 @@ button.mini {
   background: #6a1b9a;
   color: #e1bee7;
 }
+
+/* ---------- 模式选择 / 联机入口 ---------- */
+.mode-tabs {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.mode-tabs button {
+  padding: 8px 20px;
+  border-radius: 999px;
+  border: 1px solid #546e7a;
+  background: transparent;
+}
+
+.mode-tabs button.active {
+  background: #e91e63;
+  border-color: #e91e63;
+}
+
+.name-input,
+.join-row input {
+  width: 100%;
+  background: #263238;
+  border: 1px solid #546e7a;
+  border-radius: 8px;
+  padding: 10px 12px;
+  color: #eceff1;
+  font-family: inherit;
+  font-size: 14px;
+  outline: none;
+}
+
+.name-input:focus,
+.join-row input:focus {
+  border-color: #e91e63;
+}
+
+.join-row {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+}
+
+.error-text {
+  color: #ef9a9a;
+  font-size: 12px;
+  text-align: center;
+}
+
+/* ---------- 游戏内大厅 ---------- */
+.lobby-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(10, 18, 13, 0.55);
+  backdrop-filter: blur(3px);
+  z-index: 5;
+}
+
+.lobby-card {
+  background: #16211b;
+  border: 1px solid #2e4034;
+  border-radius: 16px;
+  padding: 28px 36px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  min-width: 320px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+}
+
+.room-code {
+  font-size: 15px;
+  color: #b0bec5;
+}
+
+.room-code .code {
+  font-size: 24px;
+  font-weight: 800;
+  color: #ffe082;
+  letter-spacing: 3px;
+  font-family: Consolas, monospace;
+  margin-left: 6px;
+}
+
+.lobby-players {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+}
+
+.lobby-player {
+  background: rgba(38, 50, 56, 0.6);
+  border-radius: 8px;
+  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.me-tag {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: #00695c;
+  color: #b2dfdb;
+}
+
+.mode-tag {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: #37474f;
+  color: #b0bec5;
+}
+
+.wait-banner {
+  background: rgba(255, 224, 130, 0.08);
+  border: 1px solid rgba(255, 224, 130, 0.25);
+  color: #ffe082;
+  border-radius: 8px;
+  padding: 8px;
+  text-align: center;
+  font-size: 13px;
+}

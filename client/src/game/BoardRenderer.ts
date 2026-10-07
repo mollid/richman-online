@@ -51,6 +51,9 @@ export class BoardRenderer {
   private container: HTMLElement;
   private destroyed = false;
   private elapsed = 0;
+  private initializing = false;
+  private initPromise: Promise<void> | null = null;
+  private pendingGame: GameState | null = null;
 
   constructor(container: HTMLElement, board: BoardCell[]) {
     this.container = container;
@@ -58,7 +61,9 @@ export class BoardRenderer {
   }
 
   async init(): Promise<void> {
+    if (this.destroyed || this.initializing) return;
     if (!this.board.length) return;
+    this.initializing = true;
     const app = new Application();
     await app.init({
       background: 0x121d16,
@@ -67,6 +72,7 @@ export class BoardRenderer {
     });
     if (this.destroyed) {
       app.destroy(true, { children: true, texture: true });
+      this.initializing = false;
       return;
     }
     this.app = app;
@@ -87,10 +93,24 @@ export class BoardRenderer {
     }
 
     app.ticker.add((ticker) => this.update(ticker.deltaMS));
+    this.initializing = false;
   }
 
   setState(game: GameState): void {
-    if (!this.app) return;
+    this.board = game.board;
+    this.pendingGame = game;
+    if (!this.app) {
+      // 远程大厅阶段棋盘数据可能尚未同步，延迟到数据到达后再初始化
+      if (this.board.length && !this.initializing) {
+        this.initPromise = this.init().then(() => {
+          if (this.pendingGame && this.app) {
+            this.drawOwnershipOverlay(this.pendingGame);
+            this.syncTokens(this.pendingGame);
+          }
+        });
+      }
+      return;
+    }
     this.drawOwnershipOverlay(game);
     this.syncTokens(game);
   }
@@ -245,4 +265,5 @@ export class BoardRenderer {
     }
   }
 }
+
 

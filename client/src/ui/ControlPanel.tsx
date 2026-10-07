@@ -10,9 +10,11 @@ const PHASE_LABEL: Record<GameState['phase'], string> = {
 export function ControlPanel({
   game,
   onAction,
+  interactive = true,
 }: {
   game: GameState;
   onAction: (action: PlayerAction) => void;
+  interactive?: boolean;
 }) {
   const actions = availableActions(game);
   const current = game.players[game.currentPlayerIndex];
@@ -45,16 +47,16 @@ export function ControlPanel({
       )}
 
       <div className="action-row">
-        <button className="primary" disabled={!actions.canRoll} onClick={() => onAction({ type: 'ROLL_DICE' })}>
+        <button className="primary" disabled={!interactive || !actions.canRoll} onClick={() => onAction({ type: 'ROLL_DICE' })}>
           🎲 掷骰
         </button>
-        <button disabled={!actions.canBuy} onClick={() => onAction({ type: 'BUY_LAND' })}>
+        <button disabled={!interactive || !actions.canBuy} onClick={() => onAction({ type: 'BUY_LAND' })}>
           买地 ¥{cell?.price ?? '-'}
         </button>
-        <button disabled={!actions.canUpgrade} onClick={() => onAction({ type: 'UPGRADE_LAND' })}>
+        <button disabled={!interactive || !actions.canUpgrade} onClick={() => onAction({ type: 'UPGRADE_LAND' })}>
           升级 ¥{upgrade ?? '-'}
         </button>
-        <button className="ghost" disabled={!actions.canEnd} onClick={() => onAction({ type: 'END_TURN' })}>
+        <button className="ghost" disabled={!interactive || !actions.canEnd} onClick={() => onAction({ type: 'END_TURN' })}>
           结束回合
         </button>
       </div>
@@ -67,3 +69,4 @@ export function ControlPanel({
     </div>
   );
 }
+

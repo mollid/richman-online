@@ -3,7 +3,7 @@ import { CARDS } from '@richman/shared';
 import { availableActions, type GameState, type PlayerAction } from '@richman/shared';
 
 /** 手牌面板：展示当前玩家卡片并提供使用入口（含目标/股票/骰子参数选择） */
-export function HandPanel({ game, onAction }: { game: GameState; onAction: (a: PlayerAction) => void }) {
+export function HandPanel({ game, onAction, interactive = true }: { game: GameState; onAction: (a: PlayerAction) => void; interactive?: boolean }) {
   const [targetId, setTargetId] = useState('');
   const [stockId, setStockId] = useState('tech');
   const [diceValue, setDiceValue] = useState(6);
@@ -32,7 +32,7 @@ export function HandPanel({ game, onAction }: { game: GameState; onAction: (a: P
       <div className="panel-title">手牌（{current.cards.length}/6）</div>
       {current.cards.map((cardId, i) => {
         const card = CARDS[cardId]!;
-        const usable = actions.usableCards.includes(cardId);
+        const usable = interactive && actions.usableCards.includes(cardId);
         const needsTarget = card.needsTarget && others.length > 0;
         return (
           <div key={i} className={`card-row ${usable ? '' : 'disabled'}`}>
@@ -85,3 +85,4 @@ export function HandPanel({ game, onAction }: { game: GameState; onAction: (a: P
     </div>
   );
 }
+

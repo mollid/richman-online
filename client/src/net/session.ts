@@ -1,4 +1,4 @@
-import { applyAction, availableActions, createGame, type GameState, type PlayerAction } from '@richman/shared';
+import { applyAction, createGame, type GameState, type PlayerAction } from '@richman/shared';
 
 /** 会话抽象：本地热座与联机共用同一套 UI */
 export interface GameSession {
@@ -6,12 +6,21 @@ export interface GameSession {
   dispatch(action: PlayerAction): void;
   subscribe(fn: (game: GameState) => void): () => void;
   destroy(): void;
+  /** 本人玩家 id；热座模式为 null（所有人共用一台设备轮流操作） */
+  readonly myPlayerId: string | null;
+  /** 联机房间码；热座为 undefined */
+  readonly roomId?: string;
+  /** 联机模式由房主触发开局 */
+  startGame?(): void;
+  /** 联机模式：服务器错误消息订阅 */
+  onError?(fn: (message: string) => void): () => void;
 }
 
 /** M1：本地热座会话（所有人共用一台设备轮流操作） */
 export class LocalHotseatSession implements GameSession {
   private game: GameState;
   private listeners = new Set<(g: GameState) => void>();
+  readonly myPlayerId = null;
 
   constructor(playerCount: number, seed = Date.now() % 2147483647) {
     const names = ['阿福', '小美', '大宝', '金宝'];
@@ -43,3 +52,4 @@ export class LocalHotseatSession implements GameSession {
     this.listeners.clear();
   }
 }
+
