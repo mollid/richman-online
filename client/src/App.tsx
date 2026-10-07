@@ -27,6 +27,7 @@ import { StockPanel } from './ui/StockPanel.js';
 import { ShopPanel } from './ui/ShopPanel.js';
 import { LotteryPanel } from './ui/LotteryPanel.js';
 import { NpcPanel } from './ui/NpcPanel.js';
+import { ReportPanel } from './ui/ReportPanel.js';
 import { AuctionPanel } from './ui/AuctionPanel.js';
 import { ChatPanel } from './ui/ChatPanel.js';
 import { ReplayScreen } from './ui/ReplayScreen.js';
@@ -34,13 +35,14 @@ import { useGameSfx } from './ui/useGameSfx.js';
 
 type SetupMode = 'local' | 'online' | 'replay';
 
-type SidebarTab = 'status' | 'finance' | 'shop' | 'market' | 'log';
+type SidebarTab = 'status' | 'finance' | 'shop' | 'market' | 'report' | 'log';
 
 const SIDEBAR_TABS: Array<[SidebarTab, string]> = [
   ['status', '状态'],
   ['finance', '金融'],
   ['shop', '商店'],
   ['market', '股市'],
+  ['report', '报表'],
   ['log', '日志'],
 ];
 
@@ -534,6 +536,7 @@ function GameScreen({ session, onExit }: { session: GameSession; onExit: () => v
             <div className="panel empty-hint">未停留在商店格</div>
           ))}
         {tab === 'market' && <StockPanel game={game} onAction={onAction} interactive={interactive} />}
+        {tab === 'report' && <ReportPanel game={game} myPlayerId={session.myPlayerId} />}
         {tab === 'log' && (
           <>
             <ChatPanel session={session} myPlayerId={session.myPlayerId} />
