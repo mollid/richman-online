@@ -2,6 +2,7 @@ import { useState } from 'react';
 import {
   allAssetSummaries,
   availableActions,
+  CARDS,
   FACILITIES,
   facilityBuildCost,
   gameDate,
@@ -9,6 +10,7 @@ import {
   ITEMS,
   landPrice,
   landUpgradeCost,
+  MAX_HAND_CARDS,
   priceIndex,
   researchDef,
   type FacilityType,
@@ -31,6 +33,7 @@ const PHASE_LABEL: Record<GameState['phase'], string> = {
   awaiting_action: '等待决策',
   awaiting_pick: '小游戏进行中',
   awaiting_auction: '拍卖会竞价',
+  awaiting_discard: '手牌已满·请选择舍弃',
   game_over: '游戏结束',
 };
 
@@ -245,6 +248,45 @@ export function ControlPanel({
             </button>
           </div>
         </>
+      )}
+
+      {/* CORE-04 认输投降：走「死神附身」流程后退出对局 */}
+      {actions.canSurrender && (
+        <div className="surrender-row">
+          <button
+            className="ghost danger"
+            disabled={!interactive}
+            onClick={() => {
+              if (window.confirm('确定认输投降吗？将走「死神附身」流程，卡牌道具被带走并支付离场费。')) {
+                onAction({ type: 'SURRENDER' });
+              }
+            }}
+          >
+            认输投降
+          </button>
+          <span className="surrender-hint">投降后死神会带走你全部卡牌道具，并索取离场费</span>
+        </div>
+      )}
+
+      {/* ECON-12 手牌额满：必须选择舍弃一张才能继续 */}
+      {actions.pendingCard && (
+        <div className="discard-modal">
+          <div className="discard-title">
+            手牌已满（{MAX_HAND_CARDS} 张），请选择舍弃一张以容纳新卡
+          </div>
+          <div className="discard-list">
+            {(current?.cards ?? []).map((cardId, i) => (
+              <button
+                key={`${cardId}-${i}`}
+                className="mini"
+                disabled={!interactive}
+                onClick={() => onAction({ type: 'DISCARD_CARD', cardId })}
+              >
+                舍弃 {CARDS[cardId]?.name ?? cardId}
+              </button>
+            ))}
+          </div>
+        </div>
       )}
 
       {game.phase === 'game_over' && (

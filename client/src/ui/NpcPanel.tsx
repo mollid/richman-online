@@ -25,13 +25,44 @@ export function NpcPanel({
   const current = game.players[game.currentPlayerIndex];
   const magic = actions.magic;
   const bailable = actions.bailableVillains;
+  const patients = actions.dischargeablePatients;
   if (!current) return null;
-  if (!magic && bailable.length === 0) return null;
+  if (!magic && bailable.length === 0 && patients.length === 0) return null;
 
   const affordable = current.cash >= actions.bailFee;
+  const dischargeable = current.cash >= actions.dischargeFee;
 
   return (
     <div className="panel npc-panel">
+      {/* TILE-09 医院门外办理出院（help [37]） */}
+      {patients.length > 0 && (
+        <>
+          <div className="panel-title">医院 · 办理出院</div>
+          <div className="npc-bail-hint">
+            出院费 ¥{actions.dischargeFee.toLocaleString('zh-CN')}（当前现金 ¥
+            {current.cash.toLocaleString('zh-CN')}）
+            {!dischargeable && <span className="error-text"> · 现金不足</span>}
+          </div>
+          <div className="npc-bail-list">
+            {patients.map((id) => {
+              const target = game.players.find((p) => p.id === id);
+              if (!target) return null;
+              const days = target.custody?.daysLeft ?? target.skipTurns;
+              return (
+                <button
+                  key={id}
+                  className="mini"
+                  disabled={!interactive || !dischargeable}
+                  onClick={() => onAction({ type: 'DISCHARGE_PATIENT', targetPlayerId: id })}
+                >
+                  替 {target.name} 出院（还需住院 {days} 天）
+                </button>
+              );
+            })}
+          </div>
+        </>
+      )}
+
       {magic && (
         <>
           <div className="panel-title">魔法屋 · 女巫的水晶球</div>

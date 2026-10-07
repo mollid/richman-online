@@ -279,6 +279,8 @@ function emptyState(): GameState {
     loanBanDays: 0,
     npcs: [],
     magic: null,
+    landGodCooldownMonth: 0,
+    pendingCard: null,
   };
 }
 

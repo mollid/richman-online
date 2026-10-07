@@ -20,7 +20,9 @@ export function HandPanel({ game, onAction, interactive = true }: { game: GameSt
   if (!current || (current.cards.length === 0 && Object.keys(current.items).length === 0)) return null;
 
   const others = game.players.filter((p) => p.id !== current.id && !p.bankrupt);
+  // 卡片目标必选（回落第一个对手）；道具目标可留空（炸弹/传送机作用于自己）
   const effectiveTarget = targetId && others.some((p) => p.id === targetId) ? targetId : others[0]?.id ?? '';
+  const itemTarget = targetId && others.some((p) => p.id === targetId) ? targetId : '';
   const effectiveStock = game.stockMarket.stocks.some((s) => s.id === stockId) ? stockId : game.stockMarket.stocks[0]?.id ?? '';
 
   const heldCards = current.cards.filter((id) => CARDS[id]);
@@ -68,6 +70,8 @@ export function HandPanel({ game, onAction, interactive = true }: { game: GameSt
       type: 'USE_ITEM',
       itemId,
       cellId: wantsCell && cellId !== '' ? cellId : undefined,
+      // ITEM-04 炸弹 / ITEM-11 传送机：可选指定一名对手；留空则作用于自己
+      targetPlayerId: item.target === 'player' ? itemTarget || undefined : undefined,
       diceValue: item.needsDiceValue ? diceValue : undefined,
     });
   };
@@ -176,6 +180,21 @@ export function HandPanel({ game, onAction, interactive = true }: { game: GameSt
         <div className="param-row">
           <label>目标玩家</label>
           <select value={effectiveTarget} onChange={(e) => setTargetId(e.target.value)}>
+            {others.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
+      {/* ITEM-04 炸弹 / ITEM-11 传送机：可选对手，留空则作用于自己 */}
+      {heldItems.some((id) => ITEMS[id]!.target === 'player') && (
+        <div className="param-row">
+          <label>道具目标</label>
+          <select value={itemTarget} onChange={(e) => setTargetId(e.target.value)}>
+            <option value="">不指定（作用于自己）</option>
             {others.map((p) => (
               <option key={p.id} value={p.id}>
                 {p.name}
