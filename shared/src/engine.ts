@@ -19,6 +19,7 @@ import { landPrice, landRent, landUpgradeCost, scaled, upgradeCost } from './eco
 import { CARDS, CHANCE_CARD_POOL, SHOP_CARD_IDS } from './cards.js';
 import { ITEMS, SHOP_ITEM_IDS } from './items.js';
 import { nextRandom, rollDie } from './rng.js';
+import { drawWinningNumber, isValidLotteryNumber, LOTTERY_TICKET_COST } from './lottery.js';
 import {
   FACILITIES,
   FACILITY_ORDER,
@@ -48,6 +49,8 @@ import {
   majorityHolderId,
 } from './companies.js';
 import type {
+  AuctionState,
+  AuctionTrigger,
   AvailableActions,
   BankAccess,
   BoardCell,
@@ -56,6 +59,7 @@ import type {
   DateSerial,
   FacilityType,
   GameState,
+  PendingAuction,
   Player,
   PlayerAction,
   PlayerDef,
@@ -131,6 +135,9 @@ export function createGame(players: PlayerDef[], seed = Date.now() % 2147483647,
     initialPlayerCount: players.length,
     bankAccess: null,
     lotteryPool: 0,
+    lotteryTickets: [],
+    auction: null,
+    auctionQueue: [],
     companies: COMPANY_LIST.map((def) => ({
       kind: def.kind,
       cellId: def.cellId,
@@ -202,6 +209,9 @@ function checkWinner(state: GameState): void {
   if (active.length === 1) {
     state.winnerId = active[0]!.id;
     state.phase = 'game_over';
+    // 对局结束后不再开拍，清空拍卖状态与待拍队列
+    state.auction = null;
+    state.auctionQueue = [];
     log(state, `${active[0]!.name} 获得最终胜利！`);
   }
 }
@@ -225,6 +235,14 @@ function bankruptPlayer(state: GameState, p: Player): void {
   p.abroadTurns = 0;
   p.insurance = null;
   p.financing = 0;
+  // ECON-13：名下土地进入拍卖队列（破产清算），由拍卖器逐件开拍
+  if (state.phase !== 'game_over') {
+    for (const prop of p.properties) {
+      const cell = state.board[prop.cellId];
+      if (!cell || (cell.type !== 'property' && cell.type !== 'commercial')) continue;
+      state.auctionQueue.push({ cellId: prop.cellId, sellerId: null, trigger: 'bankrupt' });
+    }
+  }
   p.properties = [];
   p.cards = [];
   p.items = {};
@@ -295,6 +313,19 @@ function liquidateFor(state: GameState, p: Player, needed: number): void {
 export type PayReason = 'rent' | 'tax' | 'god' | 'news' | 'minigame' | 'loan' | 'card' | 'company' | 'financing' | 'other';
 
 /**
+ * ECON-08：属于「运气/事件等意外损失」的支付用途——无收款方时款项汇总进乐透奖池。
+ * 租金（给玩家）、贷款/特别融资（还给银行本金）、公司亏损均不计入。
+ */
+const LOTTERY_PENALTY_REASONS: ReadonlySet<PayReason> = new Set<PayReason>([
+  'tax',
+  'god',
+  'news',
+  'minigame',
+  'card',
+  'other',
+]);
+
+/**
  * 三货币支付管道：现金 → 存款 → 变卖（股票→降级→售地）→ 破产。
  * 收款方按「实付 paid」入账，不凭空造钱；`toDeposit` 为真时租金等入收款方存款（ECON-02）。
  */
@@ -330,6 +361,12 @@ function pay(
   }
 
   const paid = amount - remaining;
+
+  // ECON-08：运气/事件等意外损失（无收款方）的钱汇总进乐透奖池
+  if (to === null && paid > 0 && opts.reason && LOTTERY_PENALTY_REASONS.has(opts.reason)) {
+    state.lotteryPool += paid;
+  }
+
   creditPayee(to, paid, opts.toDeposit === true);
 
   if (remaining > 0) {
@@ -347,9 +384,9 @@ function creditPayee(to: Player | null, paid: number, toDeposit: boolean): void 
   else to.cash += paid;
 }
 
-/** `pay` 的薄包装：现金/存款/变卖，收款方入现金 */
-function payCash(state: GameState, from: Player, amount: number, to: Player | null): void {
-  pay(state, from, amount, to, { toDeposit: false });
+/** `pay` 的薄包装：现金/存款/变卖，收款方入现金；`reason` 用于乐透奖池罚金汇总 */
+function payCash(state: GameState, from: Player, amount: number, to: Player | null, reason?: PayReason): void {
+  pay(state, from, amount, to, { toDeposit: false, reason });
 }
 
 /** 股票市场回合波动 + 随机新闻；例假日休市（ECON-09）；红卡/黑卡期间涨跌停（CARD-24/25） */
@@ -410,7 +447,7 @@ function applyRandomNews(state: GameState): void {
           const fine = scaled(state, 200);
           log(state, `【新闻】税务局年终稽查：全体玩家缴纳所得税 ¥${fine}`);
           for (const q of active) {
-            payCash(state, q, fine, null);
+            payCash(state, q, fine, null, 'news');
             if (isGameOver(state)) return;
           }
           break;
@@ -424,7 +461,7 @@ function applyRandomNews(state: GameState): void {
         case 2: {
           const repair = scaled(state, 500);
           log(state, `【新闻】${target.name} 的电脑突然蓝屏，维修花了 ¥${repair}`);
-          payCash(state, target, repair, null);
+          payCash(state, target, repair, null, 'news');
           break;
         }
         default: {
@@ -482,6 +519,32 @@ function dividendAndLotteryHook(state: GameState): void {
     }
     company.surplus -= distributed;
   }
+  drawLottery(state);
+}
+
+/**
+ * ECON-08：每月 15 号乐透开奖。中奖者按人数均分奖池，无人中奖则奖金累积到下一期。
+ * 开奖号码由 `rngState` **只读派生**（不推进随机数），避免扰动股市波动/新闻的抽数序列。
+ */
+function drawLottery(state: GameState): void {
+  if (state.lotteryTickets.length === 0) return;
+  const winning = drawWinningNumber(state.rngState);
+  const winners = state.lotteryTickets.filter((t) => t.number === winning);
+  log(state, `【乐透开奖】本期开奖号码 ${winning}，有效注数 ${state.lotteryTickets.length}，奖池 ¥${state.lotteryPool}`);
+  if (winners.length === 0) {
+    log(state, `【乐透开奖】本期无人中奖，奖金 ¥${state.lotteryPool} 累积至下期`);
+  } else {
+    const share = Math.floor(state.lotteryPool / winners.length);
+    for (const ticket of winners) {
+      const owner = state.players.find((q) => q.id === ticket.playerId);
+      if (!owner || owner.bankrupt) continue;
+      owner.cash += share;
+      log(state, `【乐透开奖】${owner.name} 中奖！获得 ¥${share}`);
+    }
+    state.lotteryPool -= share * winners.length;
+    if (state.lotteryPool > 0) log(state, `【乐透开奖】奖池零头 ¥${state.lotteryPool} 滚动至下期`);
+  }
+  state.lotteryTickets = [];
 }
 
 /**
@@ -619,6 +682,8 @@ function captureRoundSnapshot(state: GameState): void {
 
 function advanceTurn(state: GameState): void {
   if (isGameOver(state)) return;
+  // ECON-13：倒闭清算等产生待拍卖标的时，先开拍（拍卖结束后再继续推进回合）
+  if (startQueuedAuction(state)) return;
   const before = state.currentPlayerIndex;
   const n = state.players.length;
   for (let step = 1; step <= n; step++) {
@@ -711,7 +776,7 @@ function applyGodPossession(state: GameState, p: Player, def: GodDef): void {
     case 'big-poverty': {
       const loss = scaled(state, godRoll(state, 1000, 3999));
       log(state, `大穷神作祟，${p.name} 损失 ¥${loss}`);
-      payCash(state, p, loss, null);
+      payCash(state, p, loss, null, 'god');
       break;
     }
     case 'small-poverty': {
@@ -741,7 +806,7 @@ function applyGodPossession(state: GameState, p: Player, def: GodDef): void {
       p.items = {};
       const loss = scaled(state, 2000);
       log(state, `死神降临！${p.name} 遗失全部 ${cardCount} 张卡片与 ${itemCount} 件道具，并遭逢一连串倒霉事损失 ¥${loss}`);
-      payCash(state, p, loss, null);
+      payCash(state, p, loss, null, 'god');
       break;
     }
     default:
@@ -1101,6 +1166,8 @@ export function availableActions(state: GameState): AvailableActions {
       if (item.phase === 'pre_roll') return state.phase === 'awaiting_roll';
       return state.phase === 'awaiting_action';
     });
+    // ECON-08：站立于乐透行且现金足够时可自选号码投注
+    const canBuyLottery = state.phase === 'awaiting_action' && c.type === 'lottery' && p.cash >= LOTTERY_TICKET_COST;
     return {
       canRoll: state.phase === 'awaiting_roll',
       canBuy,
@@ -1125,6 +1192,9 @@ export function availableActions(state: GameState): AvailableActions {
       researchableItems,
       usableCards,
       usableItems,
+      canBuyLottery,
+      lotteryTicketCost: LOTTERY_TICKET_COST,
+      auction: null,
     };
   }
   return {
@@ -1151,6 +1221,9 @@ export function availableActions(state: GameState): AvailableActions {
     researchableItems: [],
     usableCards: [],
     usableItems: [],
+    canBuyLottery: false,
+    lotteryTicketCost: LOTTERY_TICKET_COST,
+    auction: state.phase === 'awaiting_auction' ? state.auction : null,
   };
 }
 
@@ -1313,7 +1386,7 @@ function rollDice(state: GameState, action: Extract<PlayerAction, { type: 'ROLL_
       return;
     }
     log(state, `${p.name} 需缴税 ¥${tax}`);
-    payCash(state, p, tax, null);
+    payCash(state, p, tax, null, 'tax');
     if (isGameOver(state)) return;
     advanceTurn(state);
     return;
@@ -1325,7 +1398,7 @@ function rollDice(state: GameState, action: Extract<PlayerAction, { type: 'ROLL_
     blockRent(p, 1);
     const medical = scaled(state, 1000);
     log(state, `${p.name} 住院休养 1 天（期间丧失收租权），支付医药费 ¥${medical}`);
-    payCash(state, p, medical, null);
+    payCash(state, p, medical, null, 'other');
     if (isGameOver(state)) return;
     advanceTurn(state);
     return;
@@ -1598,17 +1671,10 @@ function rollDice(state: GameState, action: Extract<PlayerAction, { type: 'ROLL_
     return;
   }
 
-  // TILE-19 乐透行：现金投注，奖池累积（开奖归波 6）
+  // TILE-19 乐透行：自选号码投注（ECON-08），每月 15 号开奖
   if (c.type === 'lottery') {
-    const ticket = scaled(state, 1000);
-    if (p.cash >= ticket) {
-      p.cash -= ticket;
-      state.lotteryPool += ticket;
-      log(state, `${p.name} 在「${c.name}」投注 ¥${ticket}，奖池累计 ¥${state.lotteryPool}（每月 15 号开奖）`);
-    } else {
-      log(state, `${p.name} 现金不足 ¥${ticket}，无法在「${c.name}」投注`);
-    }
-    advanceTurn(state);
+    state.phase = 'awaiting_action';
+    log(state, `${p.name} 来到「${c.name}」：可自选号码投注 ¥${LOTTERY_TICKET_COST}（每月 15 号开奖）`);
     return;
   }
 
@@ -1864,7 +1930,7 @@ function minigamePick(state: GameState, action: Extract<PlayerAction, { type: 'M
     log(state, `小游戏结束：命中 ${hits}/3，${p.name} 获得 ¥${payout}`);
   } else {
     log(state, `小游戏结束：全军覆没，${p.name} 支付门票 ¥${-payout}`);
-    payCash(state, p, -payout, null);
+    payCash(state, p, -payout, null, 'minigame');
   }
   awardMinigamePoints(state, p, hits);
   state.minigame = null;
@@ -1917,7 +1983,7 @@ function memoryFlip(state: GameState, index: number): void {
       log(state, `记忆翻牌结束：配对 ${pairs}/4（翻牌 ${mg.flips} 次），${p.name} 获得 ¥${payout}`);
     } else {
       log(state, `记忆翻牌结束：配对 ${pairs}/4（翻牌 ${mg.flips} 次），${p.name} 支付 ¥${-payout}`);
-      payCash(state, p, -payout, null);
+      payCash(state, p, -payout, null, 'minigame');
     }
     awardMinigamePoints(state, p, pairs);
     state.minigame = null;
@@ -1931,6 +1997,146 @@ function endTurn(state: GameState): void {
   const p = currentPlayer(state);
   log(state, `${p.name} 选择不操作，结束回合`);
   advanceTurn(state);
+}
+
+/** ECON-08：乐透行自选号码投注（现金 1000，不随物价指数缩放） */
+function buyLotteryTicket(state: GameState, action: Extract<PlayerAction, { type: 'BUY_LOTTERY_TICKET' }>): void {
+  if (state.phase !== 'awaiting_action') throw new Error('当前不能投注乐透');
+  const p = currentPlayer(state);
+  const c = cellAt(state, p.position);
+  if (c.type !== 'lottery') throw new Error('不在乐透行，不能投注');
+  if (!isValidLotteryNumber(action.number)) throw new Error('号码必须是 0-99 的整数');
+  if (p.cash < LOTTERY_TICKET_COST) throw new Error('现金不足');
+  p.cash -= LOTTERY_TICKET_COST;
+  state.lotteryPool += LOTTERY_TICKET_COST;
+  state.lotteryTickets.push({ playerId: p.id, number: action.number });
+  log(state, `${p.name} 在「${c.name}」以 ¥${LOTTERY_TICKET_COST} 投注号码 ${action.number}，奖池累计 ¥${state.lotteryPool}`);
+}
+
+// ---------------------------------------------------------------------------
+// ECON-13 拍卖器：触发源（倒闭/拍卖卡/事件/银行）+ 出价轮询 + 价高者得
+// ---------------------------------------------------------------------------
+
+/** 起拍价：有地价者取其半价（含物价指数），否则 100 */
+function auctionMinBid(state: GameState, cell: BoardCell): number {
+  if (cell.price === undefined) return 100;
+  return Math.max(1, Math.floor(scaled(state, cell.price) / 2));
+}
+
+/** 竞买人：非破产且有现金者（ECON-13「无现金不得参与」）；卖家本人不参与 */
+function auctionBidders(state: GameState, excludeId: string | null): string[] {
+  return state.players
+    .filter((q) => !q.bankrupt && q.cash > 0 && q.id !== excludeId)
+    .map((q) => q.id);
+}
+
+/** 开一场拍卖会；无人具备竞买资格时返回 false（不进入拍卖阶段） */
+function beginAuction(
+  state: GameState,
+  opts: { cellId: number; sellerId: string | null; trigger: AuctionTrigger; afterComplete: 'resume' | 'advance' },
+): boolean {
+  const cell = state.board[opts.cellId];
+  if (!cell || (cell.type !== 'property' && cell.type !== 'commercial')) return false;
+  const bidders = auctionBidders(state, opts.sellerId);
+  if (bidders.length === 0) {
+    log(state, `【拍卖】「${cell.name}」无人具备竞买资格（须持有现金），流拍`);
+    return false;
+  }
+  state.auction = {
+    cellId: opts.cellId,
+    sellerId: opts.sellerId,
+    trigger: opts.trigger,
+    bidders,
+    turnIndex: 0,
+    minBid: auctionMinBid(state, cell),
+    highestBid: 0,
+    highestBidderId: null,
+    passes: 0,
+    afterComplete: opts.afterComplete,
+  };
+  state.phase = 'awaiting_auction';
+  log(state, `【拍卖】「${cell.name}」开拍，起拍价 ¥${state.auction.minBid}，竞买人 ${bidders.length} 位`);
+  return true;
+}
+
+/** 倒闭清算等产生的待拍卖标的：开拍并暂停回合推进；无标的时返回 false */
+function startQueuedAuction(state: GameState): boolean {
+  while (state.auctionQueue.length > 0) {
+    const next = state.auctionQueue.shift()!;
+    if (beginAuction(state, { ...next, afterComplete: 'advance' })) return true;
+  }
+  return false;
+}
+
+function currentBidder(state: GameState): Player {
+  const a = state.auction;
+  if (!a) throw new Error('当前没有进行中的拍卖');
+  const id = a.bidders[a.turnIndex];
+  const p = state.players.find((q) => q.id === id);
+  if (!p) throw new Error('竞买人不存在');
+  return p;
+}
+
+/** 下一次允许的最低出价 */
+function nextBidAmount(a: AuctionState): number {
+  return a.highestBidderId ? a.highestBid + 1 : a.minBid;
+}
+
+function auctionBid(state: GameState, action: Extract<PlayerAction, { type: 'AUCTION_BID' }>): void {
+  if (state.phase !== 'awaiting_auction' || !state.auction) throw new Error('当前没有进行中的拍卖');
+  const a = state.auction;
+  const bidder = currentBidder(state);
+  const min = nextBidAmount(a);
+  if (!Number.isInteger(action.amount) || action.amount < min) throw new Error(`出价不得低于 ¥${min}`);
+  if (action.amount > bidder.cash) throw new Error('出价不能超过自己的现金');
+  a.highestBid = action.amount;
+  a.highestBidderId = bidder.id;
+  a.passes = 0;
+  log(state, `【拍卖】${bidder.name} 出价 ¥${action.amount}`);
+  a.turnIndex = (a.turnIndex + 1) % a.bidders.length;
+  if (a.passes >= a.bidders.length) settleAuction(state);
+}
+
+function auctionPass(state: GameState): void {
+  if (state.phase !== 'awaiting_auction' || !state.auction) throw new Error('当前没有进行中的拍卖');
+  const a = state.auction;
+  const bidder = currentBidder(state);
+  a.passes += 1;
+  log(state, `【拍卖】${bidder.name} 放弃出价`);
+  a.turnIndex = (a.turnIndex + 1) % a.bidders.length;
+  if (a.passes >= a.bidders.length) settleAuction(state);
+}
+
+/** 收锤：价高者得；地权与款项一并交割，随后继续下一件标的或恢复流程 */
+function settleAuction(state: GameState): void {
+  const a = state.auction!;
+  const cell = state.board[a.cellId]!;
+  state.auction = null;
+  const winner = a.highestBidderId ? state.players.find((q) => q.id === a.highestBidderId) : undefined;
+  if (winner) {
+    const price = Math.min(a.highestBid, winner.cash);
+    winner.cash -= price;
+    const seller = a.sellerId ? state.players.find((q) => q.id === a.sellerId) : undefined;
+    if (seller && !seller.bankrupt) seller.cash += price;
+    // 地权转移（延续等级/设施/连锁状态，避免凭空重置）
+    const prev = cellOwner(state, a.cellId);
+    if (prev && prev.player.id !== winner.id) {
+      prev.player.properties = prev.player.properties.filter((q) => q.cellId !== a.cellId);
+      winner.properties.push({ ...prev.property });
+    } else if (!prev) {
+      winner.properties.push({ cellId: a.cellId, grade: 1 });
+    }
+    log(state, `【拍卖】成交！${winner.name} 以 ¥${price} 拍得「${cell.name}」`);
+  } else {
+    log(state, `【拍卖】「${cell.name}」流拍，无人出价`);
+  }
+
+  while (state.auctionQueue.length > 0) {
+    const next = state.auctionQueue.shift()!;
+    if (beginAuction(state, { ...next, afterComplete: 'advance' })) return;
+  }
+  if (a.afterComplete === 'advance') advanceTurn(state);
+  else state.phase = 'awaiting_action';
 }
 
 /** 校验并返回本回合银行访问上下文 */
@@ -2116,6 +2322,17 @@ function useCard(state: GameState, action: Extract<PlayerAction, { type: 'USE_CA
         if (!q.bankrupt) q.direction = q.direction === 1 ? -1 : 1;
       }
       log(state, `${p.name} 使用「转向卡」，所有玩家行进方向 180° 反转`);
+      break;
+    }
+    case 'auction': {
+      // CARD-08：拍卖脚下土地，所得归使用者，且使用者本人不参与该拍卖会
+      const id = anyCellId();
+      const c = state.board[id]!;
+      if (c.type !== 'property' && c.type !== 'commercial') throw new Error('目标必须是土地');
+      const owned = cellOwner(state, id);
+      if (!owned) throw new Error('该土地无主，无法拍卖');
+      log(state, `${p.name} 使用「拍卖卡」，将 ${owned.player.name} 的「${c.name}」送上拍卖台（所得归 ${p.name}）`);
+      beginAuction(state, { cellId: id, sellerId: p.id, trigger: 'card', afterComplete: 'resume' });
       break;
     }
     case 'rebuild': {
@@ -2694,6 +2911,8 @@ export function forceGameOver(state: GameState, winnerId: string): GameState {
     if (p.id === winnerId || p.bankrupt) continue;
     bankruptPlayer(next, p);
   }
+  next.auction = null;
+  next.auctionQueue = [];
   checkWinner(next);
   return next;
 }
@@ -2767,6 +2986,15 @@ export function applyAction(state: GameState, action: PlayerAction): GameState {
       break;
     case 'SPECIAL_FINANCING':
       specialFinancing(next, action);
+      break;
+    case 'BUY_LOTTERY_TICKET':
+      buyLotteryTicket(next, action);
+      break;
+    case 'AUCTION_BID':
+      auctionBid(next, action);
+      break;
+    case 'AUCTION_PASS':
+      auctionPass(next);
       break;
     default: {
       const exhaustive: never = action;

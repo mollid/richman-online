@@ -149,6 +149,48 @@ export interface AllianceStatus {
   daysLeft: number;
 }
 
+/** 乐透投注单（ECON-08）：号码 + 投注者，每月 15 号开奖后清空 */
+export interface LotteryTicket {
+  playerId: string;
+  number: number;
+}
+
+/** 拍卖触发源（ECON-13） */
+export type AuctionTrigger =
+  | 'bankrupt' // 有人倒闭，名下土地被拍卖
+  | 'card'     // 拍卖卡（CARD-08）
+  | 'event'    // 事件引发（EVT-03）
+  | 'bank';    // 银行拍卖土地
+
+/** 拍卖会状态机（ECON-13）：有现金者可参与，价高者得 */
+export interface AuctionState {
+  /** 被拍卖的土地格 id */
+  cellId: number;
+  /** 所得归属玩家 id；null = 归银行（倒闭清算 / 银行拍卖） */
+  sellerId: string | null;
+  trigger: AuctionTrigger;
+  /** 竞买人 id 列表（有现金者，按座位顺序；拍卖卡使用者不参与） */
+  bidders: string[];
+  /** 当前轮到第几位竞买人 */
+  turnIndex: number;
+  /** 起拍价 */
+  minBid: number;
+  /** 当前最高价；0 表示尚无人出价 */
+  highestBid: number;
+  highestBidderId: string | null;
+  /** 本轮连续放弃次数：达到竞买人数即收锤 */
+  passes: number;
+  /** 收锤后：'resume' 回到当前玩家的决策阶段；'advance' 继续推进回合 */
+  afterComplete: 'resume' | 'advance';
+}
+
+/** 待开拍的拍卖标的（倒闭清算等一并入队，逐件开拍） */
+export interface PendingAuction {
+  cellId: number;
+  sellerId: string | null;
+  trigger: AuctionTrigger;
+}
+
 export interface Player {
   id: string;
   name: string;
@@ -208,6 +250,7 @@ export type Phase =
   | 'awaiting_roll'    // 等待当前玩家掷骰
   | 'awaiting_action'  // 等待当前玩家决策（买地/卡片/股票/结束）
   | 'awaiting_pick'    // 小游戏进行中：等待猜杯
+  | 'awaiting_auction' // 拍卖会进行中：等待当前竞买人出价/放弃
   | 'game_over';
 
 /** 小游戏状态（游戏厅随机二选一） */
@@ -319,8 +362,14 @@ export interface GameState {
   initialPlayerCount: number;
   /** 本回合银行访问权限（回合结束清空） */
   bankAccess: BankAccess | null;
-  /** 乐透奖池（波 6 启用，波 1 建字段） */
+  /** 乐透奖池（波 6 启用：罚金汇总 + 投注累加，每月 15 号开奖） */
   lotteryPool: number;
+  /** 在售乐透投注单（每月 15 号开奖后清空） */
+  lotteryTickets: LotteryTicket[];
+  /** 进行中的拍卖会（ECON-13）；null 表示无 */
+  auction: AuctionState | null;
+  /** 待开拍的拍卖标的队列（倒闭清算等）；逐件开拍 */
+  auctionQueue: PendingAuction[];
   /** 11 家公司企业的经营状态（CORP-01..13，波 5） */
   companies: CompanyState[];
 }
@@ -350,7 +399,13 @@ export type PlayerAction =
   /** CORP-13：房地产公司任选一处加盖一层 */
   | { type: 'BUILD_ESTATE'; cellId: number }
   /** CORP-09：企业银行董事长特别融资 */
-  | { type: 'SPECIAL_FINANCING'; amount: number };
+  | { type: 'SPECIAL_FINANCING'; amount: number }
+  /** ECON-08：在乐透行自选号码投注（现金 1000） */
+  | { type: 'BUY_LOTTERY_TICKET'; number: number }
+  /** ECON-13：拍卖出价 */
+  | { type: 'AUCTION_BID'; amount: number }
+  /** ECON-13：拍卖放弃本轮出价 */
+  | { type: 'AUCTION_PASS' };
 
 /** 可用动作集合（UI 按此渲染按钮） */
 export interface AvailableActions {
@@ -394,6 +449,12 @@ export interface AvailableActions {
   usableCards: string[];
   /** 当前阶段可使用的道具 id 列表 */
   usableItems: string[];
+  /** ECON-08：站立于乐透行可自选号码投注 */
+  canBuyLottery: boolean;
+  /** ECON-08：单注价格（现金） */
+  lotteryTicketCost: number;
+  /** ECON-13：进行中的拍卖会（无则 null，UI 据此渲染竞价面板） */
+  auction: AuctionState | null;
 }
 
 

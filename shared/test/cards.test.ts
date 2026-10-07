@@ -69,13 +69,13 @@ function atShop(seed = 42): GameState {
 }
 
 describe('波 2 卡片清单（CARD-01..30）', () => {
-  it('共 30 张；商店 29 张（拍卖卡未开放）；机会池 25 张', () => {
+  it('共 30 张；商店 30 张（拍卖卡波 6 开放）；机会池 25 张', () => {
     expect(ALL_CARD_IDS).toHaveLength(30);
     expect(Object.keys(CARDS)).toHaveLength(30);
-    expect(SHOP_CARD_IDS).toHaveLength(29);
-    expect(SHOP_CARD_IDS).not.toContain('auction');
+    expect(SHOP_CARD_IDS).toHaveLength(30);
+    expect(SHOP_CARD_IDS).toContain('auction');
     expect(CHANCE_CARD_POOL).toHaveLength(25);
-    // 机会池排除重型路段卡与纯自动反制卡、以及未开放的拍卖卡
+    // 机会池排除重型路段卡与纯自动反制卡、以及需选目标土地的拍卖卡
     for (const id of ['angel-road', 'devil-road', 'revenge', 'shift-blame', 'auction']) {
       expect(CHANCE_CARD_POOL).not.toContain(id);
     }

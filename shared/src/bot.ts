@@ -23,6 +23,19 @@ export function botDecide(state: GameState, botId: string, rng: () => number): P
   if (state.phase === 'lobby' || state.phase === 'game_over') return null;
   const me = state.players.find((p) => p.id === botId);
   if (!me || me.bankrupt) return null;
+
+  // ECON-13：拍卖会由竞买人轮流主拍，不受 currentPlayerIndex 约束
+  if (state.phase === 'awaiting_auction') {
+    const a = state.auction;
+    if (!a || a.bidders[a.turnIndex] !== botId) return null;
+    const min = a.highestBidderId ? a.highestBid + 1 : a.minBid;
+    // 保守加价：保留 ¥2000 安全垫，且不与自己抬价
+    if (a.highestBidderId !== botId && me.cash >= min + 2000) {
+      return { type: 'AUCTION_BID', amount: min };
+    }
+    return { type: 'AUCTION_PASS' };
+  }
+
   if (state.players[state.currentPlayerIndex]?.id !== botId) return null;
 
   if (state.phase === 'awaiting_roll') {
@@ -94,6 +107,11 @@ export function botDecide(state: GameState, botId: string, rng: () => number): P
   if (acts.canTradeStock && me.cash >= 8000) {
     const cheapest = [...state.stockMarket.stocks].sort((a, b) => a.price - b.price)[0];
     if (cheapest) return { type: 'BUY_STOCK', stockId: cheapest.id, quantity: 10 };
+  }
+
+  // ECON-08：乐透行自选号码投注（保留 ¥2000 安全垫）
+  if (acts.canBuyLottery && me.cash >= acts.lotteryTicketCost + 2000) {
+    return { type: 'BUY_LOTTERY_TICKET', number: Math.floor(rng() * 100) };
   }
 
   // CORP-01：现金充裕时认购所在公司股份（保留 ¥2000 安全垫）

@@ -200,10 +200,19 @@ export class GameRoom extends Room {
   }
 
   private assertCurrentPlayer(client: Client) {
-    const current = this.game.players[this.game.currentPlayerIndex];
-    if (!current || current.id !== client.sessionId) {
-      throw new Error('还没轮到你操作');
+    const actingId = this.actingPlayerId();
+    if (!actingId || actingId !== client.sessionId) {
+      throw new Error(this.game.phase === 'awaiting_auction' ? '还没轮到你出价' : '还没轮到你操作');
     }
+  }
+
+  /** 当前应行动的玩家：拍卖会由竞买人轮流主拍，其余情况为当前回合玩家 */
+  private actingPlayerId(): string | null {
+    if (this.game.phase === 'awaiting_auction') {
+      const a = this.game.auction;
+      return a ? a.bidders[a.turnIndex] ?? null : null;
+    }
+    return this.game.players[this.game.currentPlayerIndex]?.id ?? null;
   }
 
   private scheduleAutoAct() {
@@ -216,6 +225,20 @@ export class GameRoom extends Room {
 
   /** 掉线玩家托管：自动掷骰 + 结束回合 */
   private autoActForOffline() {
+    if (this.game.phase === 'awaiting_auction') {
+      const bidder = this.actingPlayerId();
+      const p = bidder ? this.game.players.find((q) => q.id === bidder) : undefined;
+      if (!p || p.online) return;
+      try {
+        this.game = applyAction(this.game, { type: 'AUCTION_PASS' });
+        this.actionLog.push({ turn: this.game.turn, action: { type: 'AUCTION_PASS' } });
+        this.broadcastState();
+        this.scheduleAutoAct();
+      } catch {
+        // 托管失败忽略，等待下一轮调度
+      }
+      return;
+    }
     if (this.game.phase !== 'awaiting_roll' && this.game.phase !== 'awaiting_action') return;
     const current = this.game.players[this.game.currentPlayerIndex];
     if (!current || current.online) return;
@@ -255,8 +278,8 @@ export class GameRoom extends Room {
   private maybeScheduleBotAct() {
     if (this.botTimer) return;
     if (this.game.phase === 'lobby' || this.game.phase === 'game_over') return;
-    const current = this.game.players[this.game.currentPlayerIndex];
-    if (!current || !this.botIds.has(current.id)) return;
+    const actingId = this.actingPlayerId();
+    if (!actingId || !this.botIds.has(actingId)) return;
     this.botTimer = setTimeout(() => {
       this.botTimer = null;
       this.botAct();
@@ -266,14 +289,14 @@ export class GameRoom extends Room {
   /** 执行一次 AI 动作（动作会进入 actionLog，因此回放完全一致） */
   private botAct() {
     if (this.game.phase === 'lobby' || this.game.phase === 'game_over') return;
-    const current = this.game.players[this.game.currentPlayerIndex];
-    if (!current || !this.botIds.has(current.id)) return;
+    const actingId = this.actingPlayerId();
+    if (!actingId || !this.botIds.has(actingId)) return;
     const rng = () => {
       const draw = nextRandom(this.botRngState);
       this.botRngState = draw.nextState;
       return draw.value;
     };
-    const action = botDecide(this.game, current.id, rng);
+    const action = botDecide(this.game, actingId, rng);
     if (!action) return;
     try {
       this.game = applyAction(this.game, action);

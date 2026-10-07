@@ -328,12 +328,26 @@ describe('新增格型与公立银行（TILE-13..19、TILE-31、TILE-08）', () 
     expect(rolled.log.some((e) => e.text.includes('【新闻】'))).toBe(true);
   });
 
-  it('乐透行投注现金并累积奖池（TILE-19）', () => {
+  it('乐透行可自选号码投注并累积奖池（TILE-19 / ECON-08）', () => {
     const g = pinIndexOne(newGame(1212));
     const rolled = applyAction(landOn(g, 54), { type: 'ROLL_DICE' });
-    expect(rolled.players[0]!.cash).toBe(15000 - 1000);
-    expect(rolled.lotteryPool).toBe(1000);
-    expect(rolled.log.some((e) => e.text.includes('奖池累计'))).toBe(true);
+    // 落格不再自动扣款，改为进入决策阶段等待自选号码投注
+    expect(rolled.phase).toBe('awaiting_action');
+    expect(rolled.players[0]!.cash).toBe(15000);
+    expect(rolled.lotteryPool).toBe(0);
+    expect(availableActions(rolled).canBuyLottery).toBe(true);
+
+    const bet = applyAction(rolled, { type: 'BUY_LOTTERY_TICKET', number: 7 });
+    expect(bet.players[0]!.cash).toBe(15000 - 1000);
+    expect(bet.lotteryPool).toBe(1000);
+    expect(bet.lotteryTickets).toEqual([{ playerId: 'p1', number: 7 }]);
+    expect(bet.log.some((e) => e.text.includes('奖池累计'))).toBe(true);
+  });
+
+  it('乐透投注号码越界被拒绝（ECON-08）', () => {
+    const g = pinIndexOne(newGame(1212));
+    const rolled = applyAction(landOn(g, 54), { type: 'ROLL_DICE' });
+    expect(() => applyAction(rolled, { type: 'BUY_LOTTERY_TICKET', number: 100 })).toThrow('号码必须是 0-99 的整数');
   });
 
   it('路过公立银行可存取款但不可贷款（TILE-08）', () => {

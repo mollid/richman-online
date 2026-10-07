@@ -105,11 +105,11 @@ export const CARDS: Record<string, CardDef> = {
   auction: {
     id: 'auction',
     name: '拍卖卡',
-    description: '拍卖脚下土地，所得归使用者（待拍卖系统开放）',
+    description: '拍卖脚下土地，所得归使用者（使用者本人不参与竞价）',
     cost: 20,
     phase: 'post_roll',
     target: 'land',
-    available: false,
+    available: true,
   },
   // ---- CARD-09..13 路段 / 建筑 / 抢夺 ----
   'angel-road': {
@@ -337,7 +337,7 @@ export const SHOP_CARD_IDS = ALL_CARD_IDS.filter((id) => CARDS[id]!.available);
 
 /**
  * 机会格抽卡池：排除重型的路段卡（天使/恶魔）与纯自动反制卡（复仇/嫁祸），
- * 以及未开放的拍卖卡，保证机会格产出均衡。
+ * 以及需要选目标土地的拍卖卡，保证机会格产出均衡。
  */
 export const CHANCE_CARD_POOL = [
   'even-all',
