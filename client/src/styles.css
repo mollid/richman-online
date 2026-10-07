@@ -1316,6 +1316,50 @@ button.mini {
   color: #ffe082;
 }
 
+/* ---------- NPC 特殊单位：魔法屋 / 监狱保释（波 8b） ---------- */
+.npc-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border: 1px solid rgba(186, 104, 200, 0.45);
+}
+
+.npc-section-gap {
+  height: 1px;
+  background: rgba(186, 104, 200, 0.25);
+  margin: 2px 0;
+}
+
+.npc-magic-condition {
+  font-size: 12px;
+  color: #e1bee7;
+  line-height: 1.5;
+}
+
+.npc-magic-curse {
+  font-size: 12px;
+  color: #ff8a80;
+}
+
+.npc-magic-targets,
+.npc-bail-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.npc-magic-hint,
+.npc-bail-hint {
+  font-size: 11px;
+  color: #607d8b;
+  line-height: 1.5;
+}
+
+.npc-bail-hint b,
+.npc-magic-curse {
+  color: #ce93d8;
+}
+
 /* ---------- 公司企业（波 5） ---------- */
 .company-panel {
   display: flex;

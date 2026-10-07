@@ -278,6 +278,7 @@ function emptyState(): GameState {
     stockHaltAllDays: 0,
     loanBanDays: 0,
     npcs: [],
+    magic: null,
   };
 }
 

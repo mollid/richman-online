@@ -26,6 +26,7 @@ import { HandPanel } from './ui/HandPanel.js';
 import { StockPanel } from './ui/StockPanel.js';
 import { ShopPanel } from './ui/ShopPanel.js';
 import { LotteryPanel } from './ui/LotteryPanel.js';
+import { NpcPanel } from './ui/NpcPanel.js';
 import { AuctionPanel } from './ui/AuctionPanel.js';
 import { ChatPanel } from './ui/ChatPanel.js';
 import { ReplayScreen } from './ui/ReplayScreen.js';
@@ -503,6 +504,7 @@ function GameScreen({ session, onExit }: { session: GameSession; onExit: () => v
         <AuctionPanel game={game} onAction={onAction} myPlayerId={session.myPlayerId} />
         <CompanyPanel game={game} onAction={onAction} interactive={interactive} />
         <LotteryPanel game={game} onAction={onAction} interactive={interactive} />
+        <NpcPanel game={game} onAction={onAction} interactive={interactive} />
 
         <div className="sidebar-tabs">
           {SIDEBAR_TABS.map(([id, label]) => (

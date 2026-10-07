@@ -310,12 +310,13 @@ export class BoardRenderer {
       }
     }
 
-    // NPC 单位（波 8）：恶犬随机出没于棋盘，步行者会被咬伤
+    // NPC 单位（波 8）：恶犬随机出没于棋盘；在押恶人显示在监狱格「牢」标记
     for (const npc of game.npcs) {
       const pos = this.cellPositions[npc.position];
       if (!pos) continue;
+      const label = npc.kind === 'dog' ? '🐕' : npc.jailed ? '🔒' : '😈';
       const mark = new Text({
-        text: npc.kind === 'dog' ? '🐕' : '😈',
+        text: label,
         style: { fontSize: 14 },
       });
       mark.anchor.set(0.5);
