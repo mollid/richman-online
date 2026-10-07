@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import {
+  allAssetSummaries,
   availableActions,
   FACILITIES,
   facilityBuildCost,
@@ -247,8 +248,21 @@ export function ControlPanel({
       )}
 
       {game.phase === 'game_over' && (
-        <div className="winner-banner">
-          🏆 {game.players.find((p) => p.id === game.winnerId)?.name ?? '无人'} 获胜！
+        <div className="settlement">
+          <div className="winner-banner">
+            <div className="winner-crown">🏆</div>
+            🏆 {game.players.find((p) => p.id === game.winnerId)?.name ?? '无人'} 获胜！
+          </div>
+          <div className="settlement-final">
+            <div className="panel-title">最终资产排名</div>
+            {allAssetSummaries(game).map((a, i) => (
+              <div key={a.playerId} className={`settlement-row ${a.bankrupt ? 'bankrupt' : ''}`}>
+                <span className="settlement-rank">{i + 1}</span>
+                <span className="settlement-name">{a.playerName}</span>
+                <span className="settlement-total">¥{a.total.toLocaleString('zh-CN')}</span>
+              </div>
+            ))}
+          </div>
         </div>
       )}
     </div>

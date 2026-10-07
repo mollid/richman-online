@@ -2,7 +2,10 @@ import { useEffect, useRef } from 'react';
 import type { GameState } from '@richman/shared';
 import { sfx } from '../game/sfx.js';
 
-/** 根据状态差异播放对应音效（骰子/交易/破产/胜利） */
+/**
+ * 根据状态差异播放对应音效。
+ * 顺序敏感：同一条日志若同时命中多个关键词，只播最靠前的那一个，避免叠音。
+ */
 export function useGameSfx(game: GameState, enabled = true): void {
   const prev = useRef<GameState | null>(null);
 
@@ -13,17 +16,28 @@ export function useGameSfx(game: GameState, enabled = true): void {
 
     if (game.dice && !old.dice) sfx.dice();
 
+    // 日切翻页（回合回绕，elapsedDays 自增）
+    if (game.calendar.elapsedDays > old.calendar.elapsedDays) sfx.dayTurn();
+
     const oldLen = old.log.length;
     const newEntries = game.log.slice(oldLen);
     for (const entry of newEntries) {
-      if (entry.text.includes('猜中了')) sfx.hit();
-      else if (entry.text.includes('猜错')) sfx.miss();
-      else if (entry.text.includes('购入') || entry.text.includes('升级为')) sfx.buy();
-      else if (entry.text.includes('租金') || entry.text.includes('需缴税') || entry.text.includes('损失')) sfx.pay();
-      else if (entry.text.includes('破产')) sfx.bankrupt();
-      else if (entry.text.includes('获得最终胜利')) sfx.win();
+      const t = entry.text;
+      if (t.includes('猜中了')) sfx.hit();
+      else if (t.includes('猜错')) sfx.miss();
+      else if (t.includes('购入') || t.includes('升级为')) sfx.buy();
+      else if (t.includes('租金') || t.includes('需缴税') || t.includes('损失')) sfx.pay();
+      else if (t.includes('破产') || t.includes('被关进监狱')) sfx.bankrupt();
+      else if (t.includes('获得最终胜利')) sfx.win();
+      // 波 8 特殊单位与事件
+      else if (t.includes('恶犬')) sfx.dog();
+      else if (t.includes('水晶球') || t.includes('施法')) sfx.magic();
+      else if (t.includes('诅咒') || t.includes('凭空消失')) sfx.curse();
+      else if (t.includes('保释') || t.includes('赃物') || t.includes('恶人')) sfx.villain();
+      // 波 6 经济事件
+      else if (t.includes('落槌') || t.includes('拍得')) sfx.auction();
+      else if (t.includes('分红')) sfx.dividend();
     }
     if (game.phase === 'game_over' && old.phase !== 'game_over') sfx.win();
   }, [game, enabled]);
 }
-

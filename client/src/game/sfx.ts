@@ -65,6 +65,39 @@ export const sfx = {
   win() {
     [523, 659, 784, 1047].forEach((freq, i) => tone({ freq, dur: 0.16, type: 'triangle', gain: 0.07, delay: i * 0.13 }));
   },
+  /** NPC-05 恶犬咬伤 */
+  dog() {
+    tone({ freq: 300, dur: 0.1, type: 'sawtooth', gain: 0.07, slideTo: 900 });
+    tone({ freq: 200, dur: 0.12, type: 'square', gain: 0.05, delay: 0.1 });
+  },
+  /** NPC-06 女巫施法 */
+  magic() {
+    [784, 988, 1175, 1568].forEach((freq, i) =>
+      tone({ freq, dur: 0.2, type: 'sine', gain: 0.06, delay: i * 0.08 }),
+    );
+  },
+  /** 诅咒降下（低沉下行） */
+  curse() {
+    tone({ freq: 400, dur: 0.35, type: 'sawtooth', gain: 0.07, slideTo: 90 });
+  },
+  /** 四大恶人出笼 / 作案 */
+  villain() {
+    tone({ freq: 180, dur: 0.22, type: 'square', gain: 0.06, slideTo: 320 });
+    tone({ freq: 420, dur: 0.14, type: 'triangle', gain: 0.05, delay: 0.2 });
+  },
+  /** ECON-13 拍卖落槌 */
+  auction() {
+    tone({ freq: 700, dur: 0.06, type: 'square', gain: 0.07 });
+    tone({ freq: 500, dur: 0.16, type: 'square', gain: 0.07, delay: 0.07 });
+  },
+  /** 15 号股东分红 */
+  dividend() {
+    [659, 784, 1047].forEach((freq, i) => tone({ freq, dur: 0.14, type: 'sine', gain: 0.06, delay: i * 0.1 }));
+  },
+  /** 日切翻页 */
+  dayTurn() {
+    tone({ freq: 340, dur: 0.09, type: 'sine', gain: 0.035 });
+  },
   toggleMuted(): boolean {
     muted = !muted;
     localStorage.setItem('richman.muted', muted ? '1' : '0');
