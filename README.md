@@ -58,6 +58,10 @@ docker compose up --build
 | redis | Redis 7（会话） | 6379 |
 
 > 开发模式无数据库时服务自动降级：账号/排行榜返回 503 友好提示，游客对局完全不受影响。
+>
+> 生产栈已实测：注册/登录（PG+Redis）、建房对局、终局战绩入库、排行榜展示（浏览器 http://localhost:8080 验证）。
+>
+> 故障排查：若构建报 `failed to fetch oauth token ... auth.docker.io`，为本地网络对该域名的 DNS 污染；先 `docker pull node:22-alpine` 与 `docker pull nginx:1.27-alpine` 让基础镜像落盘后重试即可。
 
 ## 里程碑路线
 
@@ -72,6 +76,7 @@ docker compose up --build
   - [x] 生产部署：四容器编排（client-nginx + server + PostgreSQL + Redis），API 反代，SPA 回退
   - [x] 优雅降级：无数据库时账号/战绩返回 503 提示，游客对局不受影响
   - [ ] 原创美术与音效、对局回放、更多大富翁4系统（完整卡池/神仙/小游戏）
+
 
 
 

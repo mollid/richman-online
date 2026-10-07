@@ -659,6 +659,18 @@ function sellStock(state: GameState, action: Extract<PlayerAction, { type: 'SELL
   log(state, `${p.name} 以 ¥${total} 卖出 ${stock.name} ×${action.quantity}（单价 ¥${stock.price}）`);
 }
 
+/** 测试专用：强制结束对局（其余玩家全部破产），走真实破产/胜利/战绩流程 */
+export function forceGameOver(state: GameState, winnerId: string): GameState {
+  const next = structuredClone(state);
+  if (next.phase === 'game_over') return next;
+  for (const p of next.players) {
+    if (p.id === winnerId || p.bankrupt) continue;
+    bankruptPlayer(next, p);
+  }
+  checkWinner(next);
+  return next;
+}
+
 /** 唯一入口：应用玩家动作并返回新状态（纯函数，不修改传入状态） */
 export function applyAction(state: GameState, action: PlayerAction): GameState {
   const next = clone(state);
@@ -697,5 +709,6 @@ export function applyAction(state: GameState, action: PlayerAction): GameState {
   }
   return next;
 }
+
 
 

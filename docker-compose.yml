@@ -33,6 +33,7 @@ services:
       PORT: 2567
       DATABASE_URL: postgres://richman:richman@db:5432/richman
       REDIS_URL: redis://redis:6379/0
+      RICHMAN_TEST_MODE: '1' # 测试钩子开关：允许 e2e 直接触发终局验证战绩链路
     ports:
       - '2567:2567'
     depends_on:
@@ -52,3 +53,4 @@ services:
 
 volumes:
   pgdata:
+

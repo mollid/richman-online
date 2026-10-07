@@ -5,6 +5,7 @@ import {
   applyAction,
   availableActions,
   createGame,
+  forceGameOver,
   removePlayer,
   type GameState,
   type PlayerAction,
@@ -67,6 +68,14 @@ export class GameRoom extends Room {
     this.onMessage('get_state', (client) => {
       client.send('state', { game: this.game, actions: availableActions(this.game) });
     });
+
+    // 测试模式钩子（仅 RICHMAN_TEST_MODE=1 时注册）：走真实 game_over/战绩流程
+    if (process.env.RICHMAN_TEST_MODE === '1') {
+      this.onMessage('test_finish', (client) => {
+        this.game = forceGameOver(this.game, client.sessionId);
+        this.broadcastState();
+      });
+    }
 
     this.onMessage('chat', (client, message: { text?: unknown }) => {
       const text = typeof message.text === 'string' ? message.text.trim().slice(0, 120) : '';
@@ -223,3 +232,4 @@ export class GameRoom extends Room {
     );
   }
 }
+

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { addPlayer, applyAction, availableActions, createGame, removePlayer, rentOf, rollDie, upgradeCost } from '../src/index.js';
+import { addPlayer, applyAction, availableActions, createGame, forceGameOver, removePlayer, rentOf, rollDie, upgradeCost } from '../src/index.js';
 import type { GameState, PlayerDef } from '../src/index.js';
 
 const PLAYERS: PlayerDef[] = [
@@ -348,4 +348,16 @@ describe('M2 资产变卖', () => {
   });
 });
 
+
+
+describe('M5 forceGameOver（测试钩子）', () => {
+  it('其余玩家破产、指定者获胜，走真实 game_over 流程', () => {
+    const g = applyAction(createGame(PLAYERS, 131), { type: 'START_GAME' });
+    const finished = forceGameOver(g, 'p2');
+    expect(finished.phase).toBe('game_over');
+    expect(finished.winnerId).toBe('p2');
+    expect(finished.players[0]!.bankrupt).toBe(true);
+    expect(finished.players[1]!.bankrupt).toBe(false);
+  });
+});
 
