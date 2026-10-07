@@ -2,6 +2,7 @@ import pg from 'pg';
 import Redis from 'ioredis';
 import bcrypt from 'bcryptjs';
 import { randomUUID } from 'node:crypto';
+import type { DateSerial } from '@richman/shared';
 
 const DATABASE_URL = process.env.DATABASE_URL ?? '';
 const REDIS_URL = process.env.REDIS_URL ?? '';
@@ -33,6 +34,7 @@ export async function initStorage(): Promise<void> {
           id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
           room_id VARCHAR(32) NOT NULL,
           seed INT NOT NULL,
+          start_date JSONB,
           winner_name VARCHAR(16),
           player_count INT NOT NULL,
           turns INT NOT NULL,
@@ -41,6 +43,7 @@ export async function initStorage(): Promise<void> {
           finished_at TIMESTAMPTZ NOT NULL DEFAULT now()
         );
         ALTER TABLE game_records ADD COLUMN IF NOT EXISTS actions JSONB NOT NULL DEFAULT '[]'::jsonb;
+        ALTER TABLE game_records ADD COLUMN IF NOT EXISTS start_date JSONB;
         CREATE TABLE IF NOT EXISTS game_record_players (
           record_id UUID NOT NULL REFERENCES game_records(id) ON DELETE CASCADE,
           user_id UUID REFERENCES users(id),
@@ -130,6 +133,8 @@ export async function destroySession(token: string): Promise<void> {
 export interface GameRecordInput {
   roomId: string;
   seed: number;
+  /** 起始日期（确定性回放基线） */
+  startDate: DateSerial;
   winnerName: string | null;
   turns: number;
   rounds: number;
@@ -144,9 +149,18 @@ export async function saveGameRecord(input: GameRecordInput): Promise<void> {
   try {
     await client.query('BEGIN');
     const recordRes = await client.query<{ id: string }>(
-      `INSERT INTO game_records (room_id, seed, winner_name, player_count, turns, rounds, actions)
-       VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb) RETURNING id`,
-      [input.roomId, input.seed, input.winnerName, input.players.length, input.turns, input.rounds, JSON.stringify(input.actions)],
+      `INSERT INTO game_records (room_id, seed, start_date, winner_name, player_count, turns, rounds, actions)
+       VALUES ($1, $2, $3::jsonb, $4, $5, $6, $7, $8::jsonb) RETURNING id`,
+      [
+        input.roomId,
+        input.seed,
+        JSON.stringify(input.startDate),
+        input.winnerName,
+        input.players.length,
+        input.turns,
+        input.rounds,
+        JSON.stringify(input.actions),
+      ],
     );
     const recordId = recordRes.rows[0]!.id;
     for (const p of input.players) {
@@ -178,6 +192,8 @@ export interface ReplayRecordSummary {
 
 export interface ReplayRecord extends ReplayRecordSummary {
   seed: number;
+  /** 老记录可能为空，客户端缺省时引擎用固定常量兜底 */
+  start_date: DateSerial | null;
   actions: Array<{ turn: number; action: unknown }>;
 }
 
@@ -204,7 +220,7 @@ export async function getRecord(id: string): Promise<ReplayRecord | null> {
   if (!pool || !storageReady.pg) return null;
   if (!/^[0-9a-f-]{36}$/i.test(id)) return null;
   const res = await pool.query<ReplayRecord>(
-    `SELECT gr.id, gr.room_id, gr.seed, gr.winner_name, gr.player_count, gr.turns, gr.rounds, gr.actions, gr.finished_at,
+    `SELECT gr.id, gr.room_id, gr.seed, gr.start_date, gr.winner_name, gr.player_count, gr.turns, gr.rounds, gr.actions, gr.finished_at,
             COALESCE(
               json_agg(json_build_object('player_name', rp.player_name, 'color', rp.color, 'cash', rp.cash, 'bankrupt', rp.bankrupt)
                        ORDER BY rp.player_name)

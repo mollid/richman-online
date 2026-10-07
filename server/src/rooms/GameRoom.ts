@@ -9,6 +9,7 @@ import {
   forceGameOver,
   nextRandom,
   removePlayer,
+  type DateSerial,
   type GameState,
   type PlayerAction,
 } from '@richman/shared';
@@ -17,6 +18,12 @@ const PLAYER_COLORS = [0xef5350, 0x42a5f5, 0x66bb6a, 0xffee58];
 const DEFAULT_NAMES = ['阿福', '小美', '大宝', '金宝'];
 const OFFLINE_AUTO_ACT_DELAY_MS = 3000;
 const RECONNECT_TIMEOUT_SEC = 60;
+
+/** 系统时钟 → 日期序列（仅在本文件与 LocalHotseatSession 各读一次） */
+function todaySerial(): DateSerial {
+  const now = new Date();
+  return { year: now.getFullYear(), month: now.getMonth() + 1, day: now.getDate() };
+}
 
 interface AuthResult {
   userId?: string;
@@ -34,6 +41,7 @@ export class GameRoom extends Room {
   private game!: GameState;
   private autoActTimer: ReturnType<typeof setTimeout> | null = null;
   private seed = 0;
+  private startDate!: DateSerial;
   private recordSaved = false;
   private userIds = new Map<string, string>();
   private actionLog: Array<{ turn: number; action: PlayerAction }> = [];
@@ -60,7 +68,8 @@ export class GameRoom extends Room {
     this.maxClients = Math.min(Math.max(options.maxPlayers ?? 4, 2), 4);
     this.seed = options.seed ?? Date.now() % 2147483647;
     this.botRngState = this.seed;
-    this.game = createGame([], this.seed);
+    this.startDate = todaySerial();
+    this.game = createGame([], this.seed, { startDate: this.startDate });
     this.updateMetadata('lobby');
 
     this.onMessage('add_bot', (client) => {
@@ -291,6 +300,7 @@ export class GameRoom extends Room {
       saveGameRecord({
         roomId: this.roomId,
         seed: this.seed,
+        startDate: this.startDate,
         winnerName: winner?.name ?? null,
         turns: this.game.turn,
         rounds: this.game.round,
