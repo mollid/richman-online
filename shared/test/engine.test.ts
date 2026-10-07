@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { addPlayer, applyAction, availableActions, createGame, forceGameOver, removePlayer, rentOf, ReplayEngine, rollDie, upgradeCost } from '../src/index.js';
+import { addPlayer, applyAction, availableActions, createGame, forceGameOver, nextRandom, removePlayer, rentOf, ReplayEngine, rollDie, upgradeCost } from '../src/index.js';
 import type { GameState, PlayerAction, PlayerDef } from '../src/index.js';
 
 const PLAYERS: PlayerDef[] = [
@@ -19,6 +19,21 @@ function seedForSum(target: number): number {
     if (a.value + b.value === target) return s;
   }
   throw new Error(`找不到和为 ${target} 的种子`);
+}
+
+/** 找掷骰和为 target、且回合回绕时【不触发】玩家新闻事件的种子 */
+function seedForSumQuietNews(target: number): number {
+  for (let seed = 1; seed <= 200000; seed++) {
+    const a = rollDie(seed);
+    const b = rollDie(a.nextState);
+    if (a.value + b.value !== target) continue;
+    // 事件抽取是本轮第 9 抽：前 8 抽为 6 支股票波动 + 新闻选股 + 涨跌方向
+    let st = b.nextState;
+    for (let i = 0; i < 8; i++) st = nextRandom(st).nextState;
+    const ev = nextRandom(st);
+    if (ev.value >= 0.25) return seed;
+  }
+  throw new Error('找不到满足条件的种子');
 }
 
 /** 找一个第一抽骰子点数落在给定集合内的种子 */
@@ -110,7 +125,7 @@ describe('回合流转', () => {
     // p1 拥有 6 号南京路 2 级，p2 落上去应付 130*2=260
     const g = newGame(23);
     g.currentPlayerIndex = 1;
-    g.rngState = seedForSum(3);
+    g.rngState = seedForSumQuietNews(3);
     g.players[1]!.position = 3; // 3 + 3 = 6，不经过起点
     g.players[0]!.properties = [{ cellId: 6, grade: 2 }];
     const rolled = applyAction(g, { type: 'ROLL_DICE' });
@@ -121,6 +136,7 @@ describe('回合流转', () => {
 
   it('付不起租金则破产，对手获胜', () => {
     const g = setupLanding(newGame(31), 6, 6);
+    g.rngState = seedForSumQuietNews(6);
     g.currentPlayerIndex = 1;
     g.players[0]!.properties = [{ cellId: 6, grade: 3 }];
     g.players[1]!.cash = 100;
@@ -539,6 +555,33 @@ describe('M7 小游戏：三仙归洞', () => {
   it('非猜杯阶段不能猜', () => {
     const g = newGame(307);
     expect(() => applyAction(g, { type: 'MINIGAME_PICK', hole: 0 })).toThrow('当前没有进行中的小游戏');
+  });
+});
+
+
+describe('M8 新闻事件扩充', () => {
+  it('多轮循环内会触发玩家新闻（确定性种子扫描）', () => {
+    // 扫描种子：找到 12 轮内出现玩家事件的种子，保证断言确定性
+    let chosen: GameState | null = null;
+    for (let seed = 1; seed <= 300 && !chosen; seed++) {
+      let g = applyAction(createGame(PLAYERS, seed), { type: 'START_GAME' });
+      // 双方自动掷骰推进 12 轮（落地游戏厅/决策时结束回合）
+      for (let i = 0; i < 120 && g.round <= 12 && g.phase !== 'game_over'; i++) {
+        if (g.phase === 'awaiting_action') {
+          g = applyAction(g, { type: 'END_TURN' });
+        } else if (g.phase === 'awaiting_pick') {
+          g = applyAction(g, { type: 'MINIGAME_PICK', hole: 0 });
+        } else if (g.phase === 'awaiting_roll') {
+          g = applyAction(g, { type: 'ROLL_DICE' });
+        } else break;
+      }
+      if (g.log.some((e) => e.text.startsWith('【新闻】') && !e.text.includes('股'))) {
+        chosen = g;
+      }
+    }
+    expect(chosen).not.toBeNull();
+    const newsTexts = chosen!.log.filter((e) => e.text.startsWith('【新闻】')).map((e) => e.text);
+    expect(newsTexts.some((t) => t.includes('所得税') || t.includes('有奖竞猜') || t.includes('蓝屏') || t.includes('加息'))).toBe(true);
   });
 });
 

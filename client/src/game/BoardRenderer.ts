@@ -281,11 +281,15 @@ export class BoardRenderer {
     const n = this.cellPositions.length || 1;
     const dt = deltaMS / 1000;
     for (const token of this.tokens.values()) {
-      let diff = ((token.targetIndex - token.displayIndex) % n + n) % n;
-      if (diff < 0.001) {
-        diff = 0;
+      const forward = ((token.targetIndex - token.displayIndex) % n + n) % n;
+      const backward = n - forward;
+      // 走最短方向：顺时针路径更短向前，否则倒退（支持转向卡后的动画）
+      const delta = forward <= backward ? forward : -backward;
+      if (delta === 0) {
+        token.displayIndex = ((token.displayIndex % n) + n) % n;
       } else {
-        token.displayIndex = (token.displayIndex + Math.min(diff, dt * MOVE_SPEED_CELLS_PER_SEC)) % n;
+        const move = Math.min(Math.abs(delta), dt * MOVE_SPEED_CELLS_PER_SEC) * Math.sign(delta);
+        token.displayIndex = ((token.displayIndex + move) % n + n) % n;
       }
       const base = this.interpolatedPosition(token.displayIndex);
       token.container.position.set(base.x, base.y - 12);

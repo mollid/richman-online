@@ -228,6 +228,45 @@ function tickStockMarket(state: GameState): void {
     ? `【新闻】${stock.name} 业绩超预期，大涨 15%！`
     : `【新闻】${stock.name} 被曝财务问题，暴跌 15%！`;
   log(state, newsText);
+
+  // 玩家事件（25% 概率）：影响全体或随机一名玩家
+  const eventRoll = nextRandom(state.rngState);
+  state.rngState = eventRoll.nextState;
+  if (eventRoll.value < 0.25) {
+    const active = state.players.filter((q) => !q.bankrupt);
+    if (active.length > 0) {
+      const pickDraw = nextRandom(state.rngState);
+      state.rngState = pickDraw.nextState;
+      const target = active[Math.floor(pickDraw.value * active.length)]!;
+      const kindDraw = nextRandom(state.rngState);
+      state.rngState = kindDraw.nextState;
+      switch (Math.floor(kindDraw.value * 4)) {
+        case 0: {
+          log(state, '【新闻】税务局年终稽查：全体玩家缴纳所得税 ¥200');
+          for (const q of active) {
+            payCash(state, q, 200, null);
+            if (isGameOver(state)) return;
+          }
+          break;
+        }
+        case 1: {
+          target.cash += 800;
+          log(state, `【新闻】${target.name} 中了电台有奖竞猜，喜提 ¥800`);
+          break;
+        }
+        case 2: {
+          log(state, `【新闻】${target.name} 的电脑突然蓝屏，维修花了 ¥500`);
+          payCash(state, target, 500, null);
+          break;
+        }
+        default: {
+          for (const q of active) q.cash += 150;
+          log(state, '【新闻】央行宣布加息：全体玩家获得存款利息 ¥150');
+          break;
+        }
+      }
+    }
+  }
 }
 
 function advanceTurn(state: GameState): void {
@@ -846,6 +885,7 @@ export function applyAction(state: GameState, action: PlayerAction): GameState {
   }
   return next;
 }
+
 
 
 
