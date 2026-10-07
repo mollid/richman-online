@@ -363,7 +363,21 @@ function liquidateFor(state: GameState, p: Player, needed: number): void {
 }
 
 /** 支付用途（波 6 罚金汇总用；波 1 仅作日志语义） */
-export type PayReason = 'rent' | 'tax' | 'god' | 'news' | 'minigame' | 'loan' | 'card' | 'company' | 'financing' | 'other';
+/**
+ * 支付用途。`'stock'` = ECON-09 买入股票的支出（钱进股市，不属于「意外损失」，不汇入乐透奖池）。
+ */
+export type PayReason =
+  | 'rent'
+  | 'tax'
+  | 'god'
+  | 'news'
+  | 'minigame'
+  | 'loan'
+  | 'card'
+  | 'company'
+  | 'financing'
+  | 'stock'
+  | 'other';
 
 /**
  * ECON-08：属于「运气/事件等意外损失」的支付用途——无收款方时款项汇总进乐透奖池。
@@ -474,6 +488,27 @@ function payCash(state: GameState, from: Player, amount: number, to: Player | nu
 /** EVT-01 事件 26/27：全体或单支股票是否处于停牌期（停牌期间价格冻结、不可买卖） */
 function isStockSuspended(state: GameState, stockId: string): boolean {
   return state.stockHalts.some((h) => h.stockId === stockId && h.kind === 'suspend');
+}
+
+/**
+ * ECON-09 股市是否开放买卖。
+ *
+ * 原版 help[14]「股票是一項不錯的投資，**您可以隨時進行買賣**」——
+ * 买卖**不绑定任何格型**，玩家在自己回合的任意决策点都能交易；
+ * 唯一的全局开关是**星期例假日休市**（TIME-02）与新闻事件导致的**全市场停牌**。
+ */
+function isMarketOpen(state: GameState): boolean {
+  if (state.stockHaltAllDays > 0) return false;
+  if (gameDate(state).isHoliday) return false;
+  return true;
+}
+
+/**
+ * 交易股票所处阶段：自己回合的掷骰前或决策后都允许（不打断掷骰）。
+ * `awaiting_roll` / `awaiting_action` 本身就意味着「轮到当前玩家」，故已天然满足回合归属。
+ */
+function canTradeStockNow(state: GameState): boolean {
+  return state.phase === 'awaiting_roll' || state.phase === 'awaiting_action';
 }
 
 /** 股票市场回合波动 + 随机新闻；例假日休市（ECON-09）；红卡/黑卡期间涨跌停（CARD-24/25） */
@@ -2285,7 +2320,7 @@ export function availableActions(state: GameState): AvailableActions {
       canUpgrade,
       canEnd: state.phase === 'awaiting_action',
       canShop: state.phase === 'awaiting_action' && isShopCell(c),
-      canTradeStock: state.phase === 'awaiting_action' && isBankCell(c) && !holiday && state.stockHaltAllDays === 0,
+      canTradeStock: canTradeStockNow(state) && !p.bankrupt && isMarketOpen(state),
       canPick: state.phase === 'awaiting_pick',
       canDeposit: atBank && bank!.canDeposit && !holiday && p.cash > 0,
       canWithdraw: atBank && bank!.canDeposit && !holiday && p.deposit > 0,
@@ -4334,32 +4369,53 @@ function isShopCell(c: BoardCell): boolean {
   return c.type === 'shop' || (c.type === 'company' && c.companyKind === 'department');
 }
 
+/**
+ * ECON-09 买入股票（help[14]「隨時可買賣」+ help[07]「買賣股票的收支，也是由銀行幫您自動轉、扣帳」）。
+ *
+ * - 不绑定格型：自己回合的掷骰前（awaiting_roll）与决策后（awaiting_action）都可买；
+ * - 资金从**现金优先、不足自动扣存款**（走pay 管道），符合原版「银行自动转扣」；
+ * - 例假日休市、全市场停牌、个股停牌时不可交易；
+ * - 零 RNG 消耗，不扰动确定性回放。
+ */
 function buyStock(state: GameState, action: Extract<PlayerAction, { type: 'BUY_STOCK' }>): void {
-  if (state.phase !== 'awaiting_action') throw new Error('当前不能交易股票');
+  if (!canTradeStockNow(state)) throw new Error('当前不能交易股票');
   const p = currentPlayer(state);
-  if (!isBankCell(cellAt(state, p.position))) throw new Error('不在银行/证交所，不能买入股票');
+  if (p.bankrupt) throw new Error('已倒闭的玩家不能交易股票');
   const stock = stockById(state, action.stockId);
   if (!stock) throw new Error('未知股票');
   if (state.stockHaltAllDays > 0) throw new Error(`全市场停牌中（剩余 ${state.stockHaltAllDays} 天）`);
+  if (gameDate(state).isHoliday) throw new Error('例假日休市，无法买卖股票');
   if (isStockSuspended(state, stock.id)) throw new Error(`${stock.name} 暂停交易中`);
   if (!Number.isInteger(action.quantity) || action.quantity <= 0) throw new Error('数量必须为正整数');
   const total = stock.price * action.quantity;
-  if (p.cash < total) throw new Error('现金不足');
-  p.cash -= total;
+  // 资金不足时先拦下，避免 pay() 走变卖/破产链路产生半截状态
+  if (p.cash + p.deposit < total) {
+    throw new Error(
+      `现金与存款合计 ¥${(p.cash + p.deposit).toLocaleString('zh-CN')}，不足以买入 ¥${total.toLocaleString('zh-CN')}（需先补充资金）`,
+    );
+  }
+  // help[07]：收支由银行自动转扣 —— 现金优先，不足自动从存款扣
+  const cashBefore = p.cash;
+  const paid = pay(state, p, total, null, { reason: 'stock' });
+  if (paid < total) throw new Error(`资金不足，仅买入 ${Math.floor(paid / stock.price)} 张`);
   p.stocks[stock.id] = (p.stocks[stock.id] ?? 0) + action.quantity;
   // ECON-10：记录建仓成本（累计投入），UI 用于展示浮动盈亏
   p.stockCost = p.stockCost ?? {};
   p.stockCost[stock.id] = (p.stockCost[stock.id] ?? 0) + total;
-  log(state, `${p.name} 以 ¥${total} 买入 ${stock.name} ×${action.quantity}（单价 ¥${stock.price}）`);
+  // 现金被扣光说明动用了存款（help[07] 银行自动转扣）
+  const fromDeposit = cashBefore < total ? '（现金不足部分由银行自动从存款扣除）' : '';
+  log(state, `${p.name} 以 ¥${total} 买入 ${stock.name} ×${action.quantity}（单价 ¥${stock.price}）${fromDeposit}`);
 }
 
+/** ECON-09 卖出股票（help[14]「隨時可買賣」；与buyStock 同规则，不绑定格型） */
 function sellStock(state: GameState, action: Extract<PlayerAction, { type: 'SELL_STOCK' }>): void {
-  if (state.phase !== 'awaiting_action') throw new Error('当前不能交易股票');
+  if (!canTradeStockNow(state)) throw new Error('当前不能交易股票');
   const p = currentPlayer(state);
-  if (!isBankCell(cellAt(state, p.position))) throw new Error('不在银行/证交所，不能卖出股票');
+  if (p.bankrupt) throw new Error('已倒闭的玩家不能交易股票');
   const stock = stockById(state, action.stockId);
   if (!stock) throw new Error('未知股票');
   if (state.stockHaltAllDays > 0) throw new Error(`全市场停牌中（剩余 ${state.stockHaltAllDays} 天）`);
+  if (gameDate(state).isHoliday) throw new Error('例假日休市，无法买卖股票');
   if (isStockSuspended(state, stock.id)) throw new Error(`${stock.name} 暂停交易中`);
   if (!Number.isInteger(action.quantity) || action.quantity <= 0) throw new Error('数量必须为正整数');
   const holding = p.stocks[stock.id] ?? 0;
@@ -4375,8 +4431,10 @@ function sellStock(state: GameState, action: Extract<PlayerAction, { type: 'SELL
   } else if (p.stockCost) {
     p.stockCost[stock.id] = costBefore - costOut;
   }
-  p.cash += total;
-  log(state, `${p.name} 以 ¥${total} 卖出 ${stock.name} ×${action.quantity}（单价 ¥${stock.price}）`);
+  p.cash += total; // 收入进现金（三货币规则：收入用现金）
+  const profit = total - costOut;
+  const profitText = profit === 0 ? '' : `（${profit >= 0 ? '赚' : '亏'} ¥${Math.abs(profit).toLocaleString('zh-CN')}）`;
+  log(state, `${p.name} 以 ¥${total} 卖出 ${stock.name} ×${action.quantity}（单价 ¥${stock.price}）${profitText}`);
 }
 
 /**
