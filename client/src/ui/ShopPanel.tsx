@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { availableActions, CARDS, ITEMS, MAX_HAND_CARDS, MAX_ITEM_COUNT, SHOP_CARD_IDS, SHOP_ITEM_IDS } from '@richman/shared';
 import type { GameState, PlayerAction } from '@richman/shared';
 
-/** 商店面板：落地商店时进入卡片店，可切往道具店；两者均以【点券】结算（ECON-11） */
+/** 商店面板：落地商店时进入卡片店，可切往道具店；两者均以【点券】结算（ECON-11）。
+ *  变卖（TILE-12 买/卖）：把手牌/道具半价卖回商店回收点券（点券产出渠道之一）。 */
 export function ShopPanel({ game, onAction, interactive = true }: { game: GameState; onAction: (a: PlayerAction) => void; interactive?: boolean }) {
   const [rack, setRack] = useState<'card' | 'item'>('card');
   const current = game.players[game.currentPlayerIndex];
@@ -10,6 +11,9 @@ export function ShopPanel({ game, onAction, interactive = true }: { game: GameSt
   if (!current || !actions.canShop) return null;
 
   const handFull = current.cards.length >= MAX_HAND_CARDS;
+  // 变卖：按 id 去重（手牌可重名，道具按数量）
+  const ownedCardIds = [...new Set(current.cards)];
+  const ownedItemIds = Object.keys(current.items).filter((id) => (current.items[id] ?? 0) > 0);
 
   return (
     <div className="panel shop-panel">
@@ -24,49 +28,113 @@ export function ShopPanel({ game, onAction, interactive = true }: { game: GameSt
         </button>
       </div>
 
-      {rack === 'card' &&
-        SHOP_CARD_IDS.map((cardId) => {
-          const card = CARDS[cardId]!;
-          const affordable = interactive && current.points >= card.cost && !handFull;
-          const reason = handFull ? '手牌已满（可先舍弃卡片）' : current.points < card.cost ? '点券不足' : '';
-          return (
-            <div key={cardId} className={`card-row ${affordable ? '' : 'disabled'}`}>
-              <div className="card-info">
-                <div className="card-name">
-                  {card.name} <span className="price">{card.cost} 点券</span>
+      {rack === 'card' && (
+        <>
+          {SHOP_CARD_IDS.map((cardId) => {
+            const card = CARDS[cardId]!;
+            const affordable = interactive && current.points >= card.cost && !handFull;
+            const reason = handFull ? '手牌已满（可先舍弃卡片）' : current.points < card.cost ? '点券不足' : '';
+            return (
+              <div key={cardId} className={`card-row ${affordable ? '' : 'disabled'}`}>
+                <div className="card-info">
+                  <div className="card-name">
+                    {card.name} <span className="price">{card.cost} 点券</span>
+                  </div>
+                  <div className="card-desc">{card.description}</div>
                 </div>
-                <div className="card-desc">{card.description}</div>
+                <button disabled={!affordable} title={reason} onClick={() => onAction({ type: 'BUY_CARD', cardId })}>
+                  购买
+                </button>
               </div>
-              <button disabled={!affordable} title={reason} onClick={() => onAction({ type: 'BUY_CARD', cardId })}>
-                购买
-              </button>
-            </div>
-          );
-        })}
+            );
+          })}
+          {ownedCardIds.length > 0 && (
+            <>
+              <div className="shop-sell-title">变卖手牌 · 半价回收点券</div>
+              {ownedCardIds.map((cardId) => {
+                const card = CARDS[cardId]!;
+                const owned = current.cards.filter((c) => c === cardId).length;
+                const refund = Math.floor(card.cost / 2);
+                return (
+                  <div key={`sell-${cardId}`} className="card-row">
+                    <div className="card-info">
+                      <div className="card-name">
+                        {card.name} <span className="owned">持有 ×{owned}</span>
+                      </div>
+                    </div>
+                    <button
+                      disabled={!interactive}
+                      onClick={() => {
+                        if (window.confirm(`确定把「${card.name}」变卖给商店吗？回收 ${refund} 点券。`)) {
+                          onAction({ type: 'SELL_CARD', cardId });
+                        }
+                      }}
+                    >
+                      变卖 +{refund} 券
+                    </button>
+                  </div>
+                );
+              })}
+            </>
+          )}
+        </>
+      )}
 
-      {rack === 'item' &&
-        SHOP_ITEM_IDS.map((itemId) => {
-          const item = ITEMS[itemId]!;
-          const cost = item.cost ?? 0;
-          const owned = current.items[itemId] ?? 0;
-          const capped = owned >= MAX_ITEM_COUNT;
-          const affordable = interactive && current.points >= cost && !capped;
-          const reason = capped ? `已达上限（${MAX_ITEM_COUNT} 个）` : current.points < cost ? '点券不足' : '';
-          return (
-            <div key={itemId} className={`card-row ${affordable ? '' : 'disabled'}`}>
-              <div className="card-info">
-                <div className="card-name">
-                  {item.name} <span className="price">{cost} 点券</span>
-                  {owned > 0 && <span className="owned">已持 ×{owned}</span>}
+      {rack === 'item' && (
+        <>
+          {SHOP_ITEM_IDS.map((itemId) => {
+            const item = ITEMS[itemId]!;
+            const cost = item.cost ?? 0;
+            const owned = current.items[itemId] ?? 0;
+            const capped = owned >= MAX_ITEM_COUNT;
+            const affordable = interactive && current.points >= cost && !capped;
+            const reason = capped ? `已达上限（${MAX_ITEM_COUNT} 个）` : current.points < cost ? '点券不足' : '';
+            return (
+              <div key={itemId} className={`card-row ${affordable ? '' : 'disabled'}`}>
+                <div className="card-info">
+                  <div className="card-name">
+                    {item.name} <span className="price">{cost} 点券</span>
+                    {owned > 0 && <span className="owned">已持 ×{owned}</span>}
+                  </div>
+                  <div className="card-desc">{item.description}</div>
                 </div>
-                <div className="card-desc">{item.description}</div>
+                <button disabled={!affordable} title={reason} onClick={() => onAction({ type: 'BUY_ITEM', itemId })}>
+                  购买
+                </button>
               </div>
-              <button disabled={!affordable} title={reason} onClick={() => onAction({ type: 'BUY_ITEM', itemId })}>
-                购买
-              </button>
-            </div>
-          );
-        })}
+            );
+          })}
+          {ownedItemIds.length > 0 && (
+            <>
+              <div className="shop-sell-title">变卖道具 · 半价回收点券</div>
+              {ownedItemIds.map((itemId) => {
+                const item = ITEMS[itemId]!;
+                const owned = current.items[itemId] ?? 0;
+                const refund = Math.floor((item.cost ?? 0) / 2);
+                return (
+                  <div key={`sell-${itemId}`} className="card-row">
+                    <div className="card-info">
+                      <div className="card-name">
+                        {item.name} <span className="owned">持有 ×{owned}</span>
+                      </div>
+                    </div>
+                    <button
+                      disabled={!interactive}
+                      onClick={() => {
+                        if (window.confirm(`确定把「${item.name}」变卖给商店吗？回收 ${refund} 点券。`)) {
+                          onAction({ type: 'SELL_ITEM', itemId });
+                        }
+                      }}
+                    >
+                      变卖 +{refund} 券
+                    </button>
+                  </div>
+                );
+              })}
+            </>
+          )}
+        </>
+      )}
     </div>
   );
 }

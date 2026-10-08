@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { addPlayer, allAssetSummaries, allStockSummaries, applyAction, availableActions, BOARD_SIZE, gameDate, createGame, priceIndex, forceGameOver, GOD_DURATION_DAYS, GODS, nextRandom, POINTS_START, removePlayer, rentOf, ReplayEngine, rollDie, totalAssets, upgradeCost } from '../src/index.js';
+import { addPlayer, allAssetSummaries, allStockSummaries, applyAction, availableActions, BOARD_SIZE, gameDate, createGame, priceIndex, forceGameOver, GOD_DURATION_DAYS, GODS, nextRandom, removePlayer, rentOf, ReplayEngine, rollDie, totalAssets, upgradeCost } from '../src/index.js';
 import type { GameState, PlayerAction, PlayerDef } from '../src/index.js';
 
 const PLAYERS: PlayerDef[] = [
@@ -275,21 +275,23 @@ describe('M2 卡片系统', () => {
 
   it('商店可以点券购买卡片并扣点券（现金不动）', () => {
     const g = setupLanding(newGame(103), 2, 2); // 落到 2 号商店（从 0 号出发，不绕起点）
+    g.players[0]!.points = 1000; // 点券需先赚后花（初始 0：宝箱/点券格/小游戏/变卖）
     const rolled = applyAction(g, { type: 'ROLL_DICE' });
     expect(rolled.phase).toBe('awaiting_action');
     expect(availableActions(rolled).canShop).toBe(true);
     const bought = applyAction(rolled, { type: 'BUY_CARD', cardId: 'demolish' });
     expect(bought.players[0]!.cards).toContain('demolish');
-    expect(bought.players[0]!.points).toBe(POINTS_START - 15);
+    expect(bought.players[0]!.points).toBe(1000 - 15);
     expect(bought.players[0]!.cash).toBe(15000);
   });
 
   it('商店可点券购买道具（每种上限 9）', () => {
     const g = setupLanding(newGame(104), 2, 2);
+    g.players[0]!.points = 1000; // 点券需先赚后花（初始 0）
     const rolled = applyAction(g, { type: 'ROLL_DICE' });
     const bought = applyAction(rolled, { type: 'BUY_ITEM', itemId: 'roadblock' });
     expect(bought.players[0]!.items['roadblock']).toBe(1);
-    expect(bought.players[0]!.points).toBe(POINTS_START - 30);
+    expect(bought.players[0]!.points).toBe(1000 - 30);
   });
 
   it('遥控骰子道具固定第一颗骰子点数', () => {

@@ -507,6 +507,10 @@ export type PlayerAction =
   | { type: 'BUY_CARD'; cardId: string }
   | { type: 'DISCARD_CARD'; cardId: string }
   | { type: 'BUY_ITEM'; itemId: string }
+  /** TILE-12：在商店把一张手牌变卖给商店，回收半价点券（点券产出渠道之一） */
+  | { type: 'SELL_CARD'; cardId: string }
+  /** TILE-12：在商店把一个道具变卖给商店，回收半价点券（点券产出渠道之一） */
+  | { type: 'SELL_ITEM'; itemId: string }
   | { type: 'USE_ITEM'; itemId: string; targetPlayerId?: string; cellId?: number; diceValue?: number }
   | { type: 'BUILD_FACILITY'; facility: FacilityType }
   | { type: 'START_RESEARCH'; itemId: string }

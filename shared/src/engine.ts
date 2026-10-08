@@ -4276,6 +4276,38 @@ function buyItem(state: GameState, action: Extract<PlayerAction, { type: 'BUY_IT
   log(state, `${p.name} 以 ${cost} 点券购入「${item.name}」`);
 }
 
+/**
+ * TILE-12 商店买/卖（help [27]）：把卡片变卖给商店回收点券。
+ * 半价回收（`floor(cost / 2)`），与命运卡「变卖所有卡片道具」同口径；
+ * 点券四大产出渠道之一（用户规则：宝箱 / 点券格 / 小游戏 / 变卖卡片道具）。
+ */
+function sellCard(state: GameState, action: Extract<PlayerAction, { type: 'SELL_CARD' }>): void {
+  if (state.phase !== 'awaiting_action') throw new Error('当前不能变卖卡片');
+  const p = currentPlayer(state);
+  if (!isShopCell(cellAt(state, p.position))) throw new Error('不在商店，不能变卖卡片');
+  const card = CARDS[action.cardId];
+  if (!card || !p.cards.includes(card.id)) throw new Error('没有这张卡片');
+  consumeCard(p, card.id);
+  const refund = Math.floor(card.cost / 2);
+  p.points += refund;
+  log(state, `${p.name} 把「${card.name}」变卖给商店，回收 ${refund} 点券`);
+}
+
+/** TILE-12 商店买/卖：把道具变卖给商店回收点券（半价；非卖品回收 0） */
+function sellItem(state: GameState, action: Extract<PlayerAction, { type: 'SELL_ITEM' }>): void {
+  if (state.phase !== 'awaiting_action') throw new Error('当前不能变卖道具');
+  const p = currentPlayer(state);
+  if (!isShopCell(cellAt(state, p.position))) throw new Error('不在商店，不能变卖道具');
+  const item = ITEMS[action.itemId];
+  if (!item || (p.items[item.id] ?? 0) <= 0) throw new Error('没有这个道具');
+  const left = (p.items[item.id] ?? 0) - 1;
+  if (left > 0) p.items[item.id] = left;
+  else delete p.items[item.id];
+  const refund = Math.floor((item.cost ?? 0) / 2);
+  p.points += refund;
+  log(state, `${p.name} 把「${item.name}」变卖给商店，回收 ${refund} 点券`);
+}
+
 /** 使用道具（ITEM-01..13） */
 function useItem(state: GameState, action: Extract<PlayerAction, { type: 'USE_ITEM' }>): void {
   const p = currentPlayer(state);
@@ -4681,6 +4713,12 @@ export function applyAction(state: GameState, action: PlayerAction): GameState {
       break;
     case 'BUY_ITEM':
       buyItem(next, action);
+      break;
+    case 'SELL_CARD':
+      sellCard(next, action);
+      break;
+    case 'SELL_ITEM':
+      sellItem(next, action);
       break;
     case 'BUY_STOCK':
       buyStock(next, action);

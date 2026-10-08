@@ -18,8 +18,8 @@ export const MAX_HAND_CARDS = 15;
 /** 每种道具的持有上限（ITEM 通用规则：最多 9 个） */
 export const MAX_ITEM_COUNT = 9;
 
-/** 点券初始值（卡片/道具唯一货币，波 2 启用商店） */
-export const POINTS_START = 3000;
+/** 点券初始值（用户规则：开局 **0** 点券；产出只来自宝箱/点券格/小游戏/商店变卖） */
+export const POINTS_START = 0;
 /** 单笔贷款上限 */
 export const MAX_LOAN = STARTING_CASH;
 /** 贷款期限（月）：到期强制全额归还 */

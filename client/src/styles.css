@@ -464,6 +464,16 @@ button.small {
   padding: 6px 8px;
 }
 
+/* TILE-12 商店变卖分区标题 */
+.shop-sell-title {
+  margin-top: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #a5d6a7;
+  border-top: 1px dashed rgba(165, 214, 167, 0.4);
+  padding-top: 8px;
+}
+
 .card-row.disabled {
   opacity: 0.45;
 }
