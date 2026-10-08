@@ -8,7 +8,7 @@ import {
   gameDate,
   gradeName,
   ITEMS,
-  landPrice,
+  landPurchasePrice,
   landUpgradeCost,
   MAX_HAND_CARDS,
   priceIndex,

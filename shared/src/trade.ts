@@ -12,7 +12,7 @@
 import { CARDS } from './cards.js';
 import { ITEMS } from './items.js';
 import { MAX_ITEM_COUNT } from './board.js';
-import { landPrice } from './economy.js';
+import { landPurchasePrice } from './tiles.js';
 import type {
   GameState,
   Player,
@@ -120,7 +120,8 @@ export function tradableAssets(
       kind: 'land',
       targetId: String(prop.cellId),
       label: describeEstate(state, prop),
-      suggestPrice: landPrice(state, cell),
+      // 建议价与购地价同源：住宅=公定地价；商业用地=标价 ×1.5
+      suggestPrice: landPurchasePrice(state, cell),
     });
   }
   for (const [stockId, qty] of Object.entries(p.stocks)) {

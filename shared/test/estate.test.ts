@@ -10,6 +10,7 @@ import {
   facilityBuildCost,
   gradeName,
   holdsWholeStreet,
+  landPurchasePrice,
   landRent,
   MAX_GRADE,
   POINTS_START,
@@ -105,6 +106,29 @@ describe('商业用地与设施（EST-06..12）', () => {
     const bought = applyAction(rolled, { type: 'BUY_LAND' });
     expect(bought.players[0]!.properties).toEqual([{ cellId: 40, grade: 1 }]);
     expect(bought.players[0]!.properties[0]!.facility).toBeUndefined();
+  });
+
+  it('商业用地购地价 = 自身标价 ×1.5（用户规则：商业地要比原价贵）', () => {
+    // 40 号世贸天阶标价 600 → 600 × 1.5 = 900
+    const g = pinIndexOne(landOn(newGame(1010), 40));
+    const rolled = applyAction(g, { type: 'ROLL_DICE' });
+    expect(landPurchasePrice(rolled, rolled.board[40]!)).toBe(900);
+    const bought = applyAction(rolled, { type: 'BUY_LAND' });
+    expect(bought.players[0]!.cash).toBe(15000 - 900);
+    expect(bought.log.some((l) => l.text.includes('标价 ×1.5'))).toBe(true);
+  });
+
+  it('机器工人加盖商业用地需先建设施，且公园/加油站不可升级（EST-08/11）', () => {
+    const g = newGame(1011);
+    g.players[0]!.items = { 'robot-worker': 1 };
+    g.players[0]!.properties = [{ cellId: 40, grade: 1 }]; // 未建设施
+    expect(() => applyAction(g, { type: 'USE_ITEM', itemId: 'robot-worker', cellId: 40 })).toThrow('先建设施');
+    g.players[0]!.properties = [{ cellId: 40, grade: 1, facility: 'park' }];
+    expect(() => applyAction(g, { type: 'USE_ITEM', itemId: 'robot-worker', cellId: 40 })).toThrow('无法升级');
+    // 已建设施的可升级项目正常加盖
+    g.players[0]!.properties = [{ cellId: 40, grade: 1, facility: 'mall' }];
+    const used = applyAction(g, { type: 'USE_ITEM', itemId: 'robot-worker', cellId: 40 });
+    expect(used.players[0]!.properties[0]!.grade).toBe(2);
   });
 
   it('自有商业用地可开工建设，且建设不结束回合、可继续升级', () => {

@@ -3,6 +3,7 @@ import {
   ALL_CARD_IDS,
   ALL_ITEM_IDS,
   applyAction,
+  availableActions,
   CARDS,
   CHANCE_CARD_POOL,
   createGame,
@@ -161,27 +162,48 @@ describe('波 2 反制栈（免罪 → 嫁祸 → 复仇）', () => {
 });
 
 describe('波 2 卡片效果', () => {
-  it('购地卡强制收购他人地产（连同房屋）', () => {
+  it('购地卡强制收购脚下他人地产（连同房屋）', () => {
     let g = newGame(801);
     g.players[1]!.properties = [{ cellId: 6, grade: 2 }];
     g = pinIndexOne(g);
     g.players[0]!.cards = ['buy-land'];
+    g.players[0]!.position = 6; // CARD-03 使用时机「走到别人的地时」：只能收购脚下
     g.phase = 'awaiting_action'; // 购地卡为掷骰后卡片
-    const used = applyAction(g, { type: 'USE_CARD', cardId: 'buy-land', cellId: 6 });
+    const used = applyAction(g, { type: 'USE_CARD', cardId: 'buy-land' });
     expect(used.players[0]!.properties).toEqual([{ cellId: 6, grade: 2 }]);
     expect(used.players[1]!.properties).toHaveLength(0);
+  });
+
+  it('购地卡不能远程使用，也不能收购脚下无主地', () => {
+    let g = pinIndexOne(newGame(802));
+    g.players[1]!.properties = [{ cellId: 39, grade: 2 }];
+    g.players[0]!.cards = ['buy-land'];
+    g.players[0]!.position = 6; // 站在无主住宅上
+    g.phase = 'awaiting_action';
+    // 只能收购脚下的 6 号（无主）而非远程的 39 号
+    expect(() => applyAction(g, { type: 'USE_CARD', cardId: 'buy-land', cellId: 39 })).toThrow('无主');
   });
 
   it('换屋卡互换同类型房屋等级', () => {
     const g = pinIndexOne(newGame(803));
     g.players[0]!.properties = [{ cellId: 4, grade: 1 }]; // 住宅
-    g.players[1]!.properties = [{ cellId: 39, grade: 3 }]; // 住宅
+    g.players[1]!.properties = [{ cellId: 8, grade: 3 }]; // 住宅（视窗内：与 4 相距 4 格）
     g.players[0]!.position = 4;
     g.phase = 'awaiting_action';
     g.players[0]!.cards = ['swap-house'];
-    const used = applyAction(g, { type: 'USE_CARD', cardId: 'swap-house', cellId: 39 });
+    const used = applyAction(g, { type: 'USE_CARD', cardId: 'swap-house', cellId: 8 });
     expect(used.players[0]!.properties.find((q) => q.cellId === 4)!.grade).toBe(3);
-    expect(used.players[1]!.properties.find((q) => q.cellId === 39)!.grade).toBe(1);
+    expect(used.players[1]!.properties.find((q) => q.cellId === 8)!.grade).toBe(1);
+  });
+
+  it('换屋卡目标超出视窗（4×4）被拒', () => {
+    const g = pinIndexOne(newGame(804));
+    g.players[0]!.properties = [{ cellId: 4, grade: 1 }];
+    g.players[1]!.properties = [{ cellId: 39, grade: 3 }]; // 与 4 相距 35 格
+    g.players[0]!.position = 4;
+    g.phase = 'awaiting_action';
+    g.players[0]!.cards = ['swap-house'];
+    expect(() => applyAction(g, { type: 'USE_CARD', cardId: 'swap-house', cellId: 39 })).toThrow('视窗');
   });
 
   it('怪兽卡把建筑还原为平地', () => {
@@ -216,26 +238,37 @@ describe('波 2 卡片效果', () => {
     expect(used.players[0]!.properties.find((q) => q.cellId === 9)!.grade).toBe(3);
   });
 
-  it('改建卡把住宅改为连锁店（EST-04，改建后不能再加盖）', () => {
+  it('改建卡把脚下住宅改为连锁店（EST-04，改建后不能再加盖）', () => {
     const g = newGame(811);
     g.players[0]!.properties = [{ cellId: 4, grade: 2 }];
+    g.players[0]!.position = 4; // CARD-07 使用时机「走到任何有建筑的土地上」：改建脚下
     g.players[0]!.cards = ['rebuild'];
     g.phase = 'awaiting_action'; // 改建卡为掷骰后卡片
-    const used = applyAction(g, { type: 'USE_CARD', cardId: 'rebuild', cellId: 4 });
+    const used = applyAction(g, { type: 'USE_CARD', cardId: 'rebuild' });
     expect(used.players[0]!.properties[0]!.chain).toBe(true);
     // 再改一次可改回一般建筑
     used.players[0]!.cards = ['rebuild'];
     used.phase = 'awaiting_action';
-    const back = applyAction(used, { type: 'USE_CARD', cardId: 'rebuild', cellId: 4 });
+    const back = applyAction(used, { type: 'USE_CARD', cardId: 'rebuild' });
     expect(back.players[0]!.properties[0]!.chain).toBe(false);
   });
 
-  it('改建卡可变更商业用地设施项目（EST-07）', () => {
-    const g = newGame(812);
-    g.players[0]!.properties = [{ cellId: 40, grade: 1, facility: 'park' }];
+  it('改建卡不能远程使用（目标固定为脚下）', () => {
+    const g = newGame(811);
+    g.players[1]!.properties = [{ cellId: 6, grade: 2 }];
     g.players[0]!.cards = ['rebuild'];
     g.phase = 'awaiting_action';
-    const used = applyAction(g, { type: 'USE_CARD', cardId: 'rebuild', cellId: 40, facility: 'hotel' });
+    // 人不在 6 号格 → 即便指定 cellId 也改建不了别人的地
+    expect(() => applyAction(g, { type: 'USE_CARD', cardId: 'rebuild', cellId: 6 })).toThrow('没有建筑');
+  });
+
+  it('改建卡可变更脚下商业用地设施项目（EST-07）', () => {
+    const g = newGame(812);
+    g.players[0]!.properties = [{ cellId: 40, grade: 1, facility: 'park' }];
+    g.players[0]!.position = 40;
+    g.players[0]!.cards = ['rebuild'];
+    g.phase = 'awaiting_action';
+    const used = applyAction(g, { type: 'USE_CARD', cardId: 'rebuild', facility: 'hotel' });
     expect(used.players[0]!.properties[0]!.facility).toBe('hotel');
   });
 
@@ -270,6 +303,35 @@ describe('波 2 卡片效果', () => {
     used.rngState = seedForSum(5);
     const rolled = applyAction(used, { type: 'ROLL_DICE' });
     expect(rolled.players[1]!.position).toBe(6);
+  });
+
+  it('停留卡可对自己使用（缺省目标=自己，原地再停留）', () => {
+    const g = newGame(818);
+    g.players[0]!.cards = ['hold'];
+    g.phase = 'awaiting_action';
+    const used = applyAction(g, { type: 'USE_CARD', cardId: 'hold' });
+    expect(used.players[0]!.holdTurns).toBe(1);
+    expect(used.log.some((l) => l.text.includes('对自己使用「停留卡」'))).toBe(true);
+    // 显式指定他人仍照常生效
+    used.players[0]!.cards = ['hold'];
+    used.phase = 'awaiting_action';
+    const again = applyAction(used, { type: 'USE_CARD', cardId: 'hold', targetPlayerId: 'p2' });
+    expect(again.players[1]!.holdTurns).toBe(1);
+    expect(again.players[0]!.holdTurns).toBe(1);
+  });
+
+  it('原地停留后可再次加盖自有商业设施（用户规则：升级需再次停留）', () => {
+    const g = newGame(820);
+    g.players[0]!.position = 40;
+    g.players[0]!.properties = [{ cellId: 40, grade: 1, facility: 'mall' }];
+    g.players[0]!.holdTurns = 1;
+    g.phase = 'awaiting_roll';
+    const rolled = applyAction(g, { type: 'ROLL_DICE' });
+    expect(rolled.players[0]!.position).toBe(40); // 原地不动
+    expect(rolled.phase).toBe('awaiting_action');
+    expect(availableActions(rolled).canUpgrade).toBe(true);
+    const up = applyAction(rolled, { type: 'UPGRADE_LAND' });
+    expect(up.players[0]!.properties[0]!.grade).toBe(2);
   });
 
   it('冬眠卡使所有对手睡眠 5 天', () => {

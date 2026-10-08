@@ -62,10 +62,12 @@ import {
   gasFee,
   gradeName,
   holdsWholeStreet,
+  landPurchasePrice,
   researchDef,
   streetCells,
   vehicleLabel,
   vehicleLevel,
+  viewportCells,
 } from './tiles.js';
 import {
   COMPANIES,
@@ -2987,7 +2989,7 @@ function rollDice(state: GameState, action: Extract<PlayerAction, { type: 'ROLL_
     const owned = cellOwner(state, c.id);
     if (!owned) {
       state.phase = 'awaiting_action';
-      log(state, `${p.name} 来到无主商业用地「${c.name}」（售价 ¥${landPrice(state, c)}；首次只能购地，再次抵达才可建设）`);
+      log(state, `${p.name} 来到无主商业用地「${c.name}」（购地价 ¥${landPurchasePrice(state, c)}＝标价 ×1.5；首次只能购地，再次抵达才可建设）`);
       return;
     }
     if (owned.player.id === p.id) {
@@ -3256,7 +3258,8 @@ function buyLand(state: GameState): void {
   if (cellOwner(state, c.id)) throw new Error('该地产已有主人');
   if (godBlocksInvestment(p)) throw new Error('衰神附身，买地流拍');
   const freeBuy = godFreeLandPurchase(p);
-  const price = freeBuy ? 0 : landPrice(state, c);
+  // 用户规则：住宅按公定地价；商业用地按「自身标价 ×1.5」计费（比原价贵）
+  const price = freeBuy ? 0 : landPurchasePrice(state, c);
   if (p.cash < price) throw new Error('现金不足');
   p.cash -= price;
   p.properties.push({ cellId: c.id, grade: 1 });
@@ -3264,7 +3267,7 @@ function buyLand(state: GameState): void {
     log(state, `大福神显灵，${p.name} 免费获得「${c.name}」`);
   } else if (c.type === 'commercial') {
     // EST-06：商业用地首次只能购地，须再次抵达才能选择建设项目
-    log(state, `${p.name} 以 ¥${price} 购入商业用地「${c.name}」（下次抵达可选择建设项目）`);
+    log(state, `${p.name} 以 ¥${price} 购入商业用地「${c.name}」（标价 ×1.5；下次抵达可选择建设项目）`);
   } else {
     log(state, `${p.name} 以 ¥${price} 购入「${c.name}」`);
   }
@@ -3961,7 +3964,8 @@ function useCard(state: GameState, action: Extract<PlayerAction, { type: 'USE_CA
       break;
     }
     case 'buy-land': {
-      const id = anyCellId();
+      // CARD-03 使用时机「走到别人的地时」：只能强制收购**脚下**的他人土地
+      const id = p.position;
       const c = state.board[id]!;
       if (c.type !== 'property' && c.type !== 'commercial') throw new Error('目标不是土地');
       if (c.price === undefined) throw new Error('目标不是土地');
@@ -3982,6 +3986,8 @@ function useCard(state: GameState, action: Extract<PlayerAction, { type: 'USE_CA
     case 'swap-land': {
       const toId = requireCellId();
       if (toId === p.position) throw new Error('请选择与脚下不同的土地');
+      // CARD-04「视窗内其他土地」：在线版以脚下 4×4（16 格）视窗近似
+      if (!viewportCells(p.position).includes(toId)) throw new Error('目标土地不在视窗（4×4）范围内');
       const fromCell = state.board[p.position]!;
       const toCell = state.board[toId]!;
       if (fromCell.type !== toCell.type) throw new Error('只能同类互换（住宅换住宅 / 商业换商业）');
@@ -4001,6 +4007,8 @@ function useCard(state: GameState, action: Extract<PlayerAction, { type: 'USE_CA
     case 'swap-house': {
       const toId = requireCellId();
       if (toId === p.position) throw new Error('请选择与脚下不同的土地');
+      // CARD-05「视窗内其他房屋」：在线版以脚下 4×4（16 格）视窗近似
+      if (!viewportCells(p.position).includes(toId)) throw new Error('目标房屋不在视窗（4×4）范围内');
       const fromCell = state.board[p.position]!;
       const toCell = state.board[toId]!;
       if (fromCell.type !== toCell.type) throw new Error('只能同类互换（住宅换住宅 / 商业换商业）');
@@ -4035,7 +4043,8 @@ function useCard(state: GameState, action: Extract<PlayerAction, { type: 'USE_CA
       break;
     }
     case 'rebuild': {
-      const id = anyCellId();
+      // CARD-07 使用时机「走到任何有建筑的土地上」：只能改建**脚下**的土地（含他人的）
+      const id = p.position;
       const c = state.board[id]!;
       const owned = cellOwner(state, id);
       if (!owned) throw new Error('目标土地上没有建筑');
@@ -4141,9 +4150,18 @@ function useCard(state: GameState, action: Extract<PlayerAction, { type: 'USE_CA
       break;
     }
     case 'hold': {
-      const t = targetPlayer();
+      // CARD-14 停留卡：可对对手使用（阻断其前进）；也可对自己使用——
+      // 原地再停留一回合，用于再次停留自有商业用地继续加盖升级（用户规则）
+      const t = action.targetPlayerId
+        ? state.players.find((q) => q.id === action.targetPlayerId && !q.bankrupt)
+        : p;
+      if (!t) throw new Error('请选择有效的目标玩家');
       t.holdTurns += 1;
-      log(state, `${p.name} 对 ${t.name} 使用「停留卡」，其下一次前进将原地不动`);
+      if (t.id === p.id) {
+        log(state, `${p.name} 对自己使用「停留卡」，下一次掷骰将原地停留（可继续加盖/经营当格）`);
+      } else {
+        log(state, `${p.name} 对 ${t.name} 使用「停留卡」，其下一次前进将原地不动`);
+      }
       break;
     }
     case 'hibernate': {
@@ -4474,14 +4492,20 @@ function useItem(state: GameState, action: Extract<PlayerAction, { type: 'USE_IT
       break;
     }
     case 'robot-worker': {
-      // ITEM-09（研究所 Lv1）：在自家土地免费加盖一级
+      // ITEM-09（研究所 Lv1）：在自家土地免费加盖一级；
+      // 商业用地须与现场加盖同规：先建设施，且公园/加油站不可升级（EST-08/11）
       const id = anyCellId();
       const owned = cellOwner(state, id);
       if (!owned || owned.player.id !== p.id) throw new Error('只能加盖自己的土地');
+      const targetCell = state.board[id]!;
+      if (targetCell.type === 'commercial') {
+        if (!owned.property.facility) throw new Error('商业用地需先建设施，机器工人无处加盖');
+        if (!facilityUpgradeable(owned.property)) throw new Error('该设施无法升级（EST-08/EST-11）');
+      }
       if (owned.property.chain) throw new Error('连锁店不能再加盖（EST-04）');
       if (owned.property.grade >= MAX_GRADE) throw new Error('该土地已是最高等级');
       owned.property.grade = (owned.property.grade + 1) as 1 | 2 | 3 | 4 | 5;
-      log(state, `${p.name} 使用机器工人，「${state.board[id]!.name}」免费加盖至 ${owned.property.grade} 级`);
+      log(state, `${p.name} 使用机器工人，「${targetCell.name}」免费加盖至 ${owned.property.grade} 级`);
       break;
     }
     case 'time-machine': {

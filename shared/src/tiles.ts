@@ -1,5 +1,6 @@
 import type { BoardCell, FacilityType, GameState, PlayerProperty } from './types.js';
-import { scaled } from './economy.js';
+import { landPrice, scaled } from './economy.js';
+import { BOARD_SIZE } from './board.js';
 
 /**
  * 格型数据表与纯计算（波 3）：对标文档 §4 EST 与 §9 TILE。
@@ -136,6 +137,32 @@ export function streetCells(state: GameState, cellId: number): number[] {
   const anchor = state.board[cellId];
   if (!anchor?.street) return [cellId];
   return state.board.filter((c) => c.street === anchor.street).map((c) => c.id);
+}
+
+// ---------------------------------------------------------------------------
+// 视窗（在线版以 4×4 区域近似原版「视窗」）与购地价
+// ---------------------------------------------------------------------------
+
+/** 视窗大小：4×4 = 16 格（后方 7 格 + 当前格 + 前方 8 格，环形回绕） */
+export const VIEWPORT_SIZE = 16;
+
+/** 以玩家当前位置为中心的视窗格集合（换地/换屋卡等「视窗内」目标用） */
+export function viewportCells(position: number): number[] {
+  const out: number[] = [];
+  for (let d = -7; d <= 8; d++) out.push((position + d + BOARD_SIZE) % BOARD_SIZE);
+  return out;
+}
+
+/** 商业用地购地溢价倍数（用户规则：商业地要比原价贵——按自身标价 ×1.5 收购） */
+export const COMMERCIAL_PRICE_MULTIPLIER = 1.5;
+
+/**
+ * 购地价（引擎与 UI 同源）：住宅 = 公定地价；
+ * 商业用地 = 自身标价 ×1.5（用户规则：商业地要比原价贵）。
+ */
+export function landPurchasePrice(state: GameState, cell: BoardCell): number {
+  if (cell.type !== 'commercial') return landPrice(state, cell);
+  return scaled(state, Math.round((cell.price ?? 0) * COMMERCIAL_PRICE_MULTIPLIER));
 }
 
 /**
