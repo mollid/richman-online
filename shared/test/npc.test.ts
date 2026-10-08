@@ -363,6 +363,57 @@ describe('NPC-01..04 四种行窃行为', () => {
     expect(after.companies.find((c) => c.cellId === cellId)!.surplus).toBe(0);
     expect(after.log.some((l) => l.text.includes('盗领累积红利'))).toBe(true);
   });
+
+  // 用户规则：四大恶人的赃物都实际交给释放（保释）他的人
+  it('赃物转交保释人：小偷偷到的点券与道具归保释人', () => {
+    const { after } = sceneForLanding('thief', (g) => {
+      for (const p of g.players) {
+        if (p.id === 'p1') continue;
+        p.points = 2000;
+        p.items = { 'bomb-lite': 1 };
+      }
+    });
+    const bailer = after.players.find((p) => p.id === 'p1')!;
+    // 小偷每次只偷一名路人：点券必为 500（2000 触顶），道具一并转交
+    expect(bailer.points).toBe(500);
+    expect(bailer.items['bomb-lite']).toBe(1);
+    expect(after.log.some((l) => l.text.includes('赃物交予') && l.text.includes('阿福'))).toBe(true);
+  });
+
+  it('赃物转交保释人：行抢的卡片入保释人手牌', () => {
+    const { after } = sceneForLanding('robber', (g) => {
+      for (const p of g.players) {
+        if (p.id === 'p1') continue;
+        p.cards = ['tax-audit'];
+      }
+    });
+    const bailer = after.players.find((p) => p.id === 'p1')!;
+    expect(bailer.cards).toContain('tax-audit');
+  });
+
+  it('赃物转交保释人：窃取的租金现金归保释人', () => {
+    const { after } = sceneForLanding('rent-thief', (g, landing) => {
+      const cell = g.board[landing]!;
+      if (cell.type !== 'property') throw new Error('落点非土地');
+      g.players.find((p) => p.id !== 'p1')!.properties.push({ cellId: landing, grade: 1, lastRent: 3000 });
+    });
+    const bailer = after.players.find((p) => p.id === 'p1')!;
+    expect(bailer.cash).toBe(15000 + 3000);
+  });
+
+  it('赃物转交保释人：保护费现金归保释人', () => {
+    const { cellId, after } = sceneForLanding('protection', (g, landing) => {
+      const cell = g.board[landing]!;
+      if (cell.type !== 'property' || !cell.price) throw new Error('落点非地产');
+      const owner = g.players.find((p) => p.id !== 'p1')!;
+      owner.properties.push({ cellId: landing, grade: 1 });
+      owner.cash = 1_000_000;
+      owner.deposit = 0;
+    });
+    const fee = Math.round((after.board[cellId]!.price ?? 0) * 0.05);
+    const bailer = after.players.find((p) => p.id === 'p1')!;
+    expect(bailer.cash).toBe(15000 + fee);
+  });
 });
 
 describe('TILE-11 魔法屋（NPC-06 女巫）', () => {

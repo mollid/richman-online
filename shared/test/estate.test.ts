@@ -212,6 +212,7 @@ describe('商业用地与设施（EST-06..12）', () => {
   it('研发按天推进，到期后道具自动入栏（EST-09）', () => {
     let g = newGame(1008);
     g.players[0]!.research = { itemId: 'robot-worker', remainDays: 2 };
+    g.players[0]!.items = {}; // 清掉开局道具，便于断言研发产出数量
     // 2 人局：两人各行动一次 = 一整天；每回合都落到 2 号商店并结束回合
     while (g.players[0]!.research) {
       const s = structuredClone(g);

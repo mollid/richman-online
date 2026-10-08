@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { addPlayer, allAssetSummaries, allStockSummaries, applyAction, availableActions, BOARD_SIZE, gameDate, createGame, priceIndex, forceGameOver, GOD_DURATION_DAYS, GODS, nextRandom, removePlayer, rentOf, ReplayEngine, rollDie, totalAssets, upgradeCost } from '../src/index.js';
+import { addPlayer, allAssetSummaries, allStockSummaries, applyAction, availableActions, BOARD_SIZE, gameDate, createGame, priceIndex, forceGameOver, GOD_DURATION_DAYS, GODS, nextRandom, removePlayer, rentOf, ReplayEngine, rollDie, STARTING_ITEMS, totalAssets, upgradeCost } from '../src/index.js';
 import type { GameState, PlayerAction, PlayerDef } from '../src/index.js';
 
 const PLAYERS: PlayerDef[] = [
@@ -264,8 +264,25 @@ describe('回合流转', () => {
 
 
 
-describe('M2 卡片系统', () => {
-  it('卡片屋（TILE-13）免费获得一张卡片', () => {
+describe('开局道具（用户规则：机器娃娃/遥控骰子/路障/定时炸弹/地雷/机器工人 各 1）', () => {
+  it('开始游戏后每名玩家获赠初始道具', () => {
+    const g = newGame(5);
+    for (const p of g.players) {
+      expect(p.items).toEqual({ ...STARTING_ITEMS });
+    }
+    expect(g.log.some((l) => l.text.includes('开局道具'))).toBe(true);
+  });
+
+  it('大厅内尚未发放，开始游戏后才到账', () => {
+    const lobby = createGame(PLAYERS, 5, { startDate: { ...MONDAY } });
+    for (const p of lobby.players) expect(p.items).toEqual({});
+    const started = applyAction(lobby, { type: 'START_GAME' });
+    expect(started.players[0]!.items['robot-doll']).toBe(1);
+    expect(started.players[1]!.items['robot-worker']).toBe(1);
+  });
+});
+
+describe('M2 卡片系统', () => {  it('卡片屋（TILE-13）免费获得一张卡片', () => {
     // 波 8 起机会格改抽命运卡池（TILE-17 原版语义），免费赠卡改由 42 号「卡片屋」承担
     const g = setupLanding(newGame(101), 42, 5);
     const rolled = applyAction(g, { type: 'ROLL_DICE' });
@@ -288,6 +305,7 @@ describe('M2 卡片系统', () => {
   it('商店可点券购买道具（每种上限 9）', () => {
     const g = setupLanding(newGame(104), 2, 2);
     g.players[0]!.points = 1000; // 点券需先赚后花（初始 0）
+    g.players[0]!.items = {}; // 清掉开局道具，便于断言购买数量
     const rolled = applyAction(g, { type: 'ROLL_DICE' });
     const bought = applyAction(rolled, { type: 'BUY_ITEM', itemId: 'roadblock' });
     expect(bought.players[0]!.items['roadblock']).toBe(1);
@@ -329,6 +347,7 @@ describe('M2 卡片系统', () => {
     const g = newGame(111);
     g.players[0]!.cards = ['snatch'];
     g.players[1]!.cards = ['hold'];
+    g.players[1]!.items = {}; // 清掉开局道具，确保抢夺落在卡片上
     const used = applyAction(g, { type: 'USE_CARD', cardId: 'snatch', targetPlayerId: 'p2' });
     expect(used.players[0]!.cards).toContain('hold');
     expect(used.players[1]!.cards).not.toContain('hold');

@@ -161,3 +161,16 @@ export const ALL_ITEM_IDS = Object.keys(ITEMS);
 
 /** 商店在售道具（研究所非卖品除外） */
 export const SHOP_ITEM_IDS = ALL_ITEM_IDS.filter((id) => ITEMS[id]!.researchLevel === null);
+
+/**
+ * 开局赠送的道具（用户规则：玩家初始各持 1 件）。
+ * 「炸弹」取地雷（ITEM-03，可埋设的爆炸物）；机器工人为研究所非卖品，开局直接持有。
+ */
+export const STARTING_ITEMS: Readonly<Record<string, number>> = {
+  'robot-doll': 1,
+  'remote-dice-item': 1,
+  roadblock: 1,
+  'time-bomb': 1,
+  mine: 1,
+  'robot-worker': 1,
+};

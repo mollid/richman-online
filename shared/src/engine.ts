@@ -18,7 +18,7 @@ import {
 import { addMonths, DEFAULT_START_DATE, gameDate, toSerial } from './calendar.js';
 import { landPrice, landRent, landUpgradeCost, propertyValue, scaled, totalAssets, upgradeCost } from './economy.js';
 import { CARDS, CHANCE_CARD_POOL, SHOP_CARD_IDS } from './cards.js';
-import { ITEMS, SHOP_ITEM_IDS } from './items.js';
+import { ITEMS, SHOP_ITEM_IDS, STARTING_ITEMS } from './items.js';
 import { nextRandom, rollDie } from './rng.js';
 import { drawWinningNumber, isValidLotteryNumber, LOTTERY_TICKET_COST } from './lottery.js';
 import {
@@ -1325,8 +1325,19 @@ function derivedIndex(state: GameState, salt: number, n: number): number {
   return Math.floor(derivedValue(state, salt) * n);
 }
 
-/** 恶人行动收益结算：收益归保释人；保释人倒闭则恶人押回监狱 */
-function giveVillainLoot(state: GameState, npc: NpcUnit, text: string): void {
+/** 恶人作案收益（用户规则：四大恶人的赃物都交给释放/保释他的人） */
+interface VillainLoot {
+  cash?: number;
+  points?: number;
+  cardId?: string;
+  itemId?: string;
+}
+
+/**
+ * 恶人行动收益结算：赃物实际转交保释人；保释人倒闭则恶人押回监狱、赃物充公。
+ * 卡片/道具转交时若保释人手牌已满或该道具已达上限，折半价点券入账（与商店变卖同口径）。
+ */
+function giveVillainLoot(state: GameState, npc: NpcUnit, text: string, loot: VillainLoot = {}): void {
   const def = villainDefOf(npc);
   const owner = npc.ownerId ? state.players.find((p) => p.id === npc.ownerId) : undefined;
   if (!owner || owner.bankrupt) {
@@ -1337,7 +1348,38 @@ function giveVillainLoot(state: GameState, npc: NpcUnit, text: string): void {
     npc.position = JAIL_CELL_ID(state);
     return;
   }
-  log(state, `${def.name} ${text}，收益归 ${owner.name}`);
+  const parts: string[] = [];
+  if (loot.cash && loot.cash > 0) {
+    owner.cash += loot.cash;
+    parts.push(`¥${loot.cash}`);
+  }
+  if (loot.points && loot.points > 0) {
+    owner.points += loot.points;
+    parts.push(`${loot.points} 点券`);
+  }
+  if (loot.cardId) {
+    const card = CARDS[loot.cardId];
+    if (owner.cards.length < MAX_HAND_CARDS) {
+      owner.cards.push(loot.cardId);
+      parts.push(`卡片「${card?.name ?? loot.cardId}」`);
+    } else {
+      const pts = Math.floor((card?.cost ?? 0) / 2);
+      owner.points += pts;
+      parts.push(`卡片「${card?.name ?? loot.cardId}」（手牌已满，折 ${pts} 点券）`);
+    }
+  }
+  if (loot.itemId) {
+    const item = ITEMS[loot.itemId];
+    if ((owner.items[loot.itemId] ?? 0) < MAX_ITEM_COUNT) {
+      owner.items[loot.itemId] = (owner.items[loot.itemId] ?? 0) + 1;
+      parts.push(`道具「${item?.name ?? loot.itemId}」`);
+    } else {
+      const pts = Math.floor((item?.cost ?? 0) / 2);
+      owner.points += pts;
+      parts.push(`道具「${item?.name ?? loot.itemId}」（已达上限，折 ${pts} 点券）`);
+    }
+  }
+  log(state, `${def.name} ${text}，赃物交予 ${owner.name}${parts.length > 0 ? `（${parts.join('、')}）` : ''}`);
 }
 
 /** NpcUnit.kind 收窄为四大恶人（排除恶犬），供 VILLAINS 索引 */
@@ -1359,23 +1401,26 @@ function villainAct(state: GameState, npc: NpcUnit, salt: number): void {
 
   switch (npc.kind) {
     case 'thief': {
-      // 偷取一名路人的点券（上限 500）并取走一件道具
+      // 偷取一名路人的点券（上限 500）并取走一件道具，一并交给保释人
       const victim = victimPool[derivedIndex(state, salt + 1, victimPool.length)]!;
       const take = Math.min(victim.points, THIEF_POINTS_TAKE);
       victim.points -= take;
       const itemIds = Object.keys(victim.items).filter((id) => (victim.items[id] ?? 0) > 0);
-      let itemText = '';
+      let stolenItemId: string | undefined;
       if (itemIds.length > 0) {
-        const itemId = itemIds[derivedIndex(state, salt + 2, itemIds.length)]!;
-        victim.items[itemId] = (victim.items[itemId] ?? 1) - 1;
-        if ((victim.items[itemId] ?? 0) <= 0) delete victim.items[itemId];
-        itemText = `、道具「${ITEMS[itemId]?.name ?? itemId}」`;
+        stolenItemId = itemIds[derivedIndex(state, salt + 2, itemIds.length)]!;
+        victim.items[stolenItemId] = (victim.items[stolenItemId] ?? 1) - 1;
+        if ((victim.items[stolenItemId] ?? 0) <= 0) delete victim.items[stolenItemId];
       }
-      giveVillainLoot(state, npc, `在「${cell.name}」偷走 ${victim.name} 的 ${take} 点券${itemText}`);
+      const itemText = stolenItemId ? `、道具「${ITEMS[stolenItemId]?.name ?? stolenItemId}」` : '';
+      giveVillainLoot(state, npc, `在「${cell.name}」偷走 ${victim.name} 的 ${take} 点券${itemText}`, {
+        points: take,
+        itemId: stolenItemId,
+      });
       break;
     }
     case 'protection': {
-      // 站在土地格时向该地产主收取 5% 地价的保护费（现金不足则折算点券）
+      // 站在土地格时向该地产主收取 5% 地价的保护费，交给保释人（现金不足则折算点券）
       const owner = cellOwner(state, cell.id);
       if (!owner || cell.price === undefined) return;
       const fee = Math.round(cell.price * PROTECTION_FEE_RATE);
@@ -1386,44 +1431,42 @@ function villainAct(state: GameState, npc: NpcUnit, salt: number): void {
         const byPoints = Math.min(owner.player.points, Math.max(1, Math.floor(fee / 10)));
         owner.player.points -= byPoints;
       }
-      giveVillainLoot(state, npc, `在「${cell.name}」向 ${owner.player.name} 收取保护费 ¥${fee}`);
+      giveVillainLoot(state, npc, `在「${cell.name}」向 ${owner.player.name} 收取保护费 ¥${fee}`, { cash: fee });
       break;
     }
     case 'robber': {
-      // 抢夺一名路人的一张卡片，没有卡片则抢一件道具
+      // 抢夺一名路人的一张卡片（无卡片则抢一件道具），交给保释人
       const victim = victimPool[derivedIndex(state, salt + 1, victimPool.length)]!;
-      let lootText = '';
       if (victim.cards.length > 0) {
         const idx = derivedIndex(state, salt + 2, victim.cards.length);
         const cardId = victim.cards[idx]!;
         victim.cards.splice(idx, 1);
-        lootText = `卡片「${CARDS[cardId]?.name ?? cardId}」`;
+        giveVillainLoot(state, npc, `在「${cell.name}」抢走 ${victim.name} 的卡片「${CARDS[cardId]?.name ?? cardId}」`, { cardId });
       } else {
         const itemIds = Object.keys(victim.items).filter((id) => (victim.items[id] ?? 0) > 0);
         if (itemIds.length === 0) return;
         const itemId = itemIds[derivedIndex(state, salt + 2, itemIds.length)]!;
         victim.items[itemId] = (victim.items[itemId] ?? 1) - 1;
         if ((victim.items[itemId] ?? 0) <= 0) delete victim.items[itemId];
-        lootText = `道具「${ITEMS[itemId]?.name ?? itemId}」`;
+        giveVillainLoot(state, npc, `在「${cell.name}」抢走 ${victim.name} 的道具「${ITEMS[itemId]?.name ?? itemId}」`, { itemId });
       }
-      giveVillainLoot(state, npc, `在「${cell.name}」抢走 ${victim.name} 的 ${lootText}`);
       break;
     }
     case 'rent-thief': {
-      // 公司格：盗领全部累积红利；土地格：窃取上次收取的租金
+      // 公司格：盗领全部累积红利；土地格：窃取上次收取的租金，均交给保释人
       const company = companyAtCell(state, cell.id);
       if (company) {
         if (company.surplus <= 0) return;
         const stolen = company.surplus;
         company.surplus = 0;
-        giveVillainLoot(state, npc, `潜入「${cell.name}」盗领累积红利 ¥${stolen}`);
+        giveVillainLoot(state, npc, `潜入「${cell.name}」盗领累积红利 ¥${stolen}`, { cash: stolen });
         return;
       }
       const owner = cellOwner(state, cell.id);
       if (!owner || !owner.property.lastRent) return;
       const stolen = owner.property.lastRent;
       owner.property.lastRent = null;
-      giveVillainLoot(state, npc, `在「${cell.name}」窃取租金 ¥${stolen}`);
+      giveVillainLoot(state, npc, `在「${cell.name}」窃取租金 ¥${stolen}`, { cash: stolen });
       break;
     }
   }
@@ -2500,7 +2543,9 @@ function startGame(state: GameState): void {
   // 冻结物价指数分母（此后不再随加入/破产变化）
   state.initialCashPerPlayer = STARTING_CASH;
   state.initialPlayerCount = state.players.length;
-  log(state, '游戏开始！');
+  // 开局赠送道具：机器娃娃/遥控骰子/路障/定时炸弹/地雷/机器工人 各 1（用户规则）
+  for (const p of state.players) p.items = { ...STARTING_ITEMS };
+  log(state, '游戏开始！每人获赠开局道具：机器娃娃、遥控骰子、路障、定时炸弹、地雷、机器工人 各 1');
 }
 
 function rollDice(state: GameState, action: Extract<PlayerAction, { type: 'ROLL_DICE' }>): void {
