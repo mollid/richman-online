@@ -49,11 +49,14 @@ export function ControlPanel({
   const actions = availableActions(game);
   const current = game.players[game.currentPlayerIndex];
   const [diceChoice, setDiceChoice] = useState<number | null>(null);
+  // UI-13 认输两段式：先确认认输，再指定承接死神的复仇者
+  const [surrendering, setSurrendering] = useState(false);
   const cell = game.board[current?.position ?? 0];
   const ownedBy = current && game.players.find((p) => p.properties.some((q) => q.cellId === cell?.id));
   const myProp = ownedBy?.properties.find((q) => q.cellId === cell?.id);
   const date = gameDate(game);
-  const price = cell && cell.price !== undefined ? landPrice(game, cell) : undefined;
+  // 购地价与引擎同源：住宅=公定地价；商业用地=标价 ×1.5
+  const price = cell && cell.price !== undefined ? landPurchasePrice(game, cell) : undefined;
   const upgrade = myProp && cell ? landUpgradeCost(game, cell, myProp.grade) : undefined;
   const waitingForTurn = game.phase === 'awaiting_action' || game.phase === 'awaiting_roll';
   // CORE-03：步行 1 颗骰子、机车 2 颗、汽车 3 颗；掷骰前可自选本次使用几颗（默认用满）
@@ -250,44 +253,50 @@ export function ControlPanel({
         </>
       )}
 
-      {/* CORE-04 / UI-13 认输：投票决定死神落在哪位「复仇者」身上 */}
-      {actions.canSurrender && (
+      {/* CORE-04 / UI-13 认输：认输者指定一位「复仇者」承接死神（help [13]） */}
+      {actions.canSurrender && !surrendering && (
         <div className="surrender-row">
           <button
             className="ghost danger"
             disabled={!interactive}
             onClick={() => {
-              if (window.confirm('确定认输投降吗？你将退出对局，并由全体投票决定谁被死神附身。')) {
-                onAction({ type: 'SURRENDER' });
+              if (window.confirm('确定认输投降吗？你将退出对局，并把死神引向一位对手。')) {
+                setSurrendering(true);
               }
             }}
           >
             认输投降
           </button>
-          <span className="surrender-hint">你将退出对局；全体投票选出的复仇者会被死神附身</span>
+          <span className="surrender-hint">
+            你将退出对局；由你指定一位复仇者，死神会附身于他（help[13]「附身在您指定的人身上」）
+          </span>
         </div>
       )}
 
-      {/* UI-13 认输投票：选出被死神附身的复仇者 */}
-      {actions.inSurrenderVote && (
+      {/* UI-13 认输：选择把死神引向哪位复仇者 */}
+      {actions.canSurrender && surrendering && (
         <div className="revenge-vote">
-          <div className="revenge-title">认输投票 · 把死神引向谁？</div>
+          <div className="revenge-title">认输投降 · 把死神引向谁？</div>
           <div className="revenge-hint">
-            死神会清空该玩家全部卡片与道具，并让他 13 天霉运不断（倒霉事加倍）。
-            {actions.myRevengeVote ? '（你已投票，可改投）' : ''}
+            被指定的复仇者会被死神附身：清空全部卡片与道具、当下损失一笔现金，并陷入 13 天霉运（倒霉事加倍）。
           </div>
           <div className="revenge-list">
             {actions.revengeCandidates.map((cand) => (
               <button
                 key={cand.id}
-                className={`mini ${actions.myRevengeVote === cand.id ? 'primary' : ''}`}
+                className="mini"
                 disabled={!interactive}
-                onClick={() => onAction({ type: 'VOTE_REVENGE', revengeTargetId: cand.id })}
+                onClick={() => {
+                  setSurrendering(false);
+                  onAction({ type: 'SURRENDER', revengeTargetId: cand.id });
+                }}
               >
-                {actions.myRevengeVote === cand.id ? '✓ ' : ''}
                 {cand.name}
               </button>
             ))}
+            <button className="mini ghost" disabled={!interactive} onClick={() => setSurrendering(false)}>
+              取消
+            </button>
           </div>
         </div>
       )}

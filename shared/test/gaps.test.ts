@@ -378,27 +378,29 @@ describe('ECON-12 手牌额满须选择舍弃', () => {
 });
 
 describe('CORE-04 认输投降（死神附身流程）', () => {
-  it('认输后清空卡牌道具、计离场费、标记倒闭', () => {
+  it('认输者干净退出，死神附身于指定复仇者并清空其卡牌道具', () => {
     const g = pinIndexOne(newGame());
     const p = g.players[0]!;
     p.cards = ['angel', 'devil'];
     p.items = { teleporter: 1 };
-    const before = p.cash;
-    const r = applyAction(g, { type: 'SURRENDER' });
+    const r = applyAction(g, { type: 'SURRENDER', revengeTargetId: 'p2' });
     const me = r.players[0]!;
     expect(me.bankrupt).toBe(true);
     expect(me.cards).toEqual([]);
     expect(me.items).toEqual({});
-    expect(r.log.some((l) => l.text.includes('死神附身'))).toBe(true);
+    expect(me.god).toBeNull();
     expect(r.log.some((l) => l.text.includes('已退出对局'))).toBe(true);
-    expect(before - me.cash).toBeGreaterThanOrEqual(0);
+    // 死神落在复仇者头上
+    const avenger = r.players[1]!;
+    expect(avenger.god?.godId).toBe('death');
+    expect(r.log.some((l) => l.text.includes('死神'))).toBe(true);
   });
 
   it('两人局中一人认输 → 另一人获胜', () => {
     const g = applyAction(createGame([PLAYERS[0]!, PLAYERS[1]!], 5, { startDate: { ...MONDAY } }), {
       type: 'START_GAME',
     });
-    const r = applyAction(g, { type: 'SURRENDER' });
+    const r = applyAction(g, { type: 'SURRENDER', revengeTargetId: 'p2' });
     expect(r.phase).toBe('game_over');
     expect(r.winnerId).toBe('p2');
   });
@@ -416,7 +418,7 @@ describe('CORE-04 认输投降（死神附身流程）', () => {
   it('已倒闭玩家不能重复认输；死神时长常量存在', () => {
     const g = newGame(9);
     g.players[0]!.bankrupt = true;
-    expect(() => applyAction(g, { type: 'SURRENDER' })).toThrow();
+    expect(() => applyAction(g, { type: 'SURRENDER', revengeTargetId: 'p2' })).toThrow();
     expect(DEATH_DURATION_DAYS).toBe(13);
   });
 });

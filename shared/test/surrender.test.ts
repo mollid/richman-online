@@ -11,15 +11,15 @@ import {
 } from '../src/index.js';
 
 /**
- * UI-13 投票认输 + GOD-12 死神效果（对标 help[51]、文档 UI-13 与GOD-12）。
+ * UI-13 认输投降 + GOD-12 死神效果（对标 help[13]、help[51]、文档 UI-13 与 GOD-12）。
  *
  * 原版依据：
+ * - help[13]「認輸投降：…魔法屋的女巫會替您召喚死神，附身在**您指定的人**身上」
  * - help[51]「死神附身時，不但會遺失所有卡片道具，還會發生一連串倒楣的事情。為期十三天」
- * - 文档 UI-13「認輸後**魔法屋女巫召喚死神**附身到**指定的人身上**」
  * - GOD-12 死神：遗失所有卡片道具 + 一连串倒霉事，13 天后自动消失
  *
- * 本组用例固化：认输者干净退出，死神落在投票选出的**复仇者**身上，
- * 复仇者被清空卡牌道具并进入 13 天**霉运加倍**状态。
+ * 本组用例固化：认输者**指定**一位复仇者后干净退出，死神落在该复仇者身上，
+ * 其全部卡牌道具被清空并进入 13 天霉运加倍状态。
  */
 
 const PLAYERS: PlayerDef[] = [
@@ -33,7 +33,7 @@ function newGame(seed = 42): GameState {
   return applyAction(createGame(PLAYERS, seed, { startDate: { ...MONDAY } }), { type: 'START_GAME' });
 }
 
-/** 让p1（当前玩家）持有卡牌与道具，便于验证被清空 */
+/** 让指定玩家持有卡牌与道具，便于验证被清空 */
 function arm(p: GameState, playerId: string, cards = 3, items = 2): GameState {
   const target = p.players.find((q) => q.id === playerId)!;
   target.cards = Array.from({ length: cards }, () => 'angel');
@@ -86,15 +86,11 @@ describe('UI-13 认输：指定复仇者时死神不落在自己头上', () => {
     expect(avenger.god?.remainingDays).toBe(DEATH_DURATION_DAYS);
   });
 
-  it('未指定复仇者时沿用旧行为：死神落在认输者身上', () => {
+  it('必须指定复仇者：缺省时拒绝认输', () => {
     const g = arm(pinIndexOne(newGame()), 'p1', 2, 1);
     g.phase = 'awaiting_action';
-    const r = applyAction(g, { type: 'SURRENDER' });
-    const me = r.players[0]!;
-    expect(me.bankrupt).toBe(true);
-    expect(me.cards).toEqual([]);
-    expect(me.items).toEqual({});
-    expect(r.log.some((l) => l.text.includes('死神附身'))).toBe(true);
+    // @ts-expect-error 故意缺省 revengeTargetId 验证运行时校验
+    expect(() => applyAction(g, { type: 'SURRENDER' })).toThrow('复仇者');
   });
 
   it('非法复仇者被拒（不存在 / 自己 / 已倒闭）', () => {
@@ -153,96 +149,25 @@ describe('GOD-12 霉运的实效', () => {
   });
 });
 
-describe('UI-13 投票认输', () => {
-  /** 手动构造投票期状态（认输者已出局） */
-  function votingState(): GameState {
+describe('UI-13 复仇者候选', () => {
+  it('对局中暴露存活且非自己的候选', () => {
     const g = newGame(11);
-    g.players[0]!.bankrupt = true; // 认输者已出局
-    g.surrenderVote = {
-      initiatorId: 'p1',
-      candidateIds: ['p2', 'p3'],
-      votes: {},
-      resolved: false,
-      stage: 'voting',
-    };
-    g.currentPlayerIndex = 1; // 指向存活玩家（p1 已出局）
-    g.phase = 'awaiting_action';
-    return g;
-  }
-
-  /** 推进到下一位存活玩家的决策阶段 */
-  function nextVoter(state: GameState): GameState {
-    let s = state;
-    if (s.phase === 'awaiting_roll') s = applyAction(s, { type: 'ROLL_DICE' });
-    else if (s.phase === 'awaiting_action') s = applyAction(s, { type: 'END_TURN' });
-    else if (s.phase === 'awaiting_pick') s = applyAction(s, { type: 'MINIGAME_PICK', hole: 0 });
-    // 轮转到下一个存活玩家
-    while (s.players[s.currentPlayerIndex]?.bankrupt) {
-      s.currentPlayerIndex = (s.currentPlayerIndex + 1) % s.players.length;
-    }
-    s.phase = 'awaiting_action';
-    return s;
-  }
-
-  it('投票期暴露候选复仇者', () => {
-    const g = votingState();
     const acts = availableActions(g);
-    expect(acts.inSurrenderVote).toBe(true);
+    expect(acts.canSurrender).toBe(true);
     expect(acts.revengeCandidates.map((c) => c.id)).toEqual(['p2', 'p3']);
   });
 
-  it('投票记录并可改投', () => {
-    let g = votingState();
-    g = applyAction(g, { type: 'VOTE_REVENGE', revengeTargetId: 'p2' });
-    expect(g.surrenderVote!.votes['p2']).toBe('p2');
-    expect(availableActions(g).myRevengeVote).toBe('p2');
-    // 改投
-    g = applyAction(g, { type: 'VOTE_REVENGE', revengeTargetId: 'p3' });
-    expect(g.surrenderVote!.votes['p2']).toBe('p3');
-    expect(availableActions(g).myRevengeVote).toBe('p3');
+  it('大厅 / 游戏结束时候选为空', () => {
+    const lobby = createGame(PLAYERS, 13);
+    expect(availableActions(lobby).revengeCandidates).toEqual([]);
+    const over = newGame(13);
+    over.phase = 'game_over';
+    expect(availableActions(over).revengeCandidates).toEqual([]);
   });
 
-  it('不能投非候选者', () => {
-    const g = votingState();
-    expect(() => applyAction(g, { type: 'VOTE_REVENGE', revengeTargetId: 'p1' })).toThrow('不是复仇者候选');
-  });
-
-  it('全体投完自动结算：得票最多者成为复仇者并被死神附身', () => {
-    let g = votingState();
-    g = arm(g, 'p2', 3, 2);
-    // p2 投p3，然后轮转到 p3 也投 p3 → p3 得票
-    g = applyAction(g, { type: 'VOTE_REVENGE', revengeTargetId: 'p3' });
-    g = nextVoter(g);
-    g = applyAction(g, { type: 'VOTE_REVENGE', revengeTargetId: 'p3' });
-    // 结算后投票关闭
-    expect(g.surrenderVote).toBeNull();
-    const winner = g.players[2]!;
-    expect(winner.god?.godId).toBe('death');
-    expect(winner.unlucky?.multiplier).toBe(2);
-    // 被投的 p2 未受影响
-    expect(g.players[1]!.god).toBeNull();
-  });
-
-  it('同票时按玩家顺序取先者（确定性）', () => {
-    let g = votingState();
-    g = applyAction(g, { type: 'VOTE_REVENGE', revengeTargetId: 'p2' });
-    g = nextVoter(g);
-    g = applyAction(g, { type: 'VOTE_REVENGE', revengeTargetId: 'p3' });
-    // 1:1 平票→ 按 order取先出现的 p2
-    expect(g.players[1]!.god?.godId).toBe('death');
-    expect(g.players[2]!.god).toBeNull();
-  });
-
-  it('无投票进行中时候选为空', () => {
-    const g = newGame(13);
-    const acts = availableActions(g);
-    expect(acts.inSurrenderVote).toBe(false);
-    expect(acts.revengeCandidates).toEqual([]);
-  });
-
-  it('显式结算动作在无人投票时安全返回', () => {
+  it('已倒闭玩家不会成为候选', () => {
     const g = newGame(15);
-    const r = applyAction(g, { type: 'RESOLVE_SURRENDER_VOTE' });
-    expect(r.surrenderVote).toBeNull();
+    g.players[2]!.bankrupt = true;
+    expect(availableActions(g).revengeCandidates.map((c) => c.id)).toEqual(['p2']);
   });
 });
