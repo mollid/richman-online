@@ -1,6 +1,5 @@
 import { actionRefusal, availableActions } from './engine.js';
-import { landUpgradeCost } from './economy.js';
-import { landPrice } from './economy.js';
+import { landPrice, landUpgradeCost } from './economy.js';
 import { CARDS, SHOP_CARD_IDS } from './cards.js';
 import { ITEMS, SHOP_ITEM_IDS } from './items.js';
 import { MAX_HAND_CARDS, MAX_ITEM_COUNT } from './board.js';

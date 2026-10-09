@@ -258,7 +258,7 @@ function isGameOver(s: GameState): boolean {
 
 function currentPlayer(state: GameState): Player {
   const p = state.players[state.currentPlayerIndex];
-  if (!p) throw new Error('当前玩家不存在');
+  if (!p) throw new Error(NO_ACTOR_MESSAGE);
   return p;
 }
 
@@ -2784,6 +2784,13 @@ export function forceGameOver(state: GameState, winnerId: string): GameState {
   return next;
 }
 
+/**
+ * 「没有可操作的玩家」的统一文案。
+ * `currentPlayer` 抛它，各 `check` 也返回它 —— 必须是同一个字符串，
+ * 否则老存档 / 客户端按文案做的判断会在某个动作上悄悄变样。
+ */
+const NO_ACTOR_MESSAGE = '当前玩家不存在';
+
 /* ==========================================================================
  * 动作注册表（R3）：34 个玩家动作的「校验 + 执行」成对登记
  *
@@ -2829,7 +2836,7 @@ function checkStartGame(state: GameState, _p: Player | null, _action: ActionOf<'
 
 function checkRollDice(state: GameState, p: Player | null, action: ActionOf<'ROLL_DICE'>): ActionRefusal {
   if (state.phase !== 'awaiting_roll') return '当前不能掷骰';
-  if (!p) return '当前玩家不存在';
+  if (!p) return NO_ACTOR_MESSAGE;
   const maxDice = Math.max(1, Math.min(3, p.diceCount));
   const requested = action.diceCount ?? maxDice;
   if (!Number.isInteger(requested) || requested < 1 || requested > maxDice) return `骰子数必须是 1-${maxDice} 的整数`;
@@ -2843,7 +2850,7 @@ function checkEndTurn(state: GameState, _p: Player | null, _action: ActionOf<'EN
 
 function checkBuyLand(state: GameState, p: Player | null, _action: ActionOf<'BUY_LAND'>): ActionRefusal {
   if (state.phase !== 'awaiting_action') return '当前不能购买地产';
-  if (!p) return '当前玩家不存在';
+  if (!p) return NO_ACTOR_MESSAGE;
   if (p.sleepwalkTurns > 0) return '梦游中无法买地';
   const c = cellAt(state, p.position);
   if ((c.type !== 'property' && c.type !== 'commercial') || c.price === undefined) return '此格不可购买';
@@ -2857,7 +2864,7 @@ function checkBuyLand(state: GameState, p: Player | null, _action: ActionOf<'BUY
 
 function checkUpgradeLand(state: GameState, p: Player | null, _action: ActionOf<'UPGRADE_LAND'>): ActionRefusal {
   if (state.phase !== 'awaiting_action') return '当前不能升级地产';
-  if (!p) return '当前玩家不存在';
+  if (!p) return NO_ACTOR_MESSAGE;
   const c = cellAt(state, p.position);
   if ((c.type !== 'property' && c.type !== 'commercial') || c.price === undefined) return '此格不可升级';
   const owned = cellOwner(state, c.id);
@@ -2881,7 +2888,7 @@ function checkUpgradeLand(state: GameState, p: Player | null, _action: ActionOf<
 
 function checkBuildFacility(state: GameState, p: Player | null, action: ActionOf<'BUILD_FACILITY'>): ActionRefusal {
   if (state.phase !== 'awaiting_action') return '当前不能建设';
-  if (!p) return '当前玩家不存在';
+  if (!p) return NO_ACTOR_MESSAGE;
   const c = cellAt(state, p.position);
   if (c.type !== 'commercial' || c.price === undefined) return '此格不是商业用地';
   const owned = cellOwner(state, c.id);
@@ -2896,7 +2903,7 @@ function checkBuildFacility(state: GameState, p: Player | null, action: ActionOf
 
 function checkStartResearch(state: GameState, p: Player | null, action: ActionOf<'START_RESEARCH'>): ActionRefusal {
   if (state.phase !== 'awaiting_action') return '当前不能立项研发';
-  if (!p) return '当前玩家不存在';
+  if (!p) return NO_ACTOR_MESSAGE;
   if (p.research) return '已有研发项目在进行中';
   const c = cellAt(state, p.position);
   if (c.type !== 'commercial') return '此格不是商业用地';
@@ -2910,7 +2917,7 @@ function checkStartResearch(state: GameState, p: Player | null, action: ActionOf
 }
 
 function checkUseCard(state: GameState, p: Player | null, action: ActionOf<'USE_CARD'>): ActionRefusal {
-  if (!p) return '当前玩家不存在';
+  if (!p) return NO_ACTOR_MESSAGE;
   const card = CARDS[action.cardId];
   if (!card) return '未知卡片';
   if (!p.cards.includes(card.id)) return '没有这张卡片';
@@ -2928,14 +2935,14 @@ function checkDiscardCard(state: GameState, p: Player | null, action: ActionOf<'
   if (state.phase !== 'awaiting_roll' && state.phase !== 'awaiting_action' && state.phase !== 'awaiting_discard') {
     return '当前不能舍弃卡片';
   }
-  if (!p) return '当前玩家不存在';
+  if (!p) return NO_ACTOR_MESSAGE;
   if (!p.cards.includes(action.cardId)) return '没有这张卡片';
   return null;
 }
 
 function checkBuyCard(state: GameState, p: Player | null, action: ActionOf<'BUY_CARD'>): ActionRefusal {
   if (state.phase !== 'awaiting_action') return '当前不能购买卡片';
-  if (!p) return '当前玩家不存在';
+  if (!p) return NO_ACTOR_MESSAGE;
   if (!isShopCell(cellAt(state, p.position))) return '不在商店，不能购买卡片';
   const card = CARDS[action.cardId];
   if (!card || !SHOP_CARD_IDS.includes(card.id)) return '商店不出售这张卡片';
@@ -2946,7 +2953,7 @@ function checkBuyCard(state: GameState, p: Player | null, action: ActionOf<'BUY_
 
 function checkSellCard(state: GameState, p: Player | null, action: ActionOf<'SELL_CARD'>): ActionRefusal {
   if (state.phase !== 'awaiting_action') return '当前不能变卖卡片';
-  if (!p) return '当前玩家不存在';
+  if (!p) return NO_ACTOR_MESSAGE;
   if (!isShopCell(cellAt(state, p.position))) return '不在商店，不能变卖卡片';
   const card = CARDS[action.cardId];
   if (!card || !p.cards.includes(card.id)) return '没有这张卡片';
@@ -2954,7 +2961,7 @@ function checkSellCard(state: GameState, p: Player | null, action: ActionOf<'SEL
 }
 
 function checkUseItem(state: GameState, p: Player | null, action: ActionOf<'USE_ITEM'>): ActionRefusal {
-  if (!p) return '当前玩家不存在';
+  if (!p) return NO_ACTOR_MESSAGE;
   const item = ITEMS[action.itemId];
   if (!item) return '未知道具';
   if ((p.items[item.id] ?? 0) <= 0) return '没有这个道具';
@@ -2967,7 +2974,7 @@ function checkUseItem(state: GameState, p: Player | null, action: ActionOf<'USE_
 
 function checkBuyItem(state: GameState, p: Player | null, action: ActionOf<'BUY_ITEM'>): ActionRefusal {
   if (state.phase !== 'awaiting_action') return '当前不能购买道具';
-  if (!p) return '当前玩家不存在';
+  if (!p) return NO_ACTOR_MESSAGE;
   if (!isShopCell(cellAt(state, p.position))) return '不在商店，不能购买道具';
   const item = ITEMS[action.itemId];
   if (!item || !SHOP_ITEM_IDS.includes(item.id)) return '商店不出售这种道具';
@@ -2978,7 +2985,7 @@ function checkBuyItem(state: GameState, p: Player | null, action: ActionOf<'BUY_
 
 function checkSellItem(state: GameState, p: Player | null, action: ActionOf<'SELL_ITEM'>): ActionRefusal {
   if (state.phase !== 'awaiting_action') return '当前不能变卖道具';
-  if (!p) return '当前玩家不存在';
+  if (!p) return NO_ACTOR_MESSAGE;
   if (!isShopCell(cellAt(state, p.position))) return '不在商店，不能变卖道具';
   const item = ITEMS[action.itemId];
   if (!item || (p.items[item.id] ?? 0) <= 0) return '没有这个道具';
@@ -2991,7 +2998,7 @@ function bankRefusal(state: GameState, p: Player | null): ActionRefusal {
   const bank = state.bankAccess;
   if (!bank) return '不在银行，不能进行银行操作';
   if (gameDate(state).isHoliday) return '例假日银行休市';
-  if (!p) return '当前玩家不存在';
+  if (!p) return NO_ACTOR_MESSAGE;
   return null;
 }
 
@@ -3037,7 +3044,7 @@ function checkRepayLoan(state: GameState, p: Player | null, action: ActionOf<'RE
 /** 股票类动作的共同前置（买卖共用，顺序与引擎逐条一致） */
 function stockTradeRefusal(state: GameState, p: Player | null, stockId: string, quantity: number): ActionRefusal {
   if (!canTradeStockNow(state)) return '当前不能交易股票';
-  if (!p) return '当前玩家不存在';
+  if (!p) return NO_ACTOR_MESSAGE;
   if (p.bankrupt) return '已倒闭的玩家不能交易股票';
   const stock = stockById(state, stockId);
   if (!stock) return '未知股票';
@@ -3085,7 +3092,7 @@ function checkMinigamePick(state: GameState, _p: Player | null, action: ActionOf
 
 function checkBuyShares(state: GameState, p: Player | null, action: ActionOf<'BUY_SHARES'>): ActionRefusal {
   if (state.phase !== 'awaiting_action') return '当前不能认购股份';
-  if (!p) return '当前玩家不存在';
+  if (!p) return NO_ACTOR_MESSAGE;
   const c = cellAt(state, p.position);
   if (c.type !== 'company' || c.id !== action.cellId) return '不在该公司格，不能认购股份';
   const company = companyAtCell(state, c.id);
@@ -3098,7 +3105,7 @@ function checkBuyShares(state: GameState, p: Player | null, action: ActionOf<'BU
 
 function checkSpecialFinancing(state: GameState, p: Player | null, action: ActionOf<'SPECIAL_FINANCING'>): ActionRefusal {
   if (state.phase !== 'awaiting_action') return '当前不能特别融资';
-  if (!p) return '当前玩家不存在';
+  if (!p) return NO_ACTOR_MESSAGE;
   const c = cellAt(state, p.position);
   if (c.type !== 'company' || c.companyKind !== 'bank') return '不在企业银行，不能特别融资';
   const company = companyAtCell(state, c.id);
@@ -3110,7 +3117,7 @@ function checkSpecialFinancing(state: GameState, p: Player | null, action: Actio
 
 function checkBuildEstate(state: GameState, p: Player | null, action: ActionOf<'BUILD_ESTATE'>): ActionRefusal {
   if (state.phase !== 'awaiting_action') return '当前不能加盖';
-  if (!p) return '当前玩家不存在';
+  if (!p) return NO_ACTOR_MESSAGE;
   const c = cellAt(state, p.position);
   if (c.type !== 'company' || c.companyKind !== 'estate') return '不在房地产公司，不能加盖';
   const prop = p.properties.find((q) => q.cellId === action.cellId);
@@ -3127,7 +3134,7 @@ function checkBuildEstate(state: GameState, p: Player | null, action: ActionOf<'
 
 function checkBuyLotteryTicket(state: GameState, p: Player | null, action: ActionOf<'BUY_LOTTERY_TICKET'>): ActionRefusal {
   if (state.phase !== 'awaiting_action') return '当前不能投注乐透';
-  if (!p) return '当前玩家不存在';
+  if (!p) return NO_ACTOR_MESSAGE;
   if (cellAt(state, p.position).type !== 'lottery') return '不在乐透行，不能投注';
   if (!isValidLotteryNumber(action.number)) return '号码必须是 0-99 的整数';
   if (p.cash < LOTTERY_TICKET_COST) return '现金不足';
@@ -3151,7 +3158,7 @@ function checkAuctionPass(state: GameState, bidder: Player | null, _action: Acti
 
 function checkBailPrisoner(state: GameState, p: Player | null, action: ActionOf<'BAIL_PRISONER'>): ActionRefusal {
   if (state.phase !== 'awaiting_action') return '当前不能保释';
-  if (!p) return '当前玩家不存在';
+  if (!p) return NO_ACTOR_MESSAGE;
   if (cellAt(state, p.position).type !== 'jail') return '不在监狱门外，不能保释';
   const npc = state.npcs.find((n) => n.kind === action.npcKind);
   if (!npc) return '没有这名恶人';
@@ -3162,7 +3169,7 @@ function checkBailPrisoner(state: GameState, p: Player | null, action: ActionOf<
 
 function checkDischargePatient(state: GameState, p: Player | null, action: ActionOf<'DISCHARGE_PATIENT'>): ActionRefusal {
   if (state.phase !== 'awaiting_action') return '当前不能办理出院';
-  if (!p) return '当前玩家不存在';
+  if (!p) return NO_ACTOR_MESSAGE;
   if (cellAt(state, p.position).type !== 'hospital') return '不在医院门外，不能办理出院';
   const target = state.players.find((q) => q.id === action.targetPlayerId);
   if (!target) return '病人不存在';
@@ -3176,7 +3183,7 @@ function checkCastMagic(state: GameState, p: Player | null, action: ActionOf<'CA
   const offer = state.magic;
   if (!offer) return '当前没有可施法的机会';
   if (state.phase !== 'awaiting_action') return '当前不能施法';
-  if (!p) return '当前玩家不存在';
+  if (!p) return NO_ACTOR_MESSAGE;
   const target = state.players.find((q) => q.id === action.targetPlayerId);
   if (!target) return '受罚对象不存在';
   if (target.id === p.id) return '不能诅咒自己';
@@ -3185,7 +3192,7 @@ function checkCastMagic(state: GameState, p: Player | null, action: ActionOf<'CA
 }
 
 function checkSurrender(state: GameState, p: Player | null, action: ActionOf<'SURRENDER'>): ActionRefusal {
-  if (!p) return '当前玩家不存在';
+  if (!p) return NO_ACTOR_MESSAGE;
   if (state.phase === 'lobby' || state.phase === 'game_over') return '当前不能认输';
   if (p.bankrupt) return '已倒闭的玩家无需认输';
   const avenger = state.players.find((q) => q.id === action.revengeTargetId);
@@ -3251,13 +3258,11 @@ const ACTION_SPECS: ActionSpecMap = {
 /** 唯一入口：应用玩家动作并返回新状态（纯函数，不修改传入状态） */export function applyAction(state: GameState, action: PlayerAction): GameState {
   const next = clone(state);
   // 注册表按 type 分派；`ActionSpecMap` 是映射类型，缺一个动作就编译不过
-  (ACTION_SPECS[action.type] as ActionSpec).apply(next, action);
+  const spec = ACTION_SPECS[action.type] as ActionSpec | undefined;
+  if (!spec) {
+    // 动作来自客户端消息，type 在运行时不受 TS 约束：给一句可读的拒绝，别丢 TypeError
+    throw new Error(`未知动作: ${JSON.stringify(action)}`);
+  }
+  spec.apply(next, action);
   return next;
 }
-
-
-
-
-
-
-
