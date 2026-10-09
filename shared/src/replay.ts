@@ -7,7 +7,17 @@ export interface ReplayRecordData {
   seed: number;
   /** 起始日期；老记录缺省时引擎用固定常量兜底 */
   startDate?: DateSerial;
-  players: Array<{ player_name: string; color: number }>;
+  /**
+   * 建局时的天数上限（W4）。必须随记录一起存：不存的话「到期结算」那一步
+   * 在回放里永远不会发生，复现出来的就是另一局。null / 缺省 = 不限。
+   */
+  maxDays?: number | null;
+  /**
+   * 座位序即数组下标 —— 回合轮转按座位走，顺序错了整局就串。
+   * `player_key` 是局内玩家 id（联机是 sessionId，热座是 local-N）：
+   * `SURRENDER` 的复仇者、挂牌的卖家等动作引用的是它，回放必须同名。
+   */
+  players: Array<{ player_name: string; color: number; player_key?: string | null }>;
   actions: Array<{ turn: number; action: PlayerAction }>;
 }
 
@@ -23,13 +33,16 @@ export class ReplayEngine {
   constructor(record: ReplayRecordData) {
     this.record = record;
     const defs: PlayerDef[] = record.players.map((p, i) => ({
-      id: `replay-${i}`,
+      // 局内 id 必须与录制时一致，否则动作里引用到玩家 id 的那几类（认输复仇、挂牌成交）会对不上人
+      id: p.player_key || `replay-${i}`,
       name: p.player_name,
       color: p.color,
     }));
     // 外部传入的录像记录可能缺字段：先补默认值再逐帧复现
     let state = normalizeGameState(
-      applyAction(createGame(defs, record.seed, { startDate: record.startDate }), { type: 'START_GAME' }),
+      applyAction(createGame(defs, record.seed, { startDate: record.startDate, maxDays: record.maxDays ?? null }), {
+        type: 'START_GAME',
+      }),
     );
     this.states.push(state);
     for (const entry of record.actions) {

@@ -53,6 +53,13 @@ export async function initStorage(): Promise<void> {
           bankrupt BOOLEAN NOT NULL
         );
         ALTER TABLE game_record_players ADD COLUMN IF NOT EXISTS color INT NOT NULL DEFAULT 16777215;
+        -- 回放要能逐帧复现，光有动作序列不够，还得存下「这局是怎么建起来的」：
+        --   max_days    天数上限（W4）：不存的话到期结算那一步在回放里永远不会发生
+        --   seat        座位序：回合轮转、并列决胜都按座位走，按名字排会串位
+        --   player_key  局内玩家 id：SURRENDER / 挂牌等动作引用的是这个 id，回放必须同名
+        ALTER TABLE game_records ADD COLUMN IF NOT EXISTS max_days INT;
+        ALTER TABLE game_record_players ADD COLUMN IF NOT EXISTS seat INT NOT NULL DEFAULT 0;
+        ALTER TABLE game_record_players ADD COLUMN IF NOT EXISTS player_key VARCHAR(64);
         CREATE INDEX IF NOT EXISTS idx_records_finished ON game_records(finished_at DESC);
         CREATE INDEX IF NOT EXISTS idx_record_players_user ON game_record_players(user_id);
       `);
@@ -140,7 +147,10 @@ export interface GameRecordInput {
   rounds: number;
   /** 回放动作日志（含 START_GAME），引擎确定性回放用 */
   actions: Array<{ turn: number; action: unknown }>;
-  players: Array<{ userId: string | null; playerName: string; color: number; cash: number; bankrupt: boolean }>;
+  /** 天数上限（W4）：建局参数之一，不存就复现不出到期结算 */
+  maxDays: number | null;
+  /** 按座位序传入（数组下标即 `seat`），`id` 是局内玩家 id */
+  players: Array<{ id: string; userId: string | null; playerName: string; color: number; cash: number; bankrupt: boolean }>;
 }
 
 export async function saveGameRecord(input: GameRecordInput): Promise<void> {
@@ -149,8 +159,8 @@ export async function saveGameRecord(input: GameRecordInput): Promise<void> {
   try {
     await client.query('BEGIN');
     const recordRes = await client.query<{ id: string }>(
-      `INSERT INTO game_records (room_id, seed, start_date, winner_name, player_count, turns, rounds, actions)
-       VALUES ($1, $2, $3::jsonb, $4, $5, $6, $7, $8::jsonb) RETURNING id`,
+      `INSERT INTO game_records (room_id, seed, start_date, winner_name, player_count, turns, rounds, actions, max_days)
+       VALUES ($1, $2, $3::jsonb, $4, $5, $6, $7, $8::jsonb, $9) RETURNING id`,
       [
         input.roomId,
         input.seed,
@@ -160,14 +170,15 @@ export async function saveGameRecord(input: GameRecordInput): Promise<void> {
         input.turns,
         input.rounds,
         JSON.stringify(input.actions),
+        input.maxDays,
       ],
     );
     const recordId = recordRes.rows[0]!.id;
-    for (const p of input.players) {
+    for (const [seat, p] of input.players.entries()) {
       await client.query(
-        `INSERT INTO game_record_players (record_id, user_id, player_name, color, cash, bankrupt)
-         VALUES ($1, $2, $3, $4, $5, $6)`,
-        [recordId, p.userId, p.playerName, p.color, p.cash, p.bankrupt],
+        `INSERT INTO game_record_players (record_id, user_id, player_name, color, cash, bankrupt, seat, player_key)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+        [recordId, p.userId, p.playerName, p.color, p.cash, p.bankrupt, seat, p.id],
       );
     }
     await client.query('COMMIT');
@@ -187,13 +198,16 @@ export interface ReplayRecordSummary {
   turns: number;
   rounds: number;
   finished_at: Date;
-  players: Array<{ player_name: string; color: number; cash: number; bankrupt: boolean }>;
+  /** 座位序（`seat`）排列；`player_key` 是局内玩家 id，回放建局要用它当 id */
+  players: Array<{ player_name: string; color: number; cash: number; bankrupt: boolean; player_key?: string | null }>;
 }
 
 export interface ReplayRecord extends ReplayRecordSummary {
   seed: number;
   /** 老记录可能为空，客户端缺省时引擎用固定常量兜底 */
   start_date: DateSerial | null;
+  /** 建局时的天数上限（W4）；null = 不限 */
+  max_days: number | null;
   actions: Array<{ turn: number; action: unknown }>;
 }
 
@@ -202,8 +216,8 @@ export async function listRecentRecords(limit = 20): Promise<ReplayRecordSummary
   const res = await pool.query(
     `SELECT gr.id, gr.room_id, gr.winner_name, gr.player_count, gr.turns, gr.rounds, gr.finished_at,
             COALESCE(
-              json_agg(json_build_object('player_name', rp.player_name, 'color', rp.color, 'cash', rp.cash, 'bankrupt', rp.bankrupt)
-                       ORDER BY rp.player_name)
+              json_agg(json_build_object('player_name', rp.player_name, 'color', rp.color, 'cash', rp.cash, 'bankrupt', rp.bankrupt, 'player_key', rp.player_key)
+                       ORDER BY rp.seat)
               FILTER (WHERE rp.player_name IS NOT NULL), '[]'::json
             ) AS players
      FROM game_records gr
@@ -220,10 +234,10 @@ export async function getRecord(id: string): Promise<ReplayRecord | null> {
   if (!pool || !storageReady.pg) return null;
   if (!/^[0-9a-f-]{36}$/i.test(id)) return null;
   const res = await pool.query<ReplayRecord>(
-    `SELECT gr.id, gr.room_id, gr.seed, gr.start_date, gr.winner_name, gr.player_count, gr.turns, gr.rounds, gr.actions, gr.finished_at,
+    `SELECT gr.id, gr.room_id, gr.seed, gr.start_date, gr.max_days, gr.winner_name, gr.player_count, gr.turns, gr.rounds, gr.actions, gr.finished_at,
             COALESCE(
-              json_agg(json_build_object('player_name', rp.player_name, 'color', rp.color, 'cash', rp.cash, 'bankrupt', rp.bankrupt)
-                       ORDER BY rp.player_name)
+              json_agg(json_build_object('player_name', rp.player_name, 'color', rp.color, 'cash', rp.cash, 'bankrupt', rp.bankrupt, 'player_key', rp.player_key)
+                       ORDER BY rp.seat)
               FILTER (WHERE rp.player_name IS NOT NULL), '[]'::json
             ) AS players
      FROM game_records gr

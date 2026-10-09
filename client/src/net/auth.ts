@@ -80,6 +80,8 @@ export interface ReplayPlayer {
   color: number;
   cash: number;
   bankrupt: boolean;
+  /** 局内玩家 id：认输复仇、挂牌成交等动作引用它，回放建局要用同一个 id */
+  player_key?: string | null;
 }
 
 export interface ReplayRecordSummary {
@@ -97,6 +99,8 @@ export interface ReplayRecord extends ReplayRecordSummary {
   seed: number;
   /** 起始日期；老记录可能为空 */
   start_date?: DateSerial | null;
+  /** 建局时的天数上限（W4）；缺省 = 不限。回放必须带着它，否则到期结算复现不出来 */
+  max_days?: number | null;
   actions: Array<{ turn: number; action: PlayerAction }>;
 }
 

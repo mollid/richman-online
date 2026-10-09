@@ -5,8 +5,10 @@ import {
   applyAction,
   createGame,
   resolveMaxDays,
+  ReplayEngine,
   totalAssets,
   type GameState,
+  type PlayerAction,
   type PlayerDef,
 } from '../src/index.js';
 import { pinIndexOne } from './helpers/state.js';
@@ -137,6 +139,49 @@ describe('天数上限收场（W4）', () => {
     expect(s.winnerId).toBe('p1');
   });
 
+  it('到期结算的整局动作序列能被 ReplayEngine 复现 —— 上限必须随记录一起存', () => {
+    // 注意两点：① 不能用 `game()` 夹具（它带 pinIndexOne，物价指数分母是夹具改的、
+    // 记录里没有）；② 神明现身按生产默认开着 —— 关掉的话回放里它是开的，轨迹就分叉。
+    let s = applyAction(createGame(PLAYERS, 42, { startDate: { ...MONDAY }, maxDays: 3 }), { type: 'START_GAME' });
+    s.players[0]!.deposit = 9000; // 名次稳定：到期时阿福居首
+    const actions: PlayerAction[] = [{ type: 'START_GAME' }];
+    for (let i = 0; i < 60 && s.phase !== 'game_over'; i++) {
+      const mg = s.minigame;
+      const open = mg?.kind === 'memory'
+        ? mg.matched.map((m, idx) => (m || mg.revealed.includes(idx) ? -1 : idx)).find((idx) => idx >= 0) ?? 0
+        : 0;
+      const action: PlayerAction =
+        s.phase === 'awaiting_roll'
+          ? { type: 'ROLL_DICE' }
+          : s.phase === 'awaiting_auction'
+            ? { type: 'AUCTION_PASS' }
+            : s.phase === 'awaiting_pick'
+              ? { type: 'MINIGAME_PICK', hole: open }
+              : s.phase === 'awaiting_discard'
+                ? { type: 'DISCARD_CARD', cardId: s.players[s.currentPlayerIndex]!.cards[0]! }
+                : { type: 'END_TURN' };
+      s = applyAction(s, action);
+      actions.push(action);
+    }
+    expect(s.endReason).toBe('daylimit');
+
+    const record = {
+      seed: 42,
+      startDate: { ...MONDAY },
+      maxDays: 3,
+      // player_key 用局内 id：认输复仇、挂牌成交那类动作引用的就是它，回放必须同名
+      players: PLAYERS.map((p) => ({ player_name: p.name, color: p.color, player_key: p.id })),
+      actions: actions.map((action, i) => ({ turn: i, action })),
+    };
+    const replay = new ReplayEngine(record).finalState;
+    expect(replay.endReason).toBe('daylimit');
+    expect(replay.winnerId).toBe(s.winnerId);
+    expect(replay.calendar.elapsedDays).toBe(s.calendar.elapsedDays);
+
+    // 反证：漏存 maxDays 就复现不出到期结算 —— 这一条正是本次修复的意义
+    expect(new ReplayEngine({ ...record, maxDays: null }).finalState.endReason).not.toBe('daylimit');
+  });
+
   it('结束后不再开拍：进行中的拍卖与待拍队列一并清空', () => {
     const g = game(1);
     g.auction = {
@@ -159,8 +204,7 @@ describe('天数上限收场（W4）', () => {
   });
 });
 
-describe('天数上限的取值口径（建房参数 / 默认档位）', () => {
-  it('联机默认 60 天，档位表里含「不限」', () => {
+describe('天数上限的取值口径（建房参数 / 默认档位）', () => {  it('联机默认 60 天，档位表里含「不限」', () => {
     expect(ONLINE_DEFAULT_MAX_DAYS).toBe(60);
     expect(MAX_DAY_CHOICES).toContain(null);
     expect(MAX_DAY_CHOICES).toContain(60);

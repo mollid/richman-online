@@ -353,7 +353,10 @@ export class GameRoom extends Room {
         turns: this.game.turn,
         rounds: this.game.round,
         actions: this.actionLog,
+        // 建局参数与座位序一并入库，否则回放复现不出这一局（天数上限、回合轮转都靠它）
+        maxDays: this.game.maxDays,
         players: this.game.players.map((p) => ({
+          id: p.id,
           userId: this.userIds.get(p.id) ?? null,
           playerName: p.name,
           color: p.color,
