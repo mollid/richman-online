@@ -1,3 +1,10 @@
+import { MAX_HAND_CARDS, MAX_ITEM_COUNT } from './board.js';
+import type { CardEffectCtx } from './effect_ctx.js';
+import { scaled, upgradeCost } from './economy.js';
+import { godDef } from './gods.js';
+import { ITEMS } from './items.js';
+import { FACILITIES, MAX_GRADE, facilityUpgradeable, gradeName, viewportCells } from './tiles.js';
+
 /**
  * 卡片系统（CARD-01 – CARD-30，对标 `docs/gameplay/玩法系统_游戏开发文档.md` §6）。
  *
@@ -7,6 +14,9 @@
  * - 「自动」卡片（复仇/嫁祸/免费/免罪）不主动使用，由反制栈在受击时自动触发。
  *
  * 反制关系（§6.1）：免罪 → 陷害/梦游/乌龟/牢狱；嫁祸/复仇 → 陷害/梦游；查封 ⇄ 涨价；红卡 ⇄ 黑卡。
+ *
+ * 每张卡的**效果体写在自己的定义里**（`apply`），由 `engine.ts` 注入 `CardEffectCtx` 调用：
+ * 新增一张卡只改本文件一处，效果与其校验不会分处两地而各说各话。
  */
 
 /** 卡片可用时机 */
@@ -34,6 +44,45 @@ export interface CardDef {
    * （不进商店货架、不进机会池）。
    */
   available: boolean;
+  /**
+   * 卡片效果。自动触发类（`auto`）没有本函数，由反制栈处理。
+   * 校验不通过时抛错（引擎把错误回传给客户端），副作用直接写 `ctx.state`。
+   * 函数内 `return` 表示「本卡已生效、正常结束」，等价于原先 switch 里的 `break`。
+   */
+  apply?: (ctx: CardEffectCtx) => void;
+}
+
+/** 红卡 ⇄ 黑卡共用一套逻辑，靠 `ctx.card.id` 区分方向（CARD-24/25） */
+function applyStockHalt(ctx: CardEffectCtx): void {
+  const { state, self: p, action, card, stockById, log } = ctx;
+  const stock = action.stockId ? stockById(state, action.stockId) : undefined;
+  if (!stock) throw new Error('请选择有效的股票');
+  const kind = card.id === 'red-card' ? 'up' : 'down';
+  const opposite = state.stockHalts.find((h) => h.stockId === stock.id && h.kind !== kind);
+  if (opposite) {
+    state.stockHalts = state.stockHalts.filter((h) => h !== opposite);
+    log(state, `${p.name} 使用「${card.name}」，与反向操作互相抵消，${stock.name} 恢复自由涨跌`);
+  } else {
+    state.stockHalts = state.stockHalts.filter((h) => h.stockId !== stock.id);
+    state.stockHalts.push({ stockId: stock.id, kind, daysLeft: 3 });
+    const pct = kind === 'up' ? 15 : -15;
+    stock.price = Math.max(5, Math.round(stock.price * (1 + pct / 100)));
+    log(state, `${p.name} 使用「${card.name}」，${stock.name} ${kind === 'up' ? '涨停' : '跌停'}板 3 天（现价 ¥${stock.price}）`);
+  }
+}
+
+/** 涨价卡 ⇄ 查封卡共用一套逻辑，同路段的旧效果被覆盖（CARD-27/28） */
+function applyRentEffect(ctx: CardEffectCtx): void {
+  const { state, self: p, card, anyCellId, routeSegment, log } = ctx;
+  const id = anyCellId();
+  const c = state.board[id]!;
+  if (c.type !== 'property') throw new Error('目标必须是土地');
+  const cells = routeSegment(state, id);
+  const kind = card.id === 'raise-rent' ? 'raise' : 'seal';
+  // 查封 ⇄ 涨价 互反：同路段的旧效果被覆盖
+  state.rentEffects = state.rentEffects.filter((e) => !e.cells.some((x) => cells.includes(x)));
+  state.rentEffects.push({ kind, daysLeft: 5, cells, ownerId: p.id });
+  log(state, `${p.name} 使用「${card.name}」，路段「${c.name}」${kind === 'raise' ? '加倍收取过路费' : '免收过路费'} 5 天`);
 }
 
 export const CARDS: Record<string, CardDef> = {
@@ -46,6 +95,14 @@ export const CARDS: Record<string, CardDef> = {
     phase: 'any',
     target: 'none',
     available: true,
+    apply: ({ state, self: p, log }) => {
+      const active = state.players.filter((q) => !q.bankrupt);
+      const pool = active.reduce((sum, q) => sum + q.cash, 0);
+      const avg = Math.floor(pool / active.length);
+      for (const q of active) q.cash = avg;
+      p.cash += pool - avg * active.length; // 余数归使用者（V0 简化）
+      log(state, `${p.name} 使用「均富卡」，所有玩家现金变为 ¥${avg}`);
+    },
   },
   'even-target': {
     id: 'even-target',
@@ -55,6 +112,14 @@ export const CARDS: Record<string, CardDef> = {
     phase: 'any',
     target: 'player',
     available: true,
+    apply: ({ state, self: p, targetPlayer, log }) => {
+      const t = targetPlayer();
+      const pool = p.cash + t.cash;
+      const avg = Math.floor(pool / 2);
+      p.cash = avg + (pool - avg * 2);
+      t.cash = avg;
+      log(state, `${p.name} 对 ${t.name} 使用「均贫卡」，双方现金变为 ¥${avg}`);
+    },
   },
   'buy-land': {
     id: 'buy-land',
@@ -64,6 +129,25 @@ export const CARDS: Record<string, CardDef> = {
     phase: 'post_roll',
     target: 'land',
     available: true,
+    apply: ({ state, self: p, cellOwner, log }) => {
+      // CARD-03 使用时机「走到别人的地时」：只能强制收购**脚下**的他人土地
+      const id = p.position;
+      const c = state.board[id]!;
+      if (c.type !== 'property' && c.type !== 'commercial') throw new Error('目标不是土地');
+      if (c.price === undefined) throw new Error('目标不是土地');
+      const owned = cellOwner(state, id);
+      if (!owned) throw new Error('该土地无主，无需收购');
+      if (owned.player.id === p.id) throw new Error('这里已经是你的土地');
+      let base = c.price;
+      for (let g = 1; g < owned.property.grade; g++) base += upgradeCost(c.price, g);
+      const value = scaled(state, base);
+      if (p.cash < value) throw new Error(`现金不足（需 ¥${value}），购地失败`);
+      p.cash -= value;
+      owned.player.properties = owned.player.properties.filter((q) => q.cellId !== id);
+      // 连房屋（等级/设施/连锁店状态）一并取得
+      p.properties.push({ ...owned.property });
+      log(state, `${p.name} 使用「购地卡」，以 ¥${value} 强制收购 ${owned.player.name} 的「${c.name}」（含 ${gradeName(owned.property.grade)}）`);
+    },
   },
   'swap-land': {
     id: 'swap-land',
@@ -73,6 +157,26 @@ export const CARDS: Record<string, CardDef> = {
     phase: 'post_roll',
     target: 'land',
     available: true,
+    apply: ({ state, self: p, requireCellId, propOf, cellOwner, log }) => {
+      const toId = requireCellId();
+      if (toId === p.position) throw new Error('请选择与脚下不同的土地');
+      // CARD-04「视窗内其他土地」：在线版以脚下 4×4（16 格）视窗近似
+      if (!viewportCells(p.position).includes(toId)) throw new Error('目标土地不在视窗（4×4）范围内');
+      const fromCell = state.board[p.position]!;
+      const toCell = state.board[toId]!;
+      if (fromCell.type !== toCell.type) throw new Error('只能同类互换（住宅换住宅 / 商业换商业）');
+      if (fromCell.type !== 'property' && fromCell.type !== 'commercial') throw new Error('换地双方都必须是土地');
+      const mine = propOf(p, p.position);
+      if (!mine) throw new Error('脚下的土地不属于你');
+      const owned = cellOwner(state, toId);
+      if (!owned) throw new Error('目标土地无主');
+      if (owned.player.id === p.id) throw new Error('目标土地已属于你');
+      owned.player.properties = owned.player.properties.filter((q) => q.cellId !== toId);
+      p.properties = p.properties.filter((q) => q.cellId !== p.position);
+      p.properties.push(owned.property);
+      owned.player.properties.push(mine);
+      log(state, `${p.name} 使用「换地卡」，以「${fromCell.name}」换取 ${owned.player.name} 的「${toCell.name}」`);
+    },
   },
   'swap-house': {
     id: 'swap-house',
@@ -82,6 +186,25 @@ export const CARDS: Record<string, CardDef> = {
     phase: 'post_roll',
     target: 'land',
     available: true,
+    apply: ({ state, self: p, requireCellId, propOf, cellOwner, log }) => {
+      const toId = requireCellId();
+      if (toId === p.position) throw new Error('请选择与脚下不同的土地');
+      // CARD-05「视窗内其他房屋」：在线版以脚下 4×4（16 格）视窗近似
+      if (!viewportCells(p.position).includes(toId)) throw new Error('目标房屋不在视窗（4×4）范围内');
+      const fromCell = state.board[p.position]!;
+      const toCell = state.board[toId]!;
+      if (fromCell.type !== toCell.type) throw new Error('只能同类互换（住宅换住宅 / 商业换商业）');
+      if (fromCell.type !== 'property' && fromCell.type !== 'commercial') throw new Error('换屋双方都必须是土地');
+      const mine = propOf(p, p.position);
+      if (!mine) throw new Error('脚下的土地不属于你');
+      const owned = cellOwner(state, toId);
+      if (!owned) throw new Error('目标土地无主');
+      if (owned.player.id === p.id) throw new Error('目标土地已属于你');
+      const grade = mine.grade;
+      mine.grade = owned.property.grade;
+      owned.property.grade = grade;
+      log(state, `${p.name} 使用「换屋卡」，以「${fromCell.name}」的房屋换取 ${owned.player.name}「${toCell.name}」的房屋`);
+    },
   },
   // ---- CARD-06..08 移动 / 改建 / 拍卖 ----
   turnaround: {
@@ -92,6 +215,12 @@ export const CARDS: Record<string, CardDef> = {
     phase: 'any',
     target: 'none',
     available: true,
+    apply: ({ state, self: p, log }) => {
+      for (const q of state.players) {
+        if (!q.bankrupt) q.direction = q.direction === 1 ? -1 : 1;
+      }
+      log(state, `${p.name} 使用「转向卡」，所有玩家行进方向 180° 反转`);
+    },
   },
   rebuild: {
     id: 'rebuild',
@@ -101,6 +230,29 @@ export const CARDS: Record<string, CardDef> = {
     phase: 'post_roll',
     target: 'land',
     available: true,
+    apply: ({ state, self: p, action, cellOwner, log }) => {
+      // CARD-07 使用时机「走到任何有建筑的土地上」：只能改建**脚下**的土地（含他人的）
+      const id = p.position;
+      const c = state.board[id]!;
+      const owned = cellOwner(state, id);
+      if (!owned) throw new Error('目标土地上没有建筑');
+      if (c.type === 'property') {
+        // CARD-07：住宅建筑 ⇄ 连锁商店互转（EST-04；改建后不能再加盖）
+        owned.property.chain = !owned.property.chain;
+        log(state, `${p.name} 使用「改建卡」，将 ${owned.player.name} 的「${c.name}」${owned.property.chain ? '改建为连锁店（不能再加盖）' : '改回一般建筑'}`);
+      } else if (c.type === 'commercial') {
+        // CARD-07：变更商业用地设施项目（EST-07）
+        const current = owned.property.facility;
+        if (!current) throw new Error('该商业用地尚未建设，无法变更设施项目');
+        const next = action.facility;
+        if (!next || !FACILITIES[next]) throw new Error('请选择新的设施项目');
+        if (next === current) throw new Error('设施项目没有变化');
+        owned.property.facility = next;
+        log(state, `${p.name} 使用「改建卡」，将「${c.name}」的${FACILITIES[current].name}变更为${FACILITIES[next].name}`);
+      } else {
+        throw new Error('改建卡只能用于住宅建筑或商业用地设施');
+      }
+    },
   },
   auction: {
     id: 'auction',
@@ -110,6 +262,16 @@ export const CARDS: Record<string, CardDef> = {
     phase: 'post_roll',
     target: 'land',
     available: true,
+    apply: ({ state, self: p, anyCellId, cellOwner, beginAuction, log }) => {
+      // CARD-08：拍卖脚下土地，所得归使用者，且使用者本人不参与该拍卖会
+      const id = anyCellId();
+      const c = state.board[id]!;
+      if (c.type !== 'property' && c.type !== 'commercial') throw new Error('目标必须是土地');
+      const owned = cellOwner(state, id);
+      if (!owned) throw new Error('该土地无主，无法拍卖');
+      log(state, `${p.name} 使用「拍卖卡」，将 ${owned.player.name} 的「${c.name}」送上拍卖台（所得归 ${p.name}）`);
+      beginAuction(state, { cellId: id, sellerId: p.id, trigger: 'card', afterComplete: 'resume' });
+    },
   },
   // ---- CARD-09..13 路段 / 建筑 / 抢夺 ----
   'angel-road': {
@@ -120,6 +282,28 @@ export const CARDS: Record<string, CardDef> = {
     phase: 'any',
     target: 'land',
     available: true,
+    apply: ({ state, self: p, anyCellId, cellOwner, routeSegment, log }) => {
+      const id = anyCellId();
+      const c = state.board[id]!;
+      if (c.type !== 'property' && c.type !== 'commercial') throw new Error('目标必须是土地');
+      const cells = routeSegment(state, id);
+      let count = 0;
+      for (const cellId of cells) {
+        const owned = cellOwner(state, cellId);
+        if (!owned) continue;
+        const cc = state.board[cellId]!;
+        if (cc.type === 'commercial') {
+          // 商业用地：只有可升级的已建设施能加盖（EST-07/08/11）
+          if (!facilityUpgradeable(owned.property) || owned.property.grade >= MAX_GRADE) continue;
+        } else if (owned.property.chain || owned.property.grade >= MAX_GRADE) {
+          continue; // 连锁店不能再加盖（EST-04）
+        }
+        owned.property.grade = (owned.property.grade + 1) as 1 | 2 | 3 | 4 | 5;
+        count += 1;
+      }
+      if (count === 0) throw new Error('该路段没有可加盖的房屋');
+      log(state, `${p.name} 使用「天使卡」，路段「${c.name}」共 ${count} 处房屋加盖一层`);
+    },
   },
   'devil-road': {
     id: 'devil-road',
@@ -129,6 +313,20 @@ export const CARDS: Record<string, CardDef> = {
     phase: 'any',
     target: 'land',
     available: true,
+    apply: ({ state, self: p, anyCellId, routeSegment, log }) => {
+      const id = anyCellId();
+      const c = state.board[id]!;
+      if (c.type !== 'property' && c.type !== 'commercial') throw new Error('目标必须是土地');
+      const cells = routeSegment(state, id);
+      let count = 0;
+      for (const q of state.players) {
+        const before = q.properties.length;
+        q.properties = q.properties.filter((prop) => !cells.includes(prop.cellId));
+        count += before - q.properties.length;
+      }
+      if (count === 0) throw new Error('该路段没有可拆除的建筑');
+      log(state, `${p.name} 使用「恶魔卡」，路段「${c.name}」共 ${count} 处地产被夷为平地`);
+    },
   },
   monster: {
     id: 'monster',
@@ -138,6 +336,13 @@ export const CARDS: Record<string, CardDef> = {
     phase: 'any',
     target: 'building',
     available: true,
+    apply: ({ state, self: p, anyCellId, cellOwner, log }) => {
+      const id = anyCellId();
+      const owned = cellOwner(state, id);
+      if (!owned || owned.property.grade < 2) throw new Error('目标没有可摧毁的建筑');
+      owned.property.grade = 1;
+      log(state, `${p.name} 使用「怪兽卡」，${owned.player.name} 的「${state.board[id]!.name}」建筑被彻底摧毁`);
+    },
   },
   demolish: {
     id: 'demolish',
@@ -147,6 +352,22 @@ export const CARDS: Record<string, CardDef> = {
     phase: 'any',
     target: 'building',
     available: true,
+    apply: ({ state, self: p, anyCellId, cellOwner, log }) => {
+      const id = anyCellId();
+      const owned = cellOwner(state, id);
+      if (owned && owned.property.grade > 1) {
+        owned.property.grade = (owned.property.grade - 1) as 1 | 2 | 3 | 4 | 5;
+        log(state, `${p.name} 使用「拆除卡」，${owned.player.name} 的「${state.board[id]!.name}」被拆至 ${owned.property.grade} 级`);
+      } else if (state.mines.includes(id)) {
+        state.mines = state.mines.filter((m) => m !== id);
+        log(state, `${p.name} 使用「拆除卡」，清除了「${state.board[id]!.name}」的地雷`);
+      } else if (state.roadblocks.includes(id)) {
+        state.roadblocks = state.roadblocks.filter((m) => m !== id);
+        log(state, `${p.name} 使用「拆除卡」，清除了「${state.board[id]!.name}」的路障`);
+      } else {
+        throw new Error('目标没有可拆除的建筑或道具');
+      }
+    },
   },
   snatch: {
     id: 'snatch',
@@ -156,6 +377,25 @@ export const CARDS: Record<string, CardDef> = {
     phase: 'any',
     target: 'player',
     available: true,
+    apply: ({ state, self: p, targetPlayer, randomIndex, consumeCard, consumeItem, log }) => {
+      const t = targetPlayer();
+      const pool: string[] = [];
+      for (const cid of t.cards) pool.push(`card:${cid}`);
+      for (const [iid, n] of Object.entries(t.items)) for (let k = 0; k < n; k++) pool.push(`item:${iid}`);
+      if (pool.length === 0) throw new Error('对方没有可抢夺的卡片或道具');
+      const [kind, id] = pool[randomIndex(state, pool.length)]!.split(':') as ['card' | 'item', string];
+      if (kind === 'card') {
+        if (p.cards.length >= MAX_HAND_CARDS) throw new Error('你的手牌已满，无法接收抢夺物');
+        consumeCard(t, id);
+        p.cards.push(id);
+        log(state, `${p.name} 使用「抢夺卡」，抢走 ${t.name} 的卡片「${CARDS[id]?.name ?? id}」`);
+      } else {
+        if ((p.items[id] ?? 0) >= MAX_ITEM_COUNT) throw new Error('你的道具已满，无法接收抢夺物');
+        consumeItem(t, id);
+        p.items[id] = (p.items[id] ?? 0) + 1;
+        log(state, `${p.name} 使用「抢夺卡」，抢走 ${t.name} 的「${ITEMS[id]?.name ?? id}」`);
+      }
+    },
   },
   // ---- CARD-14..21 停留 / 睡眠 / 陷害 / 反制 ----
   hold: {
@@ -166,6 +406,20 @@ export const CARDS: Record<string, CardDef> = {
     phase: 'any',
     target: 'player',
     available: true,
+    apply: ({ state, self: p, action, log }) => {
+      // CARD-14 停留卡：可对对手使用（阻断其前进）；也可对自己使用——
+      // 原地再停留一回合，用于再次停留自有商业用地继续加盖升级（用户规则）
+      const t = action.targetPlayerId
+        ? state.players.find((q) => q.id === action.targetPlayerId && !q.bankrupt)
+        : p;
+      if (!t) throw new Error('请选择有效的目标玩家');
+      t.holdTurns += 1;
+      if (t.id === p.id) {
+        log(state, `${p.name} 对自己使用「停留卡」，下一次掷骰将原地停留（可继续加盖/经营当格）`);
+      } else {
+        log(state, `${p.name} 对 ${t.name} 使用「停留卡」，其下一次前进将原地不动`);
+      }
+    },
   },
   hibernate: {
     id: 'hibernate',
@@ -175,6 +429,15 @@ export const CARDS: Record<string, CardDef> = {
     phase: 'any',
     target: 'none',
     available: true,
+    apply: ({ state, self: p, blockRent, log }) => {
+      const others = state.players.filter((q) => !q.bankrupt && q.id !== p.id);
+      if (!others.length) throw new Error('没有其他对手');
+      for (const q of others) {
+        q.skipTurns = Math.max(q.skipTurns, 5);
+        blockRent(q, 5);
+      }
+      log(state, `${p.name} 使用「冬眠卡」，所有对手睡眠 5 天并丧失收租权利`);
+    },
   },
   sleepwalk: {
     id: 'sleepwalk',
@@ -185,6 +448,14 @@ export const CARDS: Record<string, CardDef> = {
     target: 'player',
     counteredBy: ['absolve', 'shift-blame', 'revenge'],
     available: true,
+    apply: ({ state, self: p, targetPlayer, applyDisaster, blockRent, log }) => {
+      const t = targetPlayer();
+      applyDisaster(state, t, 'sleepwalk', p, (v) => {
+        v.sleepwalkTurns = Math.max(v.sleepwalkTurns, 5);
+        blockRent(v, 5);
+        log(state, `${v.name} 陷入梦游 5 天，丧失收租与买地权利`);
+      });
+    },
   },
   frame: {
     id: 'frame',
@@ -195,6 +466,14 @@ export const CARDS: Record<string, CardDef> = {
     target: 'player',
     counteredBy: ['absolve', 'shift-blame', 'revenge'],
     available: true,
+    apply: ({ state, self: p, targetPlayer, applyDisaster, blockRent, log }) => {
+      const t = targetPlayer();
+      applyDisaster(state, t, 'frame', p, (v) => {
+        v.skipTurns = Math.max(v.skipTurns, 5);
+        blockRent(v, 5);
+        log(state, `${v.name} 被陷害入狱 5 天，丧失收租权利`);
+      });
+    },
   },
   revenge: {
     id: 'revenge',
@@ -245,6 +524,22 @@ export const CARDS: Record<string, CardDef> = {
     phase: 'any',
     target: 'none',
     available: true,
+    apply: ({ state, self: p, log }) => {
+      let done = false;
+      const bomb = state.bombs.find((b) => b.playerId === p.id);
+      if (bomb) {
+        state.bombs = state.bombs.filter((b) => b !== bomb);
+        log(state, `${p.name} 使用「送神卡」，拆走了身上的定时炸弹`);
+        done = true;
+      }
+      if (p.god) {
+        const godName = godDef(p.god.godId)?.name ?? '神明';
+        p.god = null;
+        log(state, `${p.name} 使用「送神卡」，送走了 ${godName}`);
+        done = true;
+      }
+      if (!done) throw new Error('身上没有神明或定时炸弹');
+    },
   },
   'invite-god': {
     id: 'invite-god',
@@ -254,6 +549,12 @@ export const CARDS: Record<string, CardDef> = {
     phase: 'any',
     target: 'none',
     available: true,
+    apply: ({ state, self: p, nearestGodFor, attachGod, log }) => {
+      // CARD-23 请神：召唤视窗内最靠近自己的一位神明（纯计算，零抽数）
+      const def = nearestGodFor(p);
+      log(state, `${p.name} 请神，召唤了最靠近自己的 ${def.name}`);
+      attachGod(state, p, def);
+    },
   },
   'red-card': {
     id: 'red-card',
@@ -265,6 +566,7 @@ export const CARDS: Record<string, CardDef> = {
     needsStock: true,
     counteredBy: ['black-card'],
     available: true,
+    apply: applyStockHalt,
   },
   'black-card': {
     id: 'black-card',
@@ -276,6 +578,7 @@ export const CARDS: Record<string, CardDef> = {
     needsStock: true,
     counteredBy: ['red-card'],
     available: true,
+    apply: applyStockHalt,
   },
   // ---- CARD-26..30 税务 / 路租 / 同盟 / 乌龟 ----
   'tax-audit': {
@@ -287,6 +590,24 @@ export const CARDS: Record<string, CardDef> = {
     target: 'player',
     counteredBy: ['free-pass', 'shift-blame'],
     available: true,
+    apply: ({ state, self: p, targetPlayer, consumeCard, randomIndex, pay, log }) => {
+      const t = targetPlayer();
+      if (consumeCard(t, 'free-pass')) {
+        log(state, `${t.name} 使用「免费卡」，抵免了查税`);
+        return;
+      }
+      if (t.cards.includes('shift-blame')) {
+        const others = state.players.filter((q) => !q.bankrupt && q.id !== t.id && q.id !== p.id);
+        const victim = others.length > 0 ? others[randomIndex(state, others.length)]! : p;
+        consumeCard(t, 'shift-blame');
+        log(state, `${t.name} 使用「嫁祸卡」，把查税转嫁给 ${victim.name}`);
+        pay(state, victim, Math.floor(victim.cash * 0.2), p, { reason: 'card' });
+        return;
+      }
+      const tax = Math.floor(t.cash * 0.2);
+      log(state, `${p.name} 使用「查税卡」，强制收取 ${t.name} 20% 现金税 ¥${tax}`);
+      pay(state, t, tax, p, { reason: 'card' });
+    },
   },
   'raise-rent': {
     id: 'raise-rent',
@@ -297,6 +618,7 @@ export const CARDS: Record<string, CardDef> = {
     target: 'land',
     counteredBy: ['seal-rent'],
     available: true,
+    apply: applyRentEffect,
   },
   'seal-rent': {
     id: 'seal-rent',
@@ -307,6 +629,7 @@ export const CARDS: Record<string, CardDef> = {
     target: 'land',
     counteredBy: ['raise-rent'],
     available: true,
+    apply: applyRentEffect,
   },
   alliance: {
     id: 'alliance',
@@ -316,6 +639,12 @@ export const CARDS: Record<string, CardDef> = {
     phase: 'any',
     target: 'player',
     available: true,
+    apply: ({ state, self: p, targetPlayer, log }) => {
+      const t = targetPlayer();
+      p.alliance = { with: t.id, daysLeft: 7 };
+      t.alliance = { with: p.id, daysLeft: 7 };
+      log(state, `${p.name} 与 ${t.name} 结盟 7 天：互不收过路费，在对方地产上联合收费各得一半`);
+    },
   },
   turtle: {
     id: 'turtle',
@@ -326,6 +655,20 @@ export const CARDS: Record<string, CardDef> = {
     target: 'none',
     counteredBy: ['absolve'],
     available: true,
+    apply: ({ state, self: p, applyDisaster, log }) => {
+      for (const q of state.players) {
+        if (q.bankrupt) continue;
+        if (q.id === p.id) {
+          q.turtleTurns = Math.max(q.turtleTurns, 3);
+          log(state, `${q.name} 受乌龟卡影响，3 天内一次只走一步`);
+          continue;
+        }
+        applyDisaster(state, q, 'turtle', p, (v) => {
+          v.turtleTurns = Math.max(v.turtleTurns, 3);
+          log(state, `${v.name} 受乌龟卡影响，3 天内一次只走一步`);
+        });
+      }
+    },
   },
 };
 

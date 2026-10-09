@@ -194,7 +194,6 @@ export interface PendingAuction {
 
 /** UI-06 公布栏可公开交易的标的种类 */
 export type TradeKind = 'land' | 'stock' | 'card' | 'item';
-
 /** 公布栏上的一条公开挂牌（help [11]「透過公佈欄，與其他的玩家公開的交易房地產、股票、卡片、道具」） */
 export interface TradeListing {
   id: string;
@@ -495,6 +494,26 @@ export interface MagicOffer {
   /** hospital / jail / abroad 类诅咒天数 */
   days: number;
 }
+
+/**
+ * 支付用途。`'stock'` = ECON-09 买入股票的支出（钱进股市，不属于「意外损失」，不汇入乐透奖池）。
+ * 无收款方且属于「运气/事件等意外损失」的支出会汇总进乐透奖池（见 `LOTTERY_PENALTY_REASONS`）。
+ */
+export type PayReason =
+  | 'rent'
+  | 'tax'
+  | 'god'
+  | 'news'
+  | 'minigame'
+  | 'loan'
+  | 'card'
+  | 'company'
+  | 'financing'
+  | 'stock'
+  | 'other';
+
+/** 可被免罪/嫁祸/复仇反制栈拦截的灾祸类型 */
+export type DisasterKind = 'jail' | 'frame' | 'sleepwalk' | 'turtle';
 
 export type PlayerAction =
   | { type: 'START_GAME' }
