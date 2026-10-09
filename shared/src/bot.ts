@@ -1,5 +1,6 @@
-import { availableActions } from './engine.js';
-import { landPrice, landUpgradeCost } from './economy.js';
+import { actionRefusal, availableActions } from './engine.js';
+import { landUpgradeCost } from './economy.js';
+import { landPurchasePrice } from './tiles.js';
 import { CARDS, SHOP_CARD_IDS } from './cards.js';
 import { ITEMS, SHOP_ITEM_IDS } from './items.js';
 import { MAX_HAND_CARDS, MAX_ITEM_COUNT } from './board.js';
@@ -9,6 +10,9 @@ import type { FacilityType, GameState, PlayerAction } from './types.js';
 
 /** AI 建设偏好：研究所（可研发道具）优先，其次购物中心/旅馆/加油站/公园 */
 const BUILD_PREFERENCE: FacilityType[] = ['lab', 'mall', 'hotel', 'gas', 'park'];
+
+/** AI 炒股时保留的存款安全垫（股票只能用存款买入，help[07]） */
+const STOCK_RESERVE_DEPOSIT = 5000;
 
 
 
@@ -58,7 +62,8 @@ export function botDecide(state: GameState, botId: string, rng: () => number): P
     return { type: 'USE_CARD', cardId: 'send-god' };
   }
 
-  if (acts.canBuy && cell.price !== undefined && me.cash >= landPrice(state, cell) + 2000) {
+  // 买地按**实付价**留安全垫（商业地实付价含溢价，用标价会低估）
+  if (acts.canBuy && cell.price !== undefined && me.cash >= landPurchasePrice(state, cell) + 2000) {
     return { type: 'BUY_LAND' };
   }
 
@@ -104,9 +109,17 @@ export function botDecide(state: GameState, botId: string, rng: () => number): P
     }
   }
 
-  if (acts.canTradeStock && me.cash >= 8000) {
-    const cheapest = [...state.stockMarket.stocks].sort((a, b) => a.price - b.price)[0];
-    if (cheapest) return { type: 'BUY_STOCK', stockId: cheapest.id, quantity: 10 };
+  // 股票只能用**存款**买入（help[07]）。旧实现按 `me.cash >= 8000` 推测买得起，
+  // 于是每回撞上引擎的「现金不能用于炒股」——买哪只、买几只一律问注册表。
+  if (acts.canTradeStock) {
+    const sorted = [...state.stockMarket.stocks].sort((a, b) => a.price - b.price);
+    for (const stock of sorted) {
+      for (const quantity of [10, 5, 1]) {
+        if (me.deposit < stock.price * quantity + STOCK_RESERVE_DEPOSIT) continue;
+        if (actionRefusal(state, { type: 'BUY_STOCK', stockId: stock.id, quantity }) !== null) continue;
+        return { type: 'BUY_STOCK', stockId: stock.id, quantity };
+      }
+    }
   }
 
   // ECON-08：乐透行自选号码投注（保留 ¥2000 安全垫）
