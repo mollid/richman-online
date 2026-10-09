@@ -53,6 +53,11 @@ export interface GoldenRun {
   errorMessages: string[];
   /** 因连续拿不到合法动作而提前中止的次数 */
   stalls: number;
+  /**
+   * 逐步状态序列（仅在 `collectStates` 时填充）。
+   * 属性测试用它遍历各种中局局面，检查「门控说可以」与「引擎真接受」是否始终一致。
+   */
+  states: GameState[];
 }
 
 /**
@@ -70,6 +75,8 @@ export function runGoldenMatch(
     maxTurns?: number;
     /** 每多少个动作记一次散列 */
     sampleEvery?: number;
+    /** 收集逐步状态序列（属性测试用；内存开销大，golden 默认不开） */
+    collectStates?: boolean;
     /** 覆盖初始玩家定义（角色平衡回归用：同一份 id 注入不同 characterId） */
     decorate?: (state: GameState) => void;
   } = {},
@@ -77,6 +84,7 @@ export function runGoldenMatch(
   const seed = opts.seed ?? 20260105;
   const maxTurns = opts.maxTurns ?? 300;
   const sampleEvery = opts.sampleEvery ?? 25;
+  const collectStates = opts.collectStates ?? false;
 
   const defs = opts.players ?? GOLDEN_PLAYERS;
   let state = applyAction(createGame(defs, seed, { startDate: { ...MONDAY } }), { type: 'START_GAME' });
@@ -91,6 +99,7 @@ export function runGoldenMatch(
   };
 
   const hashes: string[] = [];
+  const states: GameState[] = collectStates ? [state] : [];
   const errorMessages: string[] = [];
   let steps = 0;
   let errors = 0;
@@ -112,6 +121,7 @@ export function runGoldenMatch(
       }
     }
     steps += 1;
+    if (collectStates) states.push(state);
     if (steps % sampleEvery === 0) {
       hashes.push(`#${steps}@${state.turn}:${hash32(stableStringify(state))}`);
     }
@@ -162,5 +172,5 @@ export function runGoldenMatch(
     act(action);
   }
 
-  return { hashes, finalState: state, steps, errors, errorMessages, stalls };
+  return { hashes, finalState: state, steps, errors, errorMessages, stalls, states };
 }

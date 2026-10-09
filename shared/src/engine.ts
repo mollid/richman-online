@@ -1549,127 +1549,75 @@ function detonate(state: GameState, center: number, radius: number, hospitalDays
 }
 
 export function availableActions(state: GameState): AvailableActions {
-  if (
-    state.phase === 'awaiting_roll' ||
-    state.phase === 'awaiting_action' ||
-    state.phase === 'awaiting_pick'
-  ) {
-    // 空房间（lobby 且players 为空）时安全降级到兜底分支
+  if (state.phase === 'awaiting_roll' || state.phase === 'awaiting_action' || state.phase === 'awaiting_pick') {
+    // 空房间（lobby 且 players 为空）时安全降级到兜底分支
     const p = currentPlayerOrNull(state);
     if (!p) return idleActions(state);
+    // 门控的唯一来源：向注册表问「这个动作此刻能不能执行」。
+    // 于是「按钮可点」与「引擎不报错」在结构上是同一句话，不可能再分叉。
+    const can = (action: PlayerAction): boolean => actionRefusal(state, action) === null;
     const c = cellAt(state, p.position);
-    const owned = cellOwner(state, c.id);
     const holiday = gameDate(state).isHoliday;
-    const bank = state.bankAccess;
-    const atBank = state.phase === 'awaiting_action' && !!bank;
-    // CORP-01/09/13：公司格上的经营操作
+    // CORP-01/09/13：公司格上的经营数据（额度与面值是给 UI 显示的数，不是门控）
     const company = state.phase === 'awaiting_action' && c.type === 'company' ? companyAtCell(state, c.id) : undefined;
     const sharePrice = company?.sharePrice ?? 0;
     const shareQuantityLimit =
       company && sharePrice > 0 ? Math.min(MAX_SHARES_PER_BUY, Math.floor(p.cash / sharePrice)) : 0;
-    const canBuyShares = !!company && shareQuantityLimit > 0;
-    const estateBuildCells: number[] = [];
-    if (company && c.companyKind === 'estate') {
-      for (const prop of p.properties) {
-        if (prop.grade >= MAX_GRADE) continue;
-        const target = state.board[prop.cellId];
-        if (!target || (target.type !== 'property' && target.type !== 'commercial')) continue;
-        if (target.type === 'commercial' && !prop.facility) continue;
-        estateBuildCells.push(prop.cellId);
-      }
-    }
-    const canBuildEstate = estateBuildCells.length > 0;
     const financingRemaining =
       company && c.companyKind === 'bank' && company.chairmanId === p.id
         ? Math.max(0, financingCap(state, p) - p.financing)
         : 0;
-    const canFinancing = financingRemaining > 0;
-    let canBuy = false;
-    let canUpgrade = false;
-    const buildableFacilities: FacilityType[] = [];
-    const researchableItems: string[] = [];
-    if (state.phase === 'awaiting_action' && (c.type === 'property' || c.type === 'commercial') && c.price !== undefined) {
-      const price = landPrice(state, c);
-      if (!owned && p.cash >= price) canBuy = true;
-      if (owned?.player.id === p.id) {
-        const prop = owned.property;
-        if (c.type === 'commercial') {
-          // EST-06/07：空地可选建设施；已建且可升级的设施可继续升级
-          if (!prop.facility) {
-            for (const f of FACILITY_ORDER) {
-              if (p.cash >= facilityBuildCost(state, c, f)) buildableFacilities.push(f);
-            }
-          } else if (facilityUpgradeable(prop) && prop.grade < MAX_GRADE && p.cash >= landUpgradeCost(state, c, prop.grade)) {
-            canUpgrade = true;
-          }
-          // EST-09/10：研究所按等级解锁研发项目（同时只能进行一项）
-          if (prop.facility === 'lab' && !p.research) {
-            for (const r of RESEARCH_ORDER) {
-              if (r.level <= prop.grade) researchableItems.push(r.itemId);
-            }
-          }
-        } else if (!prop.chain && prop.grade < MAX_GRADE && p.cash >= landUpgradeCost(state, c, prop.grade)) {
-          // EST-02：住宅可加盖至 5 级；EST-04：连锁店不能再加盖
-          canUpgrade = true;
-        }
-      }
-    }
-    // 梦游卡（CARD-16）：丧失买地权利
-    if (p.sleepwalkTurns > 0) canBuy = false;
-    const usableCards = p.cards.filter((cardId) => {
-      const card = CARDS[cardId];
-      if (!card) return false;
-      if (card.auto) return false; // 自动触发类不可主动使用
-      if (card.phase === 'any') return true;
-      if (card.phase === 'pre_roll') return state.phase === 'awaiting_roll';
-      return state.phase === 'awaiting_action';
-    });
-    const usableItems = Object.keys(p.items).filter((itemId) => {
-      const item = ITEMS[itemId];
-      if (!item || (p.items[itemId] ?? 0) <= 0) return false;
-      if (item.phase === 'any') return true;
-      if (item.phase === 'pre_roll') return state.phase === 'awaiting_roll';
-      return state.phase === 'awaiting_action';
-    });
-    // ECON-08：站立于乐透行且现金足够时可自选号码投注
-    const canBuyLottery = state.phase === 'awaiting_action' && c.type === 'lottery' && p.cash >= LOTTERY_TICKET_COST;
+    const estateBuildCells = p.properties
+      .map((prop) => prop.cellId)
+      .filter((cellId) => can({ type: 'BUILD_ESTATE', cellId }));
+    const buildableFacilities = FACILITY_ORDER.filter((f) => can({ type: 'BUILD_FACILITY', facility: f }));
+    const researchableItems = RESEARCH_ORDER.map((r) => r.itemId).filter((itemId) => can({ type: 'START_RESEARCH', itemId }));
+    const usableCards = p.cards.filter((cardId) => can({ type: 'USE_CARD', cardId }));
+    const usableItems = Object.keys(p.items).filter((itemId) => can({ type: 'USE_ITEM', itemId }));
+    const bailable = bailableVillains(state).filter((npcKind) => can({ type: 'BAIL_PRISONER', npcKind }));
+    const dischargeable = dischargeablePatients(state).filter((id) => can({ type: 'DISCHARGE_PATIENT', targetPlayerId: id }));
+    const revenge = revengeCandidates(state);
     return {
-      canRoll: state.phase === 'awaiting_roll',
-      canBuy,
-      canUpgrade,
-      canEnd: state.phase === 'awaiting_action',
+      canRoll: can({ type: 'ROLL_DICE' }),
+      canBuy: can({ type: 'BUY_LAND' }),
+      canUpgrade: can({ type: 'UPGRADE_LAND' }),
+      canEnd: can({ type: 'END_TURN' }),
+      // 商店没有「进入商店」这个动作：这一位只表示「脚下是商店格」，
+      // 具体能不能买、能不能卖由 BUY_CARD / SELL_CARD 等动作各自的校验决定。
       canShop: state.phase === 'awaiting_action' && isShopCell(c),
+      // 股市可交易性是整个市场的状态；能否买某一只、买几只由 BUY_STOCK 的校验决定（bot 与 UI 都问它）
       canTradeStock: canTradeStockNow(state) && !p.bankrupt && isMarketOpen(state),
       canPick: state.phase === 'awaiting_pick',
-      canDeposit: atBank && bank!.canDeposit && !holiday && p.cash > 0,
-      canWithdraw: atBank && bank!.canDeposit && !holiday && p.deposit > 0,
-      canLoan: atBank && bank!.canLoan && !holiday && p.loan === null && state.loanBanDays === 0,
-      canRepayLoan: atBank && bank!.canLoan && p.loan !== null && p.cash > 0,
+      canDeposit: can({ type: 'DEPOSIT', amount: 1 }),
+      canWithdraw: can({ type: 'WITHDRAW', amount: 1 }),
+      canLoan: can({ type: 'TAKE_LOAN', amount: 1 }),
+      canRepayLoan: can({ type: 'REPAY_LOAN', amount: 1 }),
       isHoliday: holiday,
-      canBuyShares,
+      canBuyShares: can({ type: 'BUY_SHARES', cellId: c.id, quantity: 1 }),
       sharePrice,
       shareQuantityLimit,
-      canBuildEstate,
+      canBuildEstate: estateBuildCells.length > 0,
       estateBuildCells,
-      canFinancing,
+      canFinancing: can({ type: 'SPECIAL_FINANCING', amount: 1 }),
       financingRemaining,
       buildableFacilities,
       researchableItems,
       usableCards,
       usableItems,
-      canBuyLottery,
+      canBuyLottery: can({ type: 'BUY_LOTTERY_TICKET', number: 0 }),
       lotteryTicketCost: LOTTERY_TICKET_COST,
       auction: null,
-      bailableVillains: bailableVillains(state),
+      bailableVillains: bailable,
       bailFee: bailFee(state),
       magic: state.magic,
-      dischargeablePatients: dischargeablePatients(state),
+      dischargeablePatients: dischargeable,
       dischargeFee: dischargeFee(state),
-      canSurrender: canSurrender(state),
+      // 认输必须指定复仇者，因此「能不能认输」等价于「存在一个认了之后真能执行的对象」
+      canSurrender: revenge.length > 0 && can({ type: 'SURRENDER', revengeTargetId: revenge[0]!.id }),
       pendingCard: state.pendingCard,
       tradableAssets: tradableAssets(state, p),
       tradeCash: p.cash,
-      revengeCandidates: revengeCandidates(state),
+      revengeCandidates: revenge,
     };
   }
   return idleActions(state);

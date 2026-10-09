@@ -79,16 +79,19 @@ const MAX_TURNS = 141;
 const SAMPLE_EVERY = 10;
 
 /**
- * 当前基线记录在案的 7 个「决策被引擎拒绝」错误，全部是门控与引擎校验不同源：
- * - `BUY_LAND → 衰神附身，买地流拍` ×3 与 `UPGRADE_LAND → 衰神附身，投资失败` ×1：
- *   `canBuy` / `canUpgrade` 未反映衰神禁止投资（`engine.ts:3259`、`engine.ts:3292` 会抛错）；
- * - `BUY_STOCK → 存款不足…现金不能用于炒股` ×3：bot 按现金判断买得起
- *   （`bot.ts:107` 的 `me.cash >= 8000`），而引擎要求用存款买入（`engine.ts:4595`）。
+ * 基线里记录在案的「决策被引擎拒绝」错误数。写成断言而不是注释，是为了让
+ * 「门控与引擎不同源」这个 bug 类的收敛过程可验证 —— 每修一处，这个数字必须下降。
  *
- * 这些在「门控与拍卖修正」波被修掉后，本数字应降为 0 —— 所以把它写成断言而不是注释，
- * 让"修好了"变成可验证的事实，而不是口头声明。
+ * - 重构前：7
+ * - R3-c（门控改由动作注册表的 `check` 派生）：6。
+ *   消失的 1 个是 `BUY_LAND → 衰神附身，买地流拍`：衰神附身时 `canBuy` 现在为假，
+ *   bot 根本不再尝试买地。整局轨迹的散列因此**逐位不变** —— 被拒的动作原本也只是
+ *   落到兜底的 END_TURN，而 bot 放弃后同样走到 END_TURN，两条路收敛到同一状态。
+ * - 剩下的 6 个全是 `BUY_STOCK → 存款不足…（现金不能用于炒股）`：bot 用现金余额推测
+ *   买得起（`bot.ts` 的 `me.cash >= 8000`），而引擎要求用**存款**买入（help[07]）。
+ *   这不是门控说谎，而是 bot 自己的判断错，须在 bot 侧修；修好后本数字应降为 0。
  */
-const RECORDED_GATE_ERRORS = 7;
+const RECORDED_GATE_ERRORS = 6;
 
 describe('golden 逐帧基线（重构期间行为不变的唯一证明）', () => {
   it('四人局整局状态轨迹与基线逐位一致', () => {
@@ -109,7 +112,7 @@ describe('golden 逐帧基线（重构期间行为不变的唯一证明）', () 
     expect(run.stalls).toBe(0);
   });
 
-  it('门控与引擎不同源造成的被吞错误数当前为 7（修正波应降为 0）', () => {
+  it('门控与引擎不同源造成的被吞错误数当前为 6（bot 炒股货币类型修正后应降为 0）', () => {
     const run = runGoldenMatch({ maxTurns: MAX_TURNS, sampleEvery: SAMPLE_EVERY });
     expect(run.errors).toBe(RECORDED_GATE_ERRORS);
   });
