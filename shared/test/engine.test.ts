@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { addPlayer, allAssetSummaries, allStockSummaries, applyAction, availableActions, BOARD_SIZE, gameDate, createGame, priceIndex, forceGameOver, GOD_DURATION_DAYS, GODS, nextRandom, removePlayer, rentOf, ReplayEngine, rollDie, STARTING_ITEMS, upgradeCost } from '../src/index.js';
+import { addPlayer, allAssetSummaries, allStockSummaries, applyAction, availableActions, BOARD_SIZE, gameDate, createGame, priceIndex, forceGameOver, GOD_DURATION_DAYS, GODS, nextRandom, removePlayer, rentOf, ReplayEngine, rollDie, STARTING_ITEMS, stockExecPrice, upgradeCost } from '../src/index.js';
 import type { GameState, PlayerAction, PlayerDef } from '../src/index.js';
 import { pinIndexOne } from './helpers/state.js';
 
@@ -379,13 +379,16 @@ describe('M2 股票系统', () => {
     expect(availableActions(rolled).canTradeStock).toBe(true);
 
     const depositBefore = rolled.players[0]!.deposit;
+    // 结算价含冲击成本：买 10 股的均价高于盘口，卖出的均价低于当时盘口
+    const buyPrice = stockExecPrice(rolled.stockMarket.stocks.find((s) => s.id === 'tech')!, 10, 'buy');
     const bought = applyAction(rolled, { type: 'BUY_STOCK', stockId: 'tech', quantity: 10 });
-    expect(bought.players[0]!.deposit).toBe(depositBefore - 120 * 10);
+    expect(bought.players[0]!.deposit).toBe(depositBefore - buyPrice * 10);
     expect(bought.players[0]!.cash).toBe(15000); // 现金不动
     expect(bought.players[0]!.stocks['tech']).toBe(10);
 
+    const sellPrice = stockExecPrice(bought.stockMarket.stocks.find((s) => s.id === 'tech')!, 10, 'sell');
     const sold = applyAction(bought, { type: 'SELL_STOCK', stockId: 'tech', quantity: 10 });
-    expect(sold.players[0]!.cash).toBe(15000 + 120 * 10); // 卖股收入进现金
+    expect(sold.players[0]!.cash).toBe(15000 + sellPrice * 10); // 卖股收入进现金
     expect(sold.players[0]!.stocks['tech']).toBeUndefined();
   });
 
@@ -419,11 +422,12 @@ describe('M2 股票系统', () => {
     g.players[0]!.cash = 500;
     g.players[0]!.deposit = 5000;
     const tech = g.stockMarket.stocks.find((x) => x.id === 'tech')!; // 120/股
+    const cost = stockExecPrice(tech, 12, 'buy') * 12; // 均价含冲击
     const bought = applyAction(g, { type: 'BUY_STOCK', stockId: 'tech', quantity: 12 });
     const p = bought.players[0]!;
     expect(p.stocks.tech).toBe(12);
     expect(p.cash).toBe(500);           // 现金完全不动
-    expect(p.deposit).toBe(5000 - tech.price * 12);
+    expect(p.deposit).toBe(5000 - cost);
     expect(bought.log.some((l) => l.text.includes('以存款'))).toBe(true);
   });
 

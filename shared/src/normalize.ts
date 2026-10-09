@@ -1,3 +1,4 @@
+import { stockFloatShares } from './stocks.js';
 import type { GameState } from './types.js';
 
 /**
@@ -18,6 +19,12 @@ export function normalizeGameState(state: GameState): GameState {
   state.boardGods ??= [];
   state.spawnGods ??= true;
   if (!state.godPairBanUntil) state.godPairBanUntil = {};
+
+  // 股票 K 线与冲击成本（stocks）：老存档的 Stock 没有这两项，按定义表补齐
+  for (const stock of state.stockMarket?.stocks ?? []) {
+    stock.floatShares ??= stockFloatShares(stock.id);
+    stock.candles ??= [];
+  }
 
   // 结束条件（W4）：缺键按「不限天数」补 —— 上限是一种限制，旧局面没有它就继续按原规则跑
   state.maxDays ??= null;

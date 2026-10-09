@@ -28,6 +28,7 @@ import {
 import { addMonths, DEFAULT_START_DATE, gameDate, toSerial } from './calendar.js';
 import { landPrice, landRent, landUpgradeCost, scaled, totalAssets } from './economy.js';
 import { boardGodAt, clearBoardGodsOnCells, detachGodForPossession, godSpawnHook, godSummonRefusal } from './godspawn.js';
+import { applyTradeImpact, sealDailyCandle, stockExecPrice } from './stocks.js';
 import { CARDS, CHANCE_CARD_POOL, SHOP_CARD_IDS } from './cards.js';
 import { resolveLanding } from './cell_handlers.js';
 import { ITEMS, SHOP_ITEM_IDS, STARTING_ITEMS } from './items.js';
@@ -201,7 +202,14 @@ export function createGame(players: PlayerDef[], seed = Date.now() % 2147483647,
     endReason: null,
     maxDays: options.maxDays ?? null,
     stockMarket: {
-      stocks: STOCK_DEFS.map((s) => ({ id: s.id, name: s.name, price: s.initialPrice, lastChangePct: 0 })),
+      stocks: STOCK_DEFS.map((s) => ({
+        id: s.id,
+        name: s.name,
+        price: s.initialPrice,
+        lastChangePct: 0,
+        floatShares: s.floatShares,
+        candles: [],
+      })),
     },
     pendingFixedDice: null,
     roadblocks: [],
@@ -582,14 +590,22 @@ function canTradeStockNow(state: GameState): boolean {
 
 /** 股票市场回合波动 + 随机新闻；例假日休市（ECON-09）；红卡/黑卡期间涨跌停（CARD-24/25） */
 function tickStockMarket(state: GameState): void {
-  if (gameDate(state).isHoliday) return;
-  for (const stock of state.stockMarket.stocks) {
+  if (gameDate(state).isHoliday) return; // 例假日休市：不生成当日 K 线，也不走随机
+  const stocks = state.stockMarket.stocks;
+  // 每支当日已消耗的那个随机数，稍后借去决定上影长还是下影长（不再多抽一次）
+  const bias = new Array<number>(stocks.length).fill(0.5);
+  const traded = new Array<boolean>(stocks.length).fill(true);
+  // 开盘价必须在游走之前取：上一根的收盘（首根则是建仓价），否则第一根线没有实体
+  const openOf = stocks.map((s) => s.candles[s.candles.length - 1]?.close ?? s.price);
+  stocks.forEach((stock, i) => {
     const draw = nextRandom(state.rngState);
     state.rngState = draw.nextState;
+    bias[i] = draw.value;
     // EVT-01 事件 26/27：停牌期间价格冻结（仍消耗抽数，保持回放确定性）
     if (state.stockHaltAllDays > 0 || isStockSuspended(state, stock.id)) {
       stock.lastChangePct = 0;
-      continue;
+      traded[i] = false;
+      return;
     }
     let pct = Math.round(draw.value * 20 - 10); // -10% ~ +10%
     const halt = state.stockHalts.find((h) => h.stockId === stock.id);
@@ -598,8 +614,10 @@ function tickStockMarket(state: GameState): void {
     const next = Math.max(5, Math.round(stock.price * (1 + pct / 100)));
     stock.lastChangePct = pct + Math.round(((next - stock.price) / Math.max(stock.price, 1)) * 100) - pct;
     stock.price = next;
-  }
+  });
   applyRandomNews(state);
+  // 收 K 线放在新闻之后：这样当天那根线的收盘价就是「消息面落地后」的真实价
+  stocks.forEach((stock, i) => sealDailyCandle(state, stock, openOf[i]!, bias[i]!, traded[i]!));
 }
 
 /**
@@ -2871,13 +2889,19 @@ function buyStock(state: GameState, action: Extract<PlayerAction, { type: 'BUY_S
   assertLegal(state, action);
   const p = currentPlayer(state);
   const stock = stockById(state, action.stockId)!;
-  const total = stock.price * action.quantity;
+  // 冲击成本：按「冲击前后中点」结算（买完立刻卖不赚差价），成交后盘口被买盘推高
+  const { execPrice, moved } = applyTradeImpact(state, stock, action.quantity, 'buy');
+  const total = execPrice * action.quantity;
   p.deposit -= total;
   p.stocks[stock.id] = (p.stocks[stock.id] ?? 0) + action.quantity;
   // ECON-10：记录建仓成本（累计投入），UI 用于展示浮动盈亏
   p.stockCost = p.stockCost ?? {};
   p.stockCost[stock.id] = (p.stockCost[stock.id] ?? 0) + total;
-  log(state, `${p.name} 以存款 ¥${total} 买入 ${stock.name} ×${action.quantity}（单价 ¥${stock.price}）`);
+  log(
+    state,
+    `${p.name} 以存款 ¥${total.toLocaleString('zh-CN')} 买入 ${stock.name} ×${action.quantity}（成交均价 ¥${execPrice}）` +
+      (moved ? `，买盘把盘口推高至 ¥${stock.price}` : ''),
+  );
 }
 
 /** ECON-09 卖出股票（help[14]「隨時可買賣」；与buyStock 同规则，不绑定格型） */
@@ -2886,7 +2910,9 @@ function sellStock(state: GameState, action: Extract<PlayerAction, { type: 'SELL
   const p = currentPlayer(state);
   const stock = stockById(state, action.stockId)!;
   const holding = p.stocks[stock.id] ?? 0;
-  const total = stock.price * action.quantity;
+  // 与买入同一套口径：结算价取冲击前后中点，成交后盘口被抛压压低
+  const execPrice = stockExecPrice(stock, action.quantity, 'sell');
+  const total = execPrice * action.quantity;
   // ECON-10：按持股比例结转建仓成本
   const costBefore = p.stockCost?.[stock.id] ?? 0;
   const costOut = holding > 0 ? Math.round((costBefore * action.quantity) / holding) : 0;
@@ -2898,9 +2924,14 @@ function sellStock(state: GameState, action: Extract<PlayerAction, { type: 'SELL
     p.stockCost[stock.id] = costBefore - costOut;
   }
   p.cash += total; // 收入进现金（三货币规则：收入用现金）
+  const { moved } = applyTradeImpact(state, stock, action.quantity, 'sell');
   const profit = total - costOut;
   const profitText = profit === 0 ? '' : `（${profit >= 0 ? '赚' : '亏'} ¥${Math.abs(profit).toLocaleString('zh-CN')}）`;
-  log(state, `${p.name} 以 ¥${total} 卖出 ${stock.name} ×${action.quantity}（单价 ¥${stock.price}）${profitText}`);
+  log(
+    state,
+    `${p.name} 卖出 ${stock.name} ×${action.quantity} 得 ¥${total.toLocaleString('zh-CN')}（成交均价 ¥${execPrice}）${profitText}` +
+      (moved ? `，抛压把盘口压低至 ¥${stock.price}` : ''),
+  );
 }
 
 /**
@@ -3265,7 +3296,8 @@ function checkBuyStock(state: GameState, p: Player | null, action: ActionOf<'BUY
   const early = stockTradeRefusal(state, p, action.stockId, action.quantity);
   if (early) return early;
   const stock = stockById(state, action.stockId)!;
-  const total = stock.price * action.quantity;
+  // 校验用**结算价**（含冲击）而不是盘口原价：否则「刚好够钱」的那笔会扣成负存款
+  const total = stockExecPrice(stock, action.quantity, 'buy') * action.quantity;
   // 股票**只能用存款买入**（help[07]：买股票的收支由银行自动转、扣帐，走存款账户）；
   // 现金不能用于炒股——现金只够买地与升级建筑。
   if (p!.deposit < total) {

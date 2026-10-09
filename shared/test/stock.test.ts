@@ -7,8 +7,13 @@ import {
   applyFateEffect,
   FATE_CARDS,
   gameDate,
+  maxAffordableShares,
+  ReplayEngine,
+  stockExecPrice,
+  stockImpactPct,
   totalAssets,
   type GameState,
+  type PlayerAction,
   type PlayerDef,
 } from '../src/index.js';
 
@@ -111,16 +116,17 @@ describe('「每人每回合可自由购买」', () => {
     expect(bought.phase).toBe('awaiting_action');
   });
 
-  it('一次可买任意张（数量仅受资金与持股约束）', () => {
+  it('一次可买任意张（数量仅受资金约束，没有每回合上限）', () => {
     const g = withDeposit(newGame(55));
-    const price = priceOf(g, 'tech');
-    const afford = Math.floor(g.players[0]!.deposit / price); // 只能用存款买
+    const stock = g.stockMarket.stocks.find((s) => s.id === 'tech')!;
+    // 含冲击的最大可买数：买得越多均价越高，所以不再是 `存款 ÷ 单价`
+    const afford = maxAffordableShares(stock, g.players[0]!.deposit);
     expect(afford).toBeGreaterThan(10);
     expect(g.players[0]!.cash).toBeGreaterThan(0); // 现金还有但用不上
     const bought = applyAction(g, { type: 'BUY_STOCK', stockId: 'tech', quantity: afford });
     expect(bought.players[0]!.stocks.tech).toBe(afford);
-    // 再买 1 张则资金不足
-    expect(() => applyAction(bought, { type: 'BUY_STOCK', stockId: 'tech', quantity: 1 })).toThrow();
+    // 上限之外再买 1 股即被拒 —— 拦人的只有钱，不是回合次数
+    expect(() => applyAction(bought, { type: 'BUY_STOCK', stockId: 'tech', quantity: 1 })).toThrow('存款不足');
   });
 
   it('不限每回合交易次数：同一回合可连续买卖多次', () => {
@@ -142,10 +148,11 @@ describe('「每人每回合可自由购买」', () => {
 describe('help[07] 收支由银行自动转扣', () => {
   it('买入只扣存款，现金分文不动', () => {
     const g = withDeposit(newGame(61), 5000);
-    const price = priceOf(g, 'tech');
+    const stock = g.stockMarket.stocks.find((s) => s.id === 'tech')!;
+    const cost = stockExecPrice(stock, 2, 'buy') * 2; // 结算价含冲击
     const cashBefore = g.players[0]!.cash;
     const bought = applyAction(g, { type: 'BUY_STOCK', stockId: 'tech', quantity: 2 });
-    expect(bought.players[0]!.deposit).toBe(5000 - price * 2);
+    expect(bought.players[0]!.deposit).toBe(5000 - cost);
     expect(bought.players[0]!.cash).toBe(cashBefore); // 现金完全不动
   });
 
@@ -160,12 +167,14 @@ describe('help[07] 收支由银行自动转扣', () => {
     const g = newGame(63);
     g.players[0]!.cash = 1000;
     g.players[0]!.deposit = 5000;
-    const price = priceOf(g, 'estate'); // 200/股
-    const qty = 25; // 需 5000
+    const stock = g.stockMarket.stocks.find((s) => s.id === 'estate')!; // 200/股
+    const qty = maxAffordableShares(stock, 5000); // 含冲击的最大可买数（不再是 5000÷200=25）
+    expect(qty).toBeGreaterThan(0);
+    const cost = stockExecPrice(stock, qty, 'buy') * qty;
     const bought = applyAction(g, { type: 'BUY_STOCK', stockId: 'estate', quantity: qty });
     const p = bought.players[0]!;
     expect(p.stocks.estate).toBe(qty);
-    expect(p.deposit).toBe(0);
+    expect(p.deposit).toBe(5000 - cost);
     expect(p.cash).toBe(1000); // 现金分文未动
     expect(bought.log.some((l) => l.text.includes('以存款'))).toBe(true);
   });
@@ -182,13 +191,24 @@ describe('help[07] 收支由银行自动转扣', () => {
 
   it('卖出所得进现金（三货币规则：收入用现金）', () => {
     const g = withDeposit(newGame(67));
-    const price = priceOf(g, 'tech');
     const bought = applyAction(g, { type: 'BUY_STOCK', stockId: 'tech', quantity: 3 });
     const cashAfterBuy = bought.players[0]!.cash;
     const depositAfterBuy = bought.players[0]!.deposit;
+    // 买盘已把盘口推高，卖单按自己那一侧的结算价成交（往返一次不赚不亏）
+    const soldPrice = stockExecPrice(bought.stockMarket.stocks.find((s) => s.id === 'tech')!, 3, 'sell');
     const sold = applyAction(bought, { type: 'SELL_STOCK', stockId: 'tech', quantity: 3 });
-    expect(sold.players[0]!.cash).toBe(cashAfterBuy + price * 3);
+    expect(sold.players[0]!.cash).toBe(cashAfterBuy + soldPrice * 3);
     expect(sold.players[0]!.deposit).toBe(depositAfterBuy); // 卖出不动存款
+  });
+
+  it('买完立刻卖不赚差价（冲击成本按结算价对称，不留下可套的空子）', () => {
+    const g = withDeposit(newGame(68));
+    const before = g.players[0]!.cash + g.players[0]!.deposit;
+    const bought = applyAction(g, { type: 'BUY_STOCK', stockId: 'tech', quantity: 20 });
+    const sold = applyAction(bought, { type: 'SELL_STOCK', stockId: 'tech', quantity: 20 });
+    const after = sold.players[0]!.cash + sold.players[0]!.deposit;
+    // 允许 ±1 元的取整误差，但不允许出现成规模的白赚
+    expect(Math.abs(after - before)).toBeLessThanOrEqual(20);
   });
 
   it('买入的支出不进乐透奖池（不属于「意外损失」）', () => {
@@ -202,9 +222,10 @@ describe('help[07] 收支由银行自动转扣', () => {
 describe('help[06] 总市值 / 成本 / 经营权', () => {
   it('买入累计成本，卖出按比例结转，盈亏随之变化', () => {
     const g = withDeposit(newGame(71));
-    const price = priceOf(g, 'media'); // 100/股
+    const media = () => g.stockMarket.stocks.find((s) => s.id === 'media')!;
+    const cost = stockExecPrice(media(), 10, 'buy') * 10; // 结算价含冲击，不再是 100×10
     const bought = applyAction(g, { type: 'BUY_STOCK', stockId: 'media', quantity: 10 });
-    expect(bought.players[0]!.stockCost?.media).toBe(price * 10);
+    expect(bought.players[0]!.stockCost?.media).toBe(cost);
 
     // 股价涨到 150 后全卖 → 盈亏 +500
     const up = structuredClone(bought);
@@ -223,11 +244,12 @@ describe('help[06] 总市值 / 成本 / 经营权', () => {
 
   it('部分卖出按比例结转成本', () => {
     const g = withDeposit(newGame(73));
-    const price = priceOf(g, 'media');
     const bought = applyAction(g, { type: 'BUY_STOCK', stockId: 'media', quantity: 10 });
+    const costBefore = bought.players[0]!.stockCost?.media ?? 0;
     const sold = applyAction(bought, { type: 'SELL_STOCK', stockId: 'media', quantity: 4 });
     expect(sold.players[0]!.stocks.media).toBe(6);
-    expect(sold.players[0]!.stockCost?.media).toBe(price * 6);
+    // 结转按持股比例：留 6/10 的成本（与冲击无关，冲击只影响成交价）
+    expect(sold.players[0]!.stockCost?.media).toBe(costBefore - Math.round((costBefore * 4) / 10));
   });
 
   it('股票现值计入总资产（ECON-03）', () => {
@@ -455,5 +477,142 @@ describe('负债不自动变卖股票：股票只能靠随机事件兑现', () =
     // 20% 交割 → 至少有一支被削
     const total = (p.stocks.tech ?? 0) + (p.stocks.food ?? 0);
     expect(total).toBeLessThan(200);
+  });
+});
+
+/**
+ * 日 K 线与成交量（玩法文档 §3.4 的自定扩展）。
+ *
+ * 三条纪律各自钉一条：① 一根 = 一个交易日，且「下一根的开 = 上一根的收」（图不能断）；
+ * ② 量分背景换手与玩家真实成交两笔；③ 画 K 线与算冲击都**不消耗随机数**，
+ * 否则就等于新增一条随机源，把整局骰子序列打散。
+ */
+describe('日 K 线与成交量（自定扩展）', () => {
+  /** 立刻推过一次日切：把回合交给最后一位玩家再结束，中间没人移动 ⇒ 只有日钩子动状态 */
+  function toDayBoundary(state: GameState): GameState {
+    const s = structuredClone(state);
+    if (s.phase === 'game_over') return s;
+    s.currentPlayerIndex = s.players.length - 1;
+    s.phase = 'awaiting_action';
+    return applyAction(s, { type: 'END_TURN' });
+  }
+
+  const candlesOf = (s: GameState, id = 'tech') => s.stockMarket.stocks.find((x) => x.id === id)!.candles;
+
+  it('每个交易日收一根；下一根的开等于上一根的收', () => {
+    let s = newGame(301);
+    s = toDayBoundary(s);
+    const first = candlesOf(s)[0]!;
+    expect(candlesOf(s)).toHaveLength(1);
+    expect(first.day).toBe(s.calendar.elapsedDays);
+    expect(first.open).toBe(120); // 首根的开 = 建仓价
+    expect(first.close).toBe(priceOf(s, 'tech'));
+    expect(first.high).toBeGreaterThanOrEqual(Math.max(first.open, first.close));
+    expect(first.low).toBeLessThanOrEqual(Math.min(first.open, first.close));
+    expect(first.low).toBeGreaterThanOrEqual(5);
+    s = toDayBoundary(s);
+    expect(candlesOf(s)[1]!.open).toBe(first.close);
+  });
+
+  it('成交量分两笔记：背景换手 + 玩家真实成交', () => {
+    let s = toDayBoundary(newGame(303));
+    s = withDeposit(s);
+    const background = candlesOf(s).at(-1)!.volume;
+    expect(background).toBeGreaterThan(0);
+    expect(candlesOf(s).at(-1)!.playerVolume).toBe(0);
+    s = applyAction(s, { type: 'BUY_STOCK', stockId: 'tech', quantity: 10 });
+    const c = candlesOf(s).at(-1)!;
+    expect(c.playerVolume).toBe(10);
+    expect(c.volume).toBe(background + 10);
+    expect(c.close).toBe(priceOf(s, 'tech')); // 当日这根跟着成交走
+    expect(c.high).toBeGreaterThanOrEqual(c.low);
+  });
+
+  it('K 线不消耗随机数：交易前后 rngState 分文不动', () => {
+    let s = withDeposit(toDayBoundary(newGame(305)));
+    const before = s.rngState;
+    s = applyAction(s, { type: 'BUY_STOCK', stockId: 'tech', quantity: 30 });
+    s = applyAction(s, { type: 'SELL_STOCK', stockId: 'tech', quantity: 30 });
+    expect(s.rngState).toBe(before);
+  });
+
+  it('停牌日是一字线且零成交；例假日干脆不生成根', () => {
+    let halted = newGame(307);
+    // 停牌天数由日切钩子递减，而 tickStockMarket 在钩子之后才跑 ⇒ 得留够余量
+    halted.stockHaltAllDays = 3;
+    halted = toDayBoundary(halted);
+    const flat = candlesOf(halted).at(-1)!;
+    expect(flat.volume).toBe(0);
+    expect(flat.high).toBe(flat.low);
+    expect(flat.open).toBe(flat.close);
+
+    let holiday = newGame(309);
+    holiday.calendar.elapsedDays = 5; // 2026-01-10 是周六
+    holiday = toDayBoundary(holiday);
+    expect(candlesOf(holiday)).toHaveLength(0); // 休市不生成当日 K 线
+  });
+
+  it('只保留最近 30 根，且日期单调递增', () => {
+    let s = newGame(311);
+    for (let i = 0; i < 60 && s.phase !== 'game_over'; i++) s = toDayBoundary(s);
+    const candles = candlesOf(s);
+    expect(candles.length).toBeLessThanOrEqual(30);
+    expect(candles.length).toBeGreaterThan(20); // 60 天里约有 40 多个交易日
+    for (let i = 1; i < candles.length; i++) {
+      expect(candles[i]!.day).toBeGreaterThan(candles[i - 1]!.day);
+    }
+  });
+
+  it('冲击：买推高、卖压低，力度按成交股数占流通股本的比例', () => {
+    const g = withDeposit(newGame(313));
+    const tech = g.stockMarket.stocks.find((s) => s.id === 'tech')!;
+    const bought = applyAction(g, { type: 'BUY_STOCK', stockId: 'tech', quantity: 40 });
+    expect(priceOf(bought, 'tech')).toBeGreaterThan(tech.price);
+    const sold = applyAction(bought, { type: 'SELL_STOCK', stockId: 'tech', quantity: 40 });
+    expect(priceOf(sold, 'tech')).toBeLessThan(priceOf(bought, 'tech'));
+    // 同样 40 股，流通盘更大的食品股被推动的比例更小
+    const food = g.stockMarket.stocks.find((s) => s.id === 'food')!;
+    expect(stockImpactPct(food, 40)).toBeLessThan(stockImpactPct(tech, 40));
+  });
+
+  it('最大可买数与引擎校验同源：按它下单必被接受，再多一股即拒', () => {
+    const g = withDeposit(newGame(317));
+    const tech = g.stockMarket.stocks.find((s) => s.id === 'tech')!;
+    const money = g.players[0]!.deposit;
+    const qty = maxAffordableShares(tech, money);
+    expect(qty).toBeGreaterThan(0);
+    const cost = (q: number) => stockExecPrice(tech, q, 'buy') * q;
+    expect(cost(qty)).toBeLessThanOrEqual(money);
+    expect(cost(qty + 1)).toBeGreaterThan(money);
+    expect(() => applyAction(g, { type: 'BUY_STOCK', stockId: 'tech', quantity: qty })).not.toThrow();
+    expect(() => applyAction(g, { type: 'BUY_STOCK', stockId: 'tech', quantity: qty + 1 })).toThrow('存款不足');
+    expect(maxAffordableShares(tech, 0)).toBe(0);
+  });
+
+  it('K 线随录像一起复现：整段 candles 逐位一致', () => {
+    // 只用动作能表达的东西建局 —— `withDeposit` 这类夹具改动不在动作日志里，
+    // 回放拿不到，测试就会假失败（同 game_end.test.ts 里 pinIndexOne 那个坑）。
+    let s = newGame(319);
+    const actions: { turn: number; action: PlayerAction }[] = [{ turn: 0, action: { type: 'START_GAME' } }];
+    const push = (state: GameState, action: PlayerAction) => {
+      actions.push({ turn: state.turn, action });
+      return applyAction(state, action);
+    };
+    for (let i = 0; i < 12 && s.phase !== 'game_over'; i++) {
+      s = push(s, s.phase === 'awaiting_roll' ? { type: 'ROLL_DICE' } : { type: 'END_TURN' });
+    }
+    const record = {
+      seed: 319,
+      startDate: { ...MONDAY },
+      players: PLAYERS.map((p) => ({ player_name: p.name, color: p.color, player_key: p.id })),
+      actions,
+    };
+    const replayed = new ReplayEngine(record).finalState;
+    expect(replayed.calendar.elapsedDays).toBe(s.calendar.elapsedDays);
+    for (const stock of s.stockMarket.stocks) {
+      const twin = replayed.stockMarket.stocks.find((x) => x.id === stock.id)!;
+      expect(twin.candles).toEqual(stock.candles);
+      expect(twin.candles.length).toBeGreaterThan(0);
+    }
   });
 });

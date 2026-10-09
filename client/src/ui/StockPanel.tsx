@@ -1,5 +1,14 @@
 import { useState } from 'react';
-import { availableActions, gameDate, type GameState, type PlayerAction } from '@richman/shared';
+import {
+  availableActions,
+  gameDate,
+  maxAffordableShares,
+  stockExecPrice,
+  stockImpactPct,
+  type GameState,
+  type PlayerAction,
+} from '@richman/shared';
+import { StockChart } from './StockChart.js';
 
 function fmtPct(pct: number): string {
   return `${pct >= 0 ? '+' : ''}${pct}%`;
@@ -27,6 +36,8 @@ export function StockPanel({
   interactive?: boolean;
 }) {
   const [customQty, setCustomQty] = useState(1);
+  // 图表看哪一支：默认第一支，点表格行切换
+  const [chartId, setChartId] = useState('tech');
   const current = game.players[game.currentPlayerIndex];
   const actions = availableActions(game);
   const date = gameDate(game);
@@ -53,8 +64,13 @@ export function StockPanel({
     onAction({ type, stockId, quantity });
   };
 
-  const maxBuy = (price: number) => (price > 0 ? Math.floor(funds / price) : 0);
+  // 「全部买入」必须按含冲击的结算价算，否则点下去必被引擎以「存款不足」拒绝
+  const maxBuy = (stockId: string, price: number) => {
+    const stock = game.stockMarket.stocks.find((s) => s.id === stockId);
+    return stock ? maxAffordableShares(stock, funds) : Math.floor(funds / Math.max(1, price));
+  };
   const affordable = funds > 0;
+  const chartStock = game.stockMarket.stocks.find((s) => s.id === chartId) ?? game.stockMarket.stocks[0]!;
 
   return (
     <div className="panel stock-panel">
@@ -76,6 +92,8 @@ export function StockPanel({
         )}
       </div>
 
+      <StockChart stock={chartStock} />
+
       <table className="stock-table">
         <thead>
           <tr>
@@ -91,12 +109,20 @@ export function StockPanel({
             const holding = current.stocks[s.id] ?? 0;
             const suspended = suspendedIds.has(s.id);
             const canTrade = interactive && actions.canTradeStock && !suspended;
-            const cap = maxBuy(s.price);
+            const cap = maxBuy(s.id, s.price);
             const qty = Math.max(1, Math.min(customQty, Math.max(1, cap)));
+            // 冲击提示：按结算价报数，玩家点之前就知道这笔会把价格推到哪里
+            const buyUnit = stockExecPrice(s, qty, 'buy');
+            const sellUnit = stockExecPrice(s, qty, 'sell');
+            const impactPctText = `±${(stockImpactPct(s, qty) * 100).toFixed(1)}%`;
             return (
-              <tr key={s.id} className={suspended ? 'suspended' : ''}>
+              <tr
+                key={s.id}
+                className={`${suspended ? 'suspended ' : ''}${s.id === chartStock.id ? 'charting' : ''}`}
+                onClick={() => setChartId(s.id)}
+              >
                 <td>
-                  {s.name}
+                  {s.id === chartStock.id && <span className="chart-mark">📈</span>} {s.name}
                   {suspended && <span className="stock-flag">停牌</span>}
                 </td>
                 <td>¥{fmt(s.price)}</td>
@@ -113,32 +139,48 @@ export function StockPanel({
                   <button
                     className="mini"
                     disabled={!canTrade || cap < 1}
-                    title={cap < 1 ? '存款不足（股票只能用存款购买）' : `以存款买入 ${qty} 张（需 ¥${fmt(s.price * qty)}）`}
-                    onClick={() => trade(s.id, 'BUY_STOCK', qty)}
+                    title={
+                      cap < 1
+                        ? '存款不足（股票只能用存款购买）'
+                        : `买入 ${qty} 张：成交均价 ¥${fmt(buyUnit)}，共 ¥${fmt(buyUnit * qty)}；买盘把盘口推高约 ${impactPctText}`
+                    }
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      trade(s.id, 'BUY_STOCK', qty);
+                    }}
                   >
                     买{qty}
                   </button>
                   <button
                     className="mini"
                     disabled={!canTrade || cap < 1}
-                    title={`全部买入（约 ${Math.floor(cap / qty) * qty} 张）`}
-                    onClick={() => trade(s.id, 'BUY_STOCK', cap)}
+                    title={`存款最多能吃下 ${cap} 张（含冲击成本，买得越多均价越高）`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      trade(s.id, 'BUY_STOCK', cap);
+                    }}
                   >
                     全买
                   </button>
                   <button
                     className="mini"
                     disabled={!canTrade || holding < 1}
-                    title={holding < 1 ? '无持仓' : `卖出 ${Math.min(qty, holding)} 张`}
-                    onClick={() => trade(s.id, 'SELL_STOCK', Math.min(qty, holding))}
+                    title={`卖出 ${Math.min(qty, holding)} 张：成交均价 ¥${fmt(sellUnit)}，抛压把盘口压低约 ${impactPctText}`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      trade(s.id, 'SELL_STOCK', Math.min(qty, holding));
+                    }}
                   >
                     卖{Math.min(qty, holding)}
                   </button>
                   <button
                     className="mini"
                     disabled={!canTrade || holding < 1}
-                    title="清仓"
-                    onClick={() => trade(s.id, 'SELL_STOCK', holding)}
+                    title={`清仓 ${holding} 张（均价随抛压递减，一次倒完比分批卖更亏）`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      trade(s.id, 'SELL_STOCK', holding);
+                    }}
                   >
                     清仓
                   </button>
@@ -201,10 +243,13 @@ export function StockPanel({
       </div>
 
       <div className="stock-hint">
-        <b>股票只能用存款买卖</b>，现金仅用于购买土地与升级建筑；现金不足时无法买地或升级。
+        <b>股票只能用存款买卖</b>，现金仅用于买地或升级建筑；现金不足时无法买地或升级。
         支付租金等支出时只会依次扣除<b>现金</b>与<b>存款</b>，<b>不会自动变卖你的股票或建筑</b>——
         若两者用尽仍付不出就会直接破产；想提前兑现股票，只能在股市面板主动卖出，或等随机事件（如「变卖所有股票求现」）。
         本面板在任何格型均可交易。
+        <br />
+        <b>成交有冲击成本</b>：买盘推高、抛压压低，力度按「成交股数 ÷ 流通股本」算，结算价取冲击前后之中点
+        （所以买完立刻卖不赚差价）。上方 K 线的量柱里，亮色那段是你自己打进去的成交量。
       </div>
     </div>
   );

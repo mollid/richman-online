@@ -606,6 +606,67 @@ button.mini {
   color: #78909c;
 }
 
+/* 日 K 线与成交量（自定扩展）：纯 SVG，配色沿用面板的深底灰格 */
+.stock-chart {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 6px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: rgba(13, 22, 28, 0.6);
+}
+
+.stock-chart.empty {
+  font-size: 11px;
+  color: #78909c;
+}
+
+.stock-chart svg {
+  display: block;
+  background: #10191f;
+  border-radius: 4px;
+}
+
+.stock-chart-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.stock-chart-head .up {
+  color: #e5484d;
+}
+
+.stock-chart-head .down {
+  color: #30a46c;
+}
+
+.stock-chart-meta {
+  font-size: 10px;
+  color: #78909c;
+}
+
+.stock-chart-foot {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  color: #90a4ae;
+}
+
+.stock-table tr.charting {
+  background: rgba(63, 81, 95, 0.28);
+}
+
+.stock-table tbody tr {
+  cursor: pointer;
+}
+
+.chart-mark {
+  margin-right: 2px;
+}
+
 .stock-qty-row {
   display: flex;
   align-items: center;

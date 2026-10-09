@@ -20,6 +20,7 @@ import {
   RESTAURANT_FEE_PER_DAY,
   rollDie,
   scaled,
+  stockExecPrice,
   WATER_FEE_PER_LAND,
   WHEEL_KINDS,
 } from '../src/index.js';
@@ -446,16 +447,19 @@ describe('ECON-10 股票持仓成本指标', () => {
   it('买入累计建仓成本；卖出按比例结转', () => {
     let g = stockCell();
     const stock = g.stockMarket.stocks[0]!;
-    const unit = stock.price;
+    // 冲击成本：第二笔的均价被第一笔的买盘推高了，所以不能再写 `unit × 20`
+    const firstUnit = stockExecPrice(stock, 10, 'buy');
     g = applyAction(g, { type: 'BUY_STOCK', stockId: stock.id, quantity: 10 });
-    expect(g.players[0]!.stockCost?.[stock.id]).toBe(unit * 10);
-    // 再买 10 股（同价）→ 成本累计
+    expect(g.players[0]!.stockCost?.[stock.id]).toBe(firstUnit * 10);
+    const secondUnit = stockExecPrice(g.stockMarket.stocks[0]!, 10, 'buy');
+    expect(secondUnit).toBeGreaterThan(firstUnit);
     g = applyAction(g, { type: 'BUY_STOCK', stockId: stock.id, quantity: 10 });
-    expect(g.players[0]!.stockCost?.[stock.id]).toBe(unit * 20);
-    // 卖出 10 股 → 成本减半
+    const costAfterTwoBuys = g.players[0]!.stockCost?.[stock.id] ?? 0;
+    expect(costAfterTwoBuys).toBe(firstUnit * 10 + secondUnit * 10);
+    // 卖出 10 股 → 成本按持股比例结转一半
     g = applyAction(g, { type: 'SELL_STOCK', stockId: stock.id, quantity: 10 });
     expect(g.players[0]!.stocks[stock.id]).toBe(10);
-    expect(g.players[0]!.stockCost?.[stock.id]).toBe(unit * 10);
+    expect(g.players[0]!.stockCost?.[stock.id]).toBe(costAfterTwoBuys - Math.round(costAfterTwoBuys / 2));
     // 清仓 → 成本项删除
     g = applyAction(g, { type: 'SELL_STOCK', stockId: stock.id, quantity: 10 });
     expect(g.players[0]!.stocks[stock.id]).toBeUndefined();

@@ -122,14 +122,18 @@ export function fallbackBoard(): BoardCell[] {
   return DEFAULT_BOARD.map((c) => ({ ...c }));
 }
 
-/** 股票初始定义（每局价格随机波动） */
-export const STOCK_DEFS: Array<Pick<Stock, 'id' | 'name'> & { initialPrice: number }> = [
-  { id: 'tech', name: '科技股', initialPrice: 120 },
-  { id: 'food', name: '食品股', initialPrice: 80 },
-  { id: 'estate', name: '地产股', initialPrice: 200 },
-  { id: 'energy', name: '能源股', initialPrice: 150 },
-  { id: 'media', name: '传媒股', initialPrice: 100 },
-  { id: 'finance', name: '金融股', initialPrice: 260 },
+/**
+ * 股票初始定义（每局价格随机波动）。
+ * `floatShares` 是流通股本，只用作冲击成本与背景成交量的分母：按「各支市值相当」定标，
+ * 于是高价股（金融）股数少、同样一笔成交推动更大，低价股（食品）反之。
+ */
+export const STOCK_DEFS: Array<Pick<Stock, 'id' | 'name'> & { initialPrice: number; floatShares: number }> = [
+  { id: 'tech', name: '科技股', initialPrice: 120, floatShares: 1600 },
+  { id: 'food', name: '食品股', initialPrice: 80, floatShares: 2400 },
+  { id: 'estate', name: '地产股', initialPrice: 200, floatShares: 1000 },
+  { id: 'energy', name: '能源股', initialPrice: 150, floatShares: 1400 },
+  { id: 'media', name: '传媒股', initialPrice: 100, floatShares: 2000 },
+  { id: 'finance', name: '金融股', initialPrice: 260, floatShares: 900 },
 ];
 
 // 神明定义（GOD-01..12）已迁至 `./gods.ts`（波 4 起改为天数制 + 对偶转化）。

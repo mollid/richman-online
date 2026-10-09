@@ -390,13 +390,37 @@ export interface LogEntry {
   text: string;
 }
 
+/**
+ * 一个交易日的 K 线（ECON-09/10 自定扩展，玩法文档 §3.4）。
+ * 开=上一根收盘，收=当日成交价，高/低按振幅派生；量分「背景换手」与「玩家真实成交」两笔。
+ */
+export interface StockCandle {
+  /** 该根对应的 `calendar.elapsedDays` */
+  day: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  /** 当日成交量（股）= 背景量 + playerVolume */
+  volume: number;
+  /** 其中玩家真实成交的股数（买卖都计） */
+  playerVolume: number;
+}
+
 export interface Stock {
   id: string;
   name: string;
   /** 当前股价 */
   price: number;
-  /** 最近一次波动百分比（含新闻影响） */
+  /** 最近一次波动百分比（含新闻与冲击成本） */
   lastChangePct: number;
+  /**
+   * 流通股本（股）：冲击成本与背景成交量的分母。
+   * 原版无此项，按「各支市值相当」定标 —— 大盘股同样一笔成交推动更小。
+   */
+  floatShares: number;
+  /** 最近 `STOCK_CANDLE_LIMIT` 根日 K 线，末尾为当日（可能仍在增长） */
+  candles: StockCandle[];
 }
 
 export interface StockMarket {

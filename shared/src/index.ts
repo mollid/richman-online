@@ -12,6 +12,7 @@ export * from './tiles.js';
 export * from './companies.js';
 export * from './gods.js';
 export * from './godspawn.js';
+export * from './stocks.js';
 export * from './lottery.js';
 export * from './news.js';
 
