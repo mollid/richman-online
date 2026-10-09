@@ -17,7 +17,7 @@
 
 import { BOARD_SIZE } from './board.js';
 import type { GodEffectCtx } from './effect_ctx.js';
-import { GODS, currentMonthIndex, godDef, godPairKey, type GodDef } from './gods.js';
+import { GODS, currentMonthIndex, godDef, godPairKey, presentGodPairKeys, type GodDef } from './gods.js';
 import { nextRandom } from './rng.js';
 import type { BoardCell, CellType, GameState } from './types.js';
 
@@ -58,19 +58,9 @@ export function boardGodAt(state: GameState, cellId: number) {
   return state.boardGods.find((g) => g.cellId === cellId);
 }
 
-/** 此刻「占住某一对偶」的 godId 集合：棋盘驻留的 + 已经附身在玩家身上的 */
-function presentPairs(state: GameState): Set<string> {
-  const pairs = new Set<string>();
-  for (const g of state.boardGods) pairs.add(godPairKey(g.godId));
-  for (const p of state.players) {
-    if (p.god?.godId) pairs.add(godPairKey(p.god.godId));
-  }
-  return pairs;
-}
-
 /** 可现身的候选神明：排除死神、同对在场、对偶冷却中、土地公隔月冷却 */
 export function spawnableGodDefs(state: GameState): GodDef[] {
-  const present = presentPairs(state);
+  const present = presentGodPairKeys(state);
   const today = state.calendar.elapsedDays;
   const month = currentMonthIndex(state);
   return GODS.filter((def) => {

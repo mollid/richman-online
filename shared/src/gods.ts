@@ -376,18 +376,45 @@ export function applyGodTravel(ctx: GodEffectCtx, p: Player, c: BoardCell): void
   }
 }
 
+/**
+ * 此刻「占住某一对偶」的键集合：棋盘上驻留的 + 已经附身在玩家身上的。
+ *
+ * 一尊神同一时刻只能在一个地方，它的对偶也一样。这条不变式不分入口 —— 日切现身、
+ * 经过附身、神庙摇籤、请神卡、期满对偶转化，五个入口都得先看这张表。W2 当初只在
+ * 「现身」那一个入口筛过，于是神庙能把第二尊小福神直接塞到另一个人身上。
+ */
+export function presentGodPairKeys(state: GameState): Set<string> {
+  const pairs = new Set<string>();
+  for (const g of state.boardGods) pairs.add(godPairKey(g.godId));
+  for (const p of state.players) {
+    if (p.god?.godId) pairs.add(godPairKey(p.god.godId));
+  }
+  return pairs;
+}
+
+/** 神庙摇籤的候选池：排掉同对已在场的，另加 GOD-01 土地公的隔月冷却（help [40]） */
+export function summonableGodDefs(state: GameState): GodDef[] {
+  const present = presentGodPairKeys(state);
+  const month = currentMonthIndex(state);
+  return GODS.filter((def) => {
+    if (present.has(godPairKey(def.id))) return false;
+    if (def.id === 'land-god' && state.landGodCooldownMonth === month) return false;
+    return true;
+  });
+}
+
 /** 神庙摇籤：随机召唤一位神明附身（走 RNG）；土地公受隔月冷却限制（help [40]） */
 export function summonGod(ctx: GodEffectCtx, p: Player): void {
   const { state } = ctx;
-  const month = currentMonthIndex(state);
   const draw = nextRandom(state.rngState);
   state.rngState = draw.nextState;
-  const candidates = GODS.filter((g) => g.id !== 'land-god' || state.landGodCooldownMonth !== month);
-  // 全部候选都被冷却时（局内仅土地公且同月）退化为全池，保证总能附身
-  const pool = candidates.length > 0 ? candidates : GODS;
-  const def = pool[Math.floor(draw.value * pool.length)]!;
-  if (def.id === 'land-god') state.landGodCooldownMonth = month;
-  attachGod(ctx, p, def);
+  const pool = summonableGodDefs(state);
+  if (pool.length === 0) {
+    // 诸神此刻都在别处显灵：摇不到就如实说，不硬塞一尊 —— 那正是「两人同挂小福神」的成因
+    ctx.log(state, `${p.name} 入神庙摇籤，诸神此刻皆有主，无应验`);
+    return;
+  }
+  attachGod(ctx, p, pool[Math.floor(draw.value * pool.length)]!);
 }
 
 /** GOD-01..12：神明按天计时，期满对偶转化或离开（死神 13 天到期自动消失） */

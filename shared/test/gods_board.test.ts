@@ -16,11 +16,12 @@ import {
   ringDistance,
   spawnCellCandidates,
   spawnableGodDefs,
+  summonableGodDefs,
   type GameState,
   type PlayerDef,
 } from '../src/index.js';
 import { pinIndexOne, putGodOnBoard } from './helpers/state.js';
-import { MONDAY } from './helpers/golden_run.js';
+import { MONDAY, runGoldenMatch } from './helpers/golden_run.js';
 
 /**
  * 神明现身驻留棋盘（GOD 现身机制，W2）。
@@ -311,6 +312,67 @@ describe('驻留神明的清退联动', () => {
     const attached = next.players.some((p) => p.god?.godId === 'big-misfortune');
     if (!attached) {
       expect(next.godPairBanUntil[godPairKey('big-misfortune')]).toBeGreaterThanOrEqual(next.calendar.elapsedDays);
+    }
+  });
+});
+
+describe('同对不共现是一条全局不变式（不止管现身）', () => {
+  /** 附身的入口有四个：日切现身、经过附身、神庙摇籤、请神卡，外加期满对偶转化。
+   *  W2 只在「现身」那一个入口上筛了同对，其余入口照样能把第二尊同对神塞进场上
+   *  —— 实测两名玩家同时挂着「小福神·7天」。 */
+  const pairKeysOnField = (s: GameState): string[] => [
+    ...(s.boardGods ?? []).map((g) => godPairKey(g.godId)),
+    ...s.players.filter((p) => p.god?.godId).map((p) => godPairKey(p.god!.godId)),
+  ];
+
+  it('神庙摇籤不会摇到已在场的那一尊，也不会摇到它的对偶', () => {
+    const g = game(5, true);
+    const me = g.players[g.currentPlayerIndex]!;
+    // 小福神已经附在别人身上 ⇒ 大/小福神这一对整对不可再摇到
+    g.players[1]!.god = { godId: 'small-fortune', remainingDays: 7 };
+    const ids = summonableGodDefs(g).map((d) => d.id);
+    expect(ids).not.toContain('small-fortune');
+    expect(ids).not.toContain('big-fortune');
+    expect(ids).toContain('big-poverty'); // 其它对不受牵连
+    void me;
+  });
+
+  it('棋盘上驻留着大福神时，神庙摇不到小福神（同对不得一在棋盘一在人身上）', () => {
+    const g = game(5, true);
+    putGodOnBoard(g, 'big-fortune', 20);
+    expect(summonableGodDefs(g).map((d) => d.id)).not.toContain('small-fortune');
+  });
+
+  it('诸神全在场时神庙不附身，只播报「无应验」，而不是硬塞一尊', () => {
+    const g = game(5, true);
+    // 12 尊全摆满：两位玩家身上各一尊，其余全压在棋盘上（夹具不受同屏上限约束）
+    g.players[1]!.god = { godId: 'death', remainingDays: 13 };
+    g.players[2]!.god = { godId: 'land-god', remainingDays: 7 };
+    for (const def of GODS) {
+      if (def.id === 'death' || def.id === 'land-god') continue;
+      putGodOnBoard(g, def.id, 20 + def.cellId!);
+    }
+    const temple = g.board.find((c) => c.type === 'god')!;
+    g.players[0]!.position = (temple.id - 1 + BOARD_SIZE) % BOARD_SIZE;
+    g.players[0]!.diceCount = 1;
+    g.pendingFixedDice = 1; // 钉死这一手正好落在神庙格上，别被随机点数带偏
+    g.phase = 'awaiting_roll';
+    const rolled = applyAction(g, { type: 'ROLL_DICE', diceCount: 1 });
+    expect(rolled.players[0]!.position).toBe(temple.id);
+    expect(rolled.players[0]!.god).toBeNull(); // 一个都没附上
+    expect(rolled.log.some((e) => e.text.includes('无应验'))).toBe(true);
+  });
+
+  it('bot 对跑的整局轨迹里，任何一帧都不同对共现（属性测试）', () => {
+    for (const seed of [20260105, 77, 1007]) {
+      const run = runGoldenMatch({ maxTurns: 120, sampleEvery: 5, seed, collectStates: true });
+      for (const s of run.states) {
+        const keys = pairKeysOnField(s);
+        expect(
+          new Set(keys).size,
+          `seed=${seed} turn=${s.turn} 出现同对共现：${keys.join(',')}`,
+        ).toBe(keys.length);
+      }
     }
   });
 });
