@@ -1,5 +1,5 @@
 import type { ChatMessage } from './remote.js';
-import { applyAction, createGame, type DateSerial, type GameState, type PlayerAction } from '@richman/shared';
+import { applyAction, createGame, normalizeGameState, type DateSerial, type GameState, type PlayerAction } from '@richman/shared';
 import { getSettings } from '../game/settings.js';
 
 /** 会话抽象：本地热座与联机共用同一套 UI */
@@ -53,7 +53,8 @@ export function loadHotseatGame(slot = 'auto'): GameState | null {
     const raw = localStorage.getItem(`${AUTOSAVE_KEY}.${slot}`);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as { game?: GameState };
-    return parsed.game ?? null;
+    // 存档可能来自重构前的版本：补齐新增字段默认值，保证老档可继续玩且行为不变
+    return parsed.game ? normalizeGameState(parsed.game) : null;
   } catch {
     return null;
   }

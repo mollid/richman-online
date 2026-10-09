@@ -327,6 +327,20 @@ export type Phase =
   | 'awaiting_discard'  // ECON-12：手牌额满，等待玩家选择舍弃哪一张
   | 'game_over';
 
+/**
+ * 回合内子阶段（CORE-02 相位机的「回合流」那一半），与 `Phase` 正交：
+ * `Phase` 表示**现在轮到谁做什么**（玩家可见、UI 门控用），
+ * `TurnStage` 表示**当前这一回合走到第几步**（回合流程内部用）。
+ *
+ * 之所以新开一个字段而不是给 `Phase` 加值：420 个测试与全部 UI 门控都在断言 `Phase`，
+ * 把「移动中」「落格中」塞进那条枚举会牵动全局。
+ *
+ * **禁止用 `TurnStage` 参与任何规则判定** —— 老录像里没有这个字段，靠
+ * `normalizeGameState` 补默认值；一旦有规则读它，补的值就会改变老录像的行为，
+ * 破坏「同 seed 逐帧复现」。它只用于观测，以及供 AI / 托管判断回合位置。
+ */
+export type TurnStage = 'start' | 'roll' | 'move' | 'tile_resolve' | 'end';
+
 /** 小游戏状态（游戏厅随机四选一：三仙归洞 / 记忆翻牌 / 七彩气球 / 企鹅挖宝） */
 export interface MinigameState {
   kind: 'shells' | 'memory' | 'balloon' | 'penguin';
@@ -404,6 +418,8 @@ export interface GameState {
   board: BoardCell[];
   currentPlayerIndex: number;
   phase: Phase;
+  /** 回合内子阶段（见 `TurnStage` 的用途与限制） */
+  turnStage: TurnStage;
   /** 最近一次掷骰结果（用于客户端走格子动画；骰子个数随机车/汽车变化） */
   dice: number[] | null;
   turn: number;

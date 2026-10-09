@@ -255,6 +255,7 @@ function emptyState(): GameState {
     board: [],
     currentPlayerIndex: 0,
     phase: 'lobby',
+    turnStage: 'start',
     dice: null,
     turn: 0,
     round: 1,

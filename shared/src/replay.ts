@@ -1,4 +1,5 @@
 import { applyAction, createGame } from './engine.js';
+import { normalizeGameState } from './normalize.js';
 import type { DateSerial, GameState, PlayerDef } from './types.js';
 import type { PlayerAction } from './types.js';
 
@@ -26,7 +27,8 @@ export class ReplayEngine {
       name: p.player_name,
       color: p.color,
     }));
-    let state = applyAction(createGame(defs, record.seed, { startDate: record.startDate }), { type: 'START_GAME' });
+    // 外部传入的录像记录可能早于某个 GameState 新字段：先补默认值再逐帧复现
+    let state = normalizeGameState(applyAction(createGame(defs, record.seed, { startDate: record.startDate }), { type: 'START_GAME' }));
     this.states.push(state);
     for (const entry of record.actions) {
       if (entry.action.type === 'START_GAME') continue; // 已在上面应用

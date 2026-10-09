@@ -151,6 +151,7 @@ export function createGame(players: PlayerDef[], seed = Date.now() % 2147483647,
     board: structuredClone(DEFAULT_BOARD),
     currentPlayerIndex: 0,
     phase: 'lobby',
+    turnStage: 'start',
     dice: null,
     turn: 0,
     round: 1,
@@ -285,6 +286,7 @@ function checkWinner(state: GameState): void {
   if (active.length === 1) {
     state.winnerId = active[0]!.id;
     state.phase = 'game_over';
+    state.turnStage = 'end';
     // 对局结束后不再开拍，清空拍卖状态与待拍队列
     state.auction = null;
     state.auctionQueue = [];
@@ -1220,6 +1222,7 @@ function advanceTurn(state: GameState): void {
   }
   state.dice = null;
   state.phase = 'awaiting_roll';
+  state.turnStage = 'start';
 }
 
 function cellAt(state: GameState, position: number): BoardCell {
@@ -1786,8 +1789,10 @@ function drawDice(state: GameState, diceCount: number): number[] {
 function rollDice(state: GameState, action: Extract<PlayerAction, { type: 'ROLL_DICE' }>): void {
   if (state.phase !== 'awaiting_roll') throw new Error('当前不能掷骰');
   const p = currentPlayer(state);
+  state.turnStage = 'start';
   if (consumeTurnDelay(state, p)) return;
 
+  state.turnStage = 'roll';
   // 骰子个数（CORE-03）：步行 1 颗、机车 2 颗、汽车 3 颗；玩家可自选本次使用几颗（默认用满）
   const maxDice = Math.max(1, Math.min(3, p.diceCount));
   const requested = action.diceCount ?? maxDice;
@@ -1862,6 +1867,7 @@ function rollDice(state: GameState, action: Extract<PlayerAction, { type: 'ROLL_
     p.cash += PASS_START_SALARY;
     log(state, `${p.name} 经过起点，领取薪水 ¥${PASS_START_SALARY}`);
   }
+  state.turnStage = 'move';
   p.position = pos;
   // 停在公立银行当格时，由落格分派给出完整权限，不再算「路过」
   if (publicBankId !== undefined && pos === publicBankId) passedPublicBank = false;
@@ -1916,6 +1922,7 @@ function rollDice(state: GameState, action: Extract<PlayerAction, { type: 'ROLL_
   // 行进显灵·落格类（GOD-01 土地公侵占 / GOD-10 天使加盖 / GOD-11 恶魔拆屋）
   applyGodTravel(godCtx(state), p, c);
 
+  state.turnStage = 'tile_resolve';
   const landing = resolveLanding({ ...LANDING_KIT, state, self: p, cell: c, moved });
   if (landing === 'advance') advanceTurn(state);
 }
