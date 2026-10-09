@@ -454,6 +454,15 @@ export interface GameState {
   rngState: number;
   log: LogEntry[];
   winnerId: string | null;
+  /**
+   * 本局如何收的场（CORE-04 / 玩法文档 §14 第 2 项）：
+   * - `bankrupt`：对手全部破产，唯一存活者获胜（原版唯一结局）
+   * - `daylimit`：打满 `maxDays` 天，按总资产排名结算（联机新增，长局收不了口的保险）
+   * null 表示尚未结束。名次表由 UI 现算（`allAssetSummaries`），这里不另存一份。
+   */
+  endReason: 'bankrupt' | 'daylimit' | null;
+  /** 天数上限（`null` = 不限）。到点由日切钩子收场，热座默认不限 */
+  maxDays: number | null;
   /** 股票市场 */
   stockMarket: StockMarket;
   /** 遥控骰子等效果锁定的下一次骰子点数 */

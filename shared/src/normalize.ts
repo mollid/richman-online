@@ -18,6 +18,10 @@ export function normalizeGameState(state: GameState): GameState {
   state.spawnGods ??= true;
   if (!state.godPairBanUntil) state.godPairBanUntil = {};
 
+  // 结束条件（W4）：缺键按「不限天数」补 —— 上限是一种限制，旧局面没有它就继续按原规则跑
+  state.maxDays ??= null;
+  if (state.endReason === undefined) state.endReason = null;
+
   // 拍卖器换规则（W3）：老存档里记的是「连续放弃次数」`passes`，新规则按「谁让过」判定，
   // 人数无法从计数还原 ⇒ 保守当作没人让过（下一圈重新数）。只会最多多轮一轮，不会收不了口。
   const legacyAuction = state.auction as (typeof state.auction & { passes?: number }) | null;

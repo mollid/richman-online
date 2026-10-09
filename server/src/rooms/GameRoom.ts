@@ -9,6 +9,8 @@ import {
   forceGameOver,
   nextRandom,
   removePlayer,
+  resolveMaxDays,
+  ONLINE_DEFAULT_MAX_DAYS,
   type DateSerial,
   type GameState,
   type PlayerAction,
@@ -76,13 +78,17 @@ export class GameRoom extends Room {
     }
   }
 
-  onCreate(options: { seed?: number; maxPlayers?: number; startDate?: DateSerial }) {
+  onCreate(options: { seed?: number; maxPlayers?: number; startDate?: DateSerial; maxDays?: number | null }) {
     this.maxClients = Math.min(Math.max(options.maxPlayers ?? 4, 2), 4);
     this.seed = options.seed ?? Date.now() % 2147483647;
     this.botRngState = this.seed;
-    // TIME-06：建房方可在 OPTION 指定起始日期；缺省用系统日期
     this.startDate = isValidDateSerial(options.startDate) ? options.startDate : todaySerial();
-    this.game = createGame([], this.seed, { startDate: this.startDate });
+    // CORE-04 / 玩法文档 §14 第 2 项：联机默认打满 60 天就按总资产结算，长局收得了口。
+    // 房主显式传 0 / null 才是「不限天数」；没传这个参数时用默认值，而不是当成不限。
+    this.game = createGame([], this.seed, {
+      startDate: this.startDate,
+      maxDays: options.maxDays === undefined ? ONLINE_DEFAULT_MAX_DAYS : resolveMaxDays(options.maxDays),
+    });
     this.updateMetadata('lobby');
 
     this.onMessage('add_bot', (client) => {

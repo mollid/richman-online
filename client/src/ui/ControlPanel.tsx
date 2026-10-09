@@ -341,7 +341,11 @@ export function ControlPanel({
         <div className="settlement">
           <div className="winner-banner">
             <div className="winner-crown">🏆</div>
-            🏆 {game.players.find((p) => p.id === game.winnerId)?.name ?? '无人'} 获胜！
+            {game.endReason === 'daylimit'
+              ? `第 ${game.calendar.elapsedDays} 天期满，按总资产结算：${
+                  game.players.find((p) => p.id === game.winnerId)?.name ?? '第一名并列，本局平局'
+                }`
+              : `🏆 ${game.players.find((p) => p.id === game.winnerId)?.name ?? '无人'} 获胜！`}
           </div>
           <div className="settlement-final">
             <div className="panel-title">最终资产排名</div>

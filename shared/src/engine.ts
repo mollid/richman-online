@@ -107,6 +107,30 @@ import type {
   VillainKind,
 } from './types.js';
 
+/**
+ * 联机房的默认天数上限（CORE-04 / 玩法文档 §14 第 2 项）。
+ *
+ * 60 天的来处：1 天 = 全员各行动一次，四人局约 240 回合，正好落在实测 bot 四人局自然
+ * 分出胜负的 turn=259 附近 —— 长局卡住时能收口，正常对局又很少被提前截断。
+ */
+export const ONLINE_DEFAULT_MAX_DAYS = 60;
+/** 开局可选的天数上限档位（`null` = 不限；热座默认这一档） */
+export const MAX_DAY_CHOICES: ReadonlyArray<number | null> = [null, 40, ONLINE_DEFAULT_MAX_DAYS, 90];
+/** 上限的合法区间：越界值由 `resolveMaxDays` 夹回来，不为建房参数报错 */
+export const MAX_DAYS_LIMITS = { min: 10, max: 360 };
+
+/**
+ * 把客户端上报的天数上限夹到合法区间；`null` / 0 / 非法值 = 不限天数。
+ * 「没传参数」不在这里判断 —— 房主显式选「不限」和客户端漏传字段是两回事，
+ * 缺省值由调用方（GameRoom）决定。
+ */
+export function resolveMaxDays(value: unknown): number | null {
+  if (value === null || value === undefined) return null;
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return Math.min(MAX_DAYS_LIMITS.max, Math.max(MAX_DAYS_LIMITS.min, Math.floor(n)));
+}
+
 export interface CreateGameOptions {
   /** 起始日期；缺省用固定常量，保证 shared 不读系统时钟 */
   startDate?: DateSerial;
@@ -116,6 +140,12 @@ export interface CreateGameOptions {
    * （同 `pinIndexOne` 隔离物价指数）。
    */
   spawnGods?: boolean;
+  /**
+   * 天数上限（CORE-04 / 玩法文档 §14 第 2 项）：打满 n 天后按总资产结算收场。
+   * `null` 或不填 = 不限（只有「对手全破产」这一条结束路径）。
+   * 联机房由 `GameRoom` 填 `ONLINE_DEFAULT_MAX_DAYS`，热座由开局面板选。
+   */
+  maxDays?: number | null;
 }
 
 /** 新玩家的初始字段（createGame 与 addPlayer 共用） */
@@ -168,6 +198,8 @@ export function createGame(players: PlayerDef[], seed = Date.now() % 2147483647,
     rngState: seed >>> 0,
     log: [{ turn: 0, text: '游戏房间已创建' }],
     winnerId: null,
+    endReason: null,
+    maxDays: options.maxDays ?? null,
     stockMarket: {
       stocks: STOCK_DEFS.map((s) => ({ id: s.id, name: s.name, price: s.initialPrice, lastChangePct: 0 })),
     },
@@ -298,14 +330,79 @@ function stockById(state: GameState, stockId: string) {
 function checkWinner(state: GameState): void {
   const active = state.players.filter((p) => !p.bankrupt);
   if (active.length === 1) {
-    state.winnerId = active[0]!.id;
-    state.phase = 'game_over';
-    state.turnStage = 'end';
-    // 对局结束后不再开拍，清空拍卖状态与待拍队列
-    state.auction = null;
-    state.auctionQueue = [];
-    log(state, `${active[0]!.name} 获得最终胜利！`);
+    endGame(state, active[0]!.id, 'bankrupt', `${active[0]!.name} 获得最终胜利！`);
   }
+}
+
+/** 到期结算名次上的一行（只在本文件内用；结算面板的名次表由 `allAssetSummaries` 现算） */
+interface RankedPlayer {
+  p: Player;
+  rank: number;
+  assets: number;
+}
+
+/**
+ * 到期结算的排名口径：总资产 → 现金 → 存款 → 座位序，倒闭者一律排在存活者之后。
+ *
+ * 现金做第一顺位决胜项：总资产里的地价部分在没卖出之前只是账面值，真金白银多的人该排前面。
+ * 三项全等才算并列（同名次），不靠座位序硬分高下。
+ */
+function rankPlayers(state: GameState): RankedPlayer[] {
+  const rows = state.players
+    .map((p, seat) => ({ p, seat, assets: totalAssets(state, p) }))
+    .sort((a, b) => {
+      if (a.p.bankrupt !== b.p.bankrupt) return a.p.bankrupt ? 1 : -1;
+      return b.assets - a.assets || b.p.cash - a.p.cash || b.p.deposit - a.p.deposit || a.seat - b.seat;
+    });
+  const out: RankedPlayer[] = [];
+  rows.forEach((row, i) => {
+    const prev = i > 0 ? rows[i - 1]! : null;
+    const tied =
+      !!prev &&
+      !row.p.bankrupt &&
+      prev.assets === row.assets &&
+      prev.p.cash === row.p.cash &&
+      prev.p.deposit === row.p.deposit;
+    out.push({ p: row.p, assets: row.assets, rank: tied ? out[i - 1]!.rank : i + 1 });
+  });
+  return out;
+}
+
+/**
+ * 收场：把 winner 与收场原因一次写定。两条结束路径（对手全破产 / 天数到点）共用这一个入口，
+ * 免得「结束时要做什么」（停拍、清待拍队列、落日志）在两处各写一边。
+ */
+function endGame(state: GameState, winnerId: string | null, reason: 'bankrupt' | 'daylimit', line: string): void {
+  state.phase = 'game_over';
+  state.turnStage = 'end';
+  state.winnerId = winnerId;
+  state.endReason = reason;
+  // 对局结束后不再开拍，清空拍卖状态与待拍队列
+  state.auction = null;
+  state.auctionQueue = [];
+  log(state, line);
+}
+
+/**
+ * 天数上限收场（CORE-04 的联机新增，玩法文档 §14 第 2 项）：打满 `maxDays` 天后按总资产结算。
+ *
+ * 排在 DAY_HOOKS 最前：到点这一天不该再发股东分红、计息或现神明 —— 否则「第 60 天」会多结
+ * 一次利息与股利，而那笔钱正是名次要算的东西。
+ */
+function dayLimitHook(state: GameState): void {
+  if (state.maxDays === null || state.calendar.elapsedDays < state.maxDays) return;
+  const ranked = rankPlayers(state);
+  const leaders = ranked.filter((r) => r.rank === 1 && !r.p.bankrupt);
+  const winner = leaders.length === 1 ? leaders[0]! : null;
+  const top3 = ranked.slice(0, 3).map((r) => `${r.p.name} ¥${r.assets}`).join('、');
+  endGame(
+    state,
+    winner?.p.id ?? null,
+    'daylimit',
+    `第 ${state.calendar.elapsedDays} 天期满，按总资产结算：${
+      winner ? `${winner.p.name} 以 ¥${winner.assets} 居首获胜（前三 ${top3}）` : `第一名并列（${top3}），本局平局`
+    }`,
+  );
 }
 
 function bankruptPlayer(state: GameState, p: Player): void {
@@ -1159,6 +1256,8 @@ function villainActivityHook(state: GameState): void {
 }
 
 const DAY_HOOKS: DayHook[] = [
+  // 天数上限收场排最前：到点那天不该再发股利、计息或现神明（详见 dayLimitHook）
+  dayLimitHook,
   noticeHolidayHook,
   dividendAndLotteryHook,
   monthEndInterestHook,

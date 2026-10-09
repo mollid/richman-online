@@ -55,7 +55,12 @@ export class ColyseusSession implements GameSession {
   }
 
   /** 创建或加入房间并建立会话（TIME-06：建房时上报 OPTION 起始日期） */
-  static async connect(opts: { playerName: string; roomId?: string; seed?: number }): Promise<ColyseusSession> {
+  static async connect(opts: {
+    playerName: string;
+    roomId?: string;
+    seed?: number;
+    maxDays?: number | null;
+  }): Promise<ColyseusSession> {
     const client = new Client(serverUrl());
     const token = localStorage.getItem('richman.token') ?? undefined;
     const room = opts.roomId
@@ -65,6 +70,8 @@ export class ColyseusSession implements GameSession {
           seed: opts.seed,
           token,
           startDate: getSettings().startDate ?? undefined,
+          // 建房者选的天数上限：null 要原样送达（那是「显式不限」），所以只在有值时才带这个键
+          ...(opts.maxDays === undefined ? {} : { maxDays: opts.maxDays }),
         });
     return new ColyseusSession(room, opts.playerName, emptyState());
   }
@@ -266,6 +273,8 @@ function emptyState(): GameState {
     rngState: 0,
     log: [{ turn: 0, text: '正在同步房间状态…' }],
     winnerId: null,
+    endReason: null,
+    maxDays: null,
     stockMarket: { stocks: [] },
     pendingFixedDice: null,
     roadblocks: [],

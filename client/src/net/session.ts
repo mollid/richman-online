@@ -74,7 +74,7 @@ export class LocalHotseatSession implements GameSession {
   private listeners = new Set<(g: GameState) => void>();
   readonly myPlayerId = null;
 
-  constructor(playerCount: number, seed = Date.now() % 2147483647, resume?: GameState | null) {
+  constructor(playerCount: number, seed = Date.now() % 2147483647, resume?: GameState | null, maxDays: number | null = null) {
     if (resume) {
       // UI-03 读档：直接沿用存档状态
       this.game = resume;
@@ -87,7 +87,8 @@ export class LocalHotseatSession implements GameSession {
       name: names[i]!,
       color: colors[i]!,
     }));
-    this.game = applyAction(createGame(players, seed, { startDate: resolveStartDate() }), { type: 'START_GAME' });
+    // CORE-04 / §14 第 2 项：热座默认不限天数（结束条件仍只有「对手全破产」），上限由开局面板选
+    this.game = applyAction(createGame(players, seed, { startDate: resolveStartDate(), maxDays }), { type: 'START_GAME' });
   }
 
   getGame(): GameState {

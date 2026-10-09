@@ -1,5 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { availableActions, type GameState, type PlayerAction } from '@richman/shared';
+import {
+  availableActions,
+  MAX_DAY_CHOICES,
+  ONLINE_DEFAULT_MAX_DAYS,
+  type GameState,
+  type PlayerAction,
+} from '@richman/shared';
 import { BoardRenderer } from './game/BoardRenderer.js';
 import { sfx } from './game/sfx.js';
 import {
@@ -56,6 +62,28 @@ const SIDEBAR_TABS: Array<[SidebarTab, string]> = [
   ['log', '日志'],
 ];
 
+/** 天数上限的显示文案（`null` = 不限，只靠「对手全破产」收场） */
+function dayLimitLabel(days: number | null): string {
+  return days === null ? '不限' : `${days} 天`;
+}
+
+/**
+ * 天数上限选择（CORE-04 / 玩法文档 §14 第 2 项）。
+ * 热座默认「不限」（复刻原版的唯一结束条件），联机默认 60 天（长局收得了口）。
+ */
+function DayLimitRow({ value, onChange }: { value: number | null; onChange: (days: number | null) => void }) {
+  return (
+    <div className="player-count-row day-limit-row">
+      <span className="setup-title">天数上限</span>
+      {MAX_DAY_CHOICES.map((days) => (
+        <button key={days ?? 'none'} className={value === days ? 'primary' : ''} onClick={() => onChange(days)}>
+          {dayLimitLabel(days)}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export default function App() {
   const [session, setSession] = useState<GameSession | null>(null);
   const [replayRecord, setReplayRecord] = useState<ReplayRecord | null>(null);
@@ -70,10 +98,10 @@ export default function App() {
   useEffect(() => registerAction('open_settings', () => setShowSettings(true)), [registerAction]);
   useEffect(() => registerAction('open_help', () => setShowHelp(true)), [registerAction]);
 
-  const startLocal = (playerCount: number) => {
+  const startLocal = (playerCount: number, maxDays: number | null) => {
     session?.destroy();
     setConnectError('');
-    setSession(new LocalHotseatSession(playerCount));
+    setSession(new LocalHotseatSession(playerCount, undefined, null, maxDays));
   };
 
   // UI-03 存储 / 读取：手动存 / 读档（仅热座模式）
@@ -112,11 +140,11 @@ export default function App() {
     }
   };
 
-  const connectRemote = async (playerName: string, roomId?: string) => {
+  const connectRemote = async (playerName: string, roomId?: string, maxDays?: number | null) => {
     setConnecting(true);
     setConnectError('');
     try {
-      const next = await ColyseusSession.connect({ playerName, roomId: roomId?.trim() || undefined });
+      const next = await ColyseusSession.connect({ playerName, roomId: roomId?.trim() || undefined, maxDays });
       session?.destroy();
       setSession(next);
     } catch (e) {
@@ -200,8 +228,8 @@ function SetupScreen({
   onOpenSettings,
   onOpenHelp,
 }: {
-  onStartLocal: (playerCount: number) => void;
-  onConnect: (playerName: string, roomId?: string) => void;
+  onStartLocal: (playerCount: number, maxDays: number | null) => void;
+  onConnect: (playerName: string, roomId?: string, maxDays?: number | null) => void;
   onResume: () => void;
   onWatchReplay: (recordId: string) => void;
   connecting: boolean;
@@ -214,6 +242,9 @@ function SetupScreen({
 }) {
   const [mode, setMode] = useState<SetupMode>('local');
   const [playerCount, setPlayerCount] = useState(2);
+  // 天数上限（CORE-04 / §14 第 2 项）：热座默认不限，联机默认 60 天
+  const [localMaxDays, setLocalMaxDays] = useState<number | null>(null);
+  const [onlineMaxDays, setOnlineMaxDays] = useState<number | null>(ONLINE_DEFAULT_MAX_DAYS);
   const [playerName, setPlayerName] = useState('');
   const [roomId, setRoomId] = useState('');
   const [rooms, setRooms] = useState<RoomSummary[]>([]);
@@ -311,7 +342,8 @@ function SetupScreen({
               </button>
             ))}
           </div>
-          <button className="primary start-btn" onClick={() => onStartLocal(playerCount)}>
+          <DayLimitRow value={localMaxDays} onChange={setLocalMaxDays} />
+          <button className="primary start-btn" onClick={() => onStartLocal(playerCount, localMaxDays)}>
             开始游戏
           </button>
         </div>
@@ -357,10 +389,11 @@ function SetupScreen({
             value={playerName}
             onChange={(e) => setPlayerName(e.target.value)}
           />
+          <DayLimitRow value={onlineMaxDays} onChange={setOnlineMaxDays} />
           <button
             className="primary start-btn"
             disabled={!playerName.trim() || connecting}
-            onClick={() => onConnect(playerName.trim())}
+            onClick={() => onConnect(playerName.trim(), undefined, onlineMaxDays)}
           >
             {connecting ? '连接中…' : '创建房间'}
           </button>

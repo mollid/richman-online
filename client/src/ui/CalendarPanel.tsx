@@ -25,6 +25,12 @@ export function CalendarPanel({ game }: { game: GameState }) {
       </div>
       <div className="calendar-sub">
         <span>第 {date.dayIndex + 1} 天</span>
+        {/* 天数上限（W4）：让玩家看得见这局还剩几天可打；不限时这一格整个不显示 */}
+        {game.maxDays !== null && (
+          <span className={`badge ${game.maxDays - game.calendar.elapsedDays <= 5 ? 'dividend' : ''}`}>
+            对局第 {game.calendar.elapsedDays + 1} / {game.maxDays} 天
+          </span>
+        )}
         {date.isHoliday && <span className="badge holiday">例假·休市</span>}
         {date.isDividendDay && <span className="badge dividend">分红日</span>}
         {date.isMonthEnd && <span className="badge interest">计息日</span>}
