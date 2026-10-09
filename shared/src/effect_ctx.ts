@@ -62,6 +62,10 @@ export interface EffectKit {
   ): boolean;
   attachGod(state: GameState, p: Player, def: GodDef): void;
   nearestGodFor(p: Player): GodDef;
+  /** 抽一张机会卡（大/小福神显灵与机会格共用同一条抽卡管线） */
+  drawChanceCard(state: GameState, p: Player, source?: string): void;
+  /** 机会格 / 卡片屋 / 福神的抽卡入口（额满时挂起 awaiting_discard） */
+  drawChanceCard(state: GameState, p: Player, source?: string): void;
   /** 在列表中确定性随机取一项（消耗一次抽数） */
   randomPick<T>(state: GameState, items: T[]): T | undefined;
   /** 全盘所有已建成（grade > 1）的建筑引用 */
@@ -150,4 +154,13 @@ export interface NewsEffectCtx extends EffectKit {
   state: GameState;
   def: NewsEventDef;
   params: Partial<Record<'street' | 'player' | 'company' | 'stock' | 'amount', string>>;
+}
+
+/**
+ * 神明行为上下文：神明的附身一次性结算、行进显灵（抵租 / 侵占 / 加盖 / 拆屋）、
+ * 日切计时与对偶转化都读 `p.god` 并需要写日志、扣款、抽卡，故与效果族共用同一份注入。
+ * 神明的**数据**（`GODS` / `GodDef`）留在 `gods.ts`，此处只补它的**行为**依赖。
+ */
+export interface GodEffectCtx extends EffectKit {
+  state: GameState;
 }

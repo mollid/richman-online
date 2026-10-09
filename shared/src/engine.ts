@@ -14,12 +14,23 @@ import {
   TREASURE_POINTS,
 } from './board.js';
 import {
-  DEATH_DURATION_DAYS, GODS, godDef, type GodDef } from './gods.js';
+  applyGodRentModifier,
+  applyGodTravel,
+  attachGod,
+  godBlocksInvestment,
+  godDef,
+  godDoublesBuild,
+  godFreeLandPurchase,
+  godTickHook,
+  nearestGodFor,
+  summonDeathOnAvenger,
+  summonGod,
+} from './gods.js';
 import { addMonths, DEFAULT_START_DATE, gameDate, toSerial } from './calendar.js';
 import { landPrice, landRent, landUpgradeCost, scaled, totalAssets } from './economy.js';
 import { CARDS, CHANCE_CARD_POOL, SHOP_CARD_IDS } from './cards.js';
 import { ITEMS, SHOP_ITEM_IDS, STARTING_ITEMS } from './items.js';
-import type { EffectKit } from './effect_ctx.js';
+import type { EffectKit, GodEffectCtx } from './effect_ctx.js';
 import { nextRandom, rollDie } from './rng.js';
 import { drawWinningNumber, isValidLotteryNumber, LOTTERY_TICKET_COST } from './lottery.js';
 import {
@@ -1152,7 +1163,7 @@ const DAY_HOOKS: DayHook[] = [
   financingCheckHook,
   expireTimedEffectsHook,
   researchTickHook,
-  godTickHook,
+  (state) => godTickHook(godCtx(state)),
   dogActivityHook,
   villainActivityHook,
 ];
@@ -1229,229 +1240,14 @@ function cellAt(state: GameState, position: number): BoardCell {
   return c;
 }
 
-/** 确定性取 [min, max] 闭区间整数（附身效果数值用） */
-function godRoll(state: GameState, min: number, max: number): number {
-  const draw = nextRandom(state.rngState);
-  state.rngState = draw.nextState;
-  return min + Math.floor(draw.value * (max - min + 1));
-}
-
-/** 随机遗失 n 张手牌（GOD-08/09），返回遗失的卡片 id */
-function loseRandomCards(state: GameState, p: Player, n: number): string[] {
-  const lost: string[] = [];
-  for (let i = 0; i < n && p.cards.length > 0; i++) {
-    lost.push(p.cards.splice(godRoll(state, 0, p.cards.length - 1), 1)[0]!);
-  }
-  return lost;
-}
-
-/** 神庙随机召唤：从 12 尊中确定性地抽一位附身 */
 /**
- * 请神卡（CARD-23）：取「视窗范围内最靠近自己」的一位神明（help/文档 CARD-23）。
- * 原版按棋盘距离取最近，改为纯计算（零抽数）；并列时取定义序靠前者。
+ * 神明行为（GOD-01..12 的附身结算 / 行进显灵 / 日切计时 / 死神降临）在 `gods.ts`，
+ * 与它的数据定义同处一处；此处只负责把引擎能力集合注入进去。
  */
-function nearestGodFor(p: Player): GodDef {
-  const dist = (cellId: number): number => {
-    const d = Math.abs(cellId - p.position);
-    return Math.min(d, BOARD_SIZE - d);
-  };
-  let best = GODS[0]!;
-  let bestDist = Infinity;
-  for (const def of GODS) {
-    const d = dist(def.cellId ?? 5);
-    if (d < bestDist) {
-      bestDist = d;
-      best = def;
-    }
-  }
-  return best;
+function godCtx(state: GameState): GodEffectCtx {
+  return { ...EFFECT_KIT, state };
 }
 
-/** 神庙摇籤：随机召唤一位神明附身（走 RNG）；土地公受隔月冷却限制（help [40]） */
-function summonGod(state: GameState, p: Player): void {
-  const month = currentMonthIndex(state);
-  const draw = nextRandom(state.rngState);
-  state.rngState = draw.nextState;
-  const candidates = GODS.filter((g) => g.id !== 'land-god' || state.landGodCooldownMonth !== month);
-  // 全部候选都被冷却时（局内仅土地公且同月）退化为全池，保证总能附身
-  const pool = candidates.length > 0 ? candidates : GODS;
-  const def = pool[Math.floor(draw.value * pool.length)]!;
-  if (def.id === 'land-god') state.landGodCooldownMonth = month;
-  attachGod(state, p, def);
-}
-
-/** 当前自然月的序号（跨月即变化，用于 GOD-01 隔月冷却） */
-function currentMonthIndex(state: GameState): number {
-  const d = gameDate(state);
-  return d.year * 12 + d.month;
-}
-
-/** 神明附身（含期满对偶转化）：设置计时并一次性结算附身效果（GOD §8.1） */
-function attachGod(state: GameState, p: Player, def: GodDef): void {
-  p.god = { godId: def.id, remainingDays: def.durationDays };
-  log(state, `${def.name} 附身 ${p.name}！${def.possession}（持续 ${def.durationDays} 天）`);
-  applyGodPossession(state, p, def);
-}
-
-/** 附身效果（一次性结算） */
-function applyGodPossession(state: GameState, p: Player, def: GodDef): void {
-  switch (def.id) {
-    case 'big-wealth': {
-      const gain = scaled(state, godRoll(state, 1000, 3999));
-      p.cash += gain;
-      log(state, `大财神显灵，${p.name} 意外获得 ¥${gain}`);
-      break;
-    }
-    case 'small-wealth': {
-      const each = scaled(state, godRoll(state, 100, 999));
-      log(state, `小财神显灵，${p.name} 向每位对手收取 ¥${each}`);
-      for (const other of state.players) {
-        if (other.id === p.id || other.bankrupt) continue;
-        pay(state, other, each, p, { reason: 'god' });
-      }
-      break;
-    }
-    case 'big-fortune': {
-      drawChanceCard(state, p, '大福神');
-      drawChanceCard(state, p, '大福神');
-      break;
-    }
-    case 'small-fortune': {
-      drawChanceCard(state, p, '小福神');
-      break;
-    }
-    case 'big-poverty': {
-      const loss = scaled(state, godRoll(state, 1000, 3999));
-      log(state, `大穷神作祟，${p.name} 损失 ¥${loss}`);
-      payCash(state, p, loss, null, 'god');
-      break;
-    }
-    case 'small-poverty': {
-      const each = scaled(state, godRoll(state, 100, 999));
-      log(state, `小穷神作祟，${p.name} 送给每位对手 ¥${each}`);
-      for (const other of state.players) {
-        if (other.id === p.id || other.bankrupt) continue;
-        pay(state, p, each, other, { reason: 'god' });
-        if (p.bankrupt) break;
-      }
-      break;
-    }
-    case 'big-misfortune': {
-      const lost = loseRandomCards(state, p, Math.floor(p.cards.length / 2));
-      log(state, `大衰神作祟，${p.name} 遗失 ${lost.length} 张卡片（剩余 ${p.cards.length} 张）`);
-      break;
-    }
-    case 'small-misfortune': {
-      const lost = loseRandomCards(state, p, 1);
-      log(state, `小衰神作祟，${p.name}${lost.length > 0 ? '遗失一张卡片' : '手牌已空，无卡可失'}`);
-      break;
-    }
-    case 'death': {
-      const cardCount = p.cards.length;
-      const itemCount = Object.values(p.items).reduce((a, b) => a + b, 0);
-      p.cards = [];
-      p.items = {};
-      const loss = scaled(state, 2000);
-      log(state, `死神降临！${p.name} 遗失全部 ${cardCount} 张卡片与 ${itemCount} 件道具，并遭逢一连串倒霉事损失 ¥${loss}`);
-      payCash(state, p, loss, null, 'god');
-      break;
-    }
-    default:
-      // 土地公 / 天使 / 恶魔：效果在移动路径上被动生效（applyGodTravel）
-      break;
-  }
-}
-
-/**
- * 行进显灵·租金类（GOD-02/03/06/07）：返回调整后的应付过路费；返回 0 表示完全抵赖。
- */
-function applyGodRentModifier(state: GameState, p: Player, rent: number, cellName: string): number {
-  const id = p.god?.godId;
-  if (!id || rent <= 0) return rent;
-  const name = godDef(id)?.name ?? '神明';
-  if (id === 'land-god' || id === 'big-wealth') {
-    log(state, `${name}显灵，${p.name} 抵赖了「${cellName}」的全部租金`);
-    return 0;
-  }
-  if (id === 'small-wealth') {
-    const half = Math.floor(rent / 2);
-    log(state, `${name}显灵，「${cellName}」租金减半至 ¥${half}`);
-    return half;
-  }
-  if (id === 'big-poverty' || id === 'small-poverty') {
-    log(state, `${name}显灵，「${cellName}」租金加倍至 ¥${rent * 2}`);
-    return rent * 2;
-  }
-  return rent;
-}
-
-/**
- * 行进显灵·落格类（GOD-01 土地公侵占 / GOD-10 天使加盖 / GOD-11 恶魔拆屋）：
- * 在落格结算前对当格生效。
- */
-function applyGodTravel(state: GameState, p: Player, c: BoardCell): void {
-  const id = p.god?.godId;
-  if (!id) return;
-  if (id === 'land-god') {
-    if ((c.type === 'property' || c.type === 'commercial') && c.price !== undefined && !cellOwner(state, c.id)) {
-      p.properties.push({ cellId: c.id, grade: 1 });
-      log(state, `土地公显灵，${p.name} 将无主之地「${c.name}」占为己有`);
-    }
-    return;
-  }
-  if (id !== 'angel' && id !== 'devil') return;
-  const owned = cellOwner(state, c.id);
-  if (!owned) return;
-  const prop = owned.property;
-  if (c.type === 'commercial' && !prop.facility) return;
-  if (id === 'angel') {
-    if (prop.grade >= MAX_GRADE) return;
-    prop.grade = (prop.grade + 1) as 1 | 2 | 3 | 4 | 5;
-    log(state, `天使显灵，「${c.name}」加盖一层至 ${prop.grade} 级`);
-  } else {
-    if (prop.grade <= 1) return;
-    prop.grade = (prop.grade - 1) as 1 | 2 | 3 | 4 | 5;
-    log(state, `恶魔显灵，「${c.name}」被拆掉一层至 ${prop.grade} 级`);
-  }
-}
-
-/** 行进显灵辅助：买地完全免费（GOD-04 大福神） */
-function godFreeLandPurchase(p: Player): boolean {
-  return p.god?.godId === 'big-fortune';
-}
-
-/** 行进显灵辅助：买地流标、投资失败（GOD-08/09 衰神） */
-function godBlocksInvestment(p: Player): boolean {
-  return p.god?.godId === 'big-misfortune' || p.god?.godId === 'small-misfortune';
-}
-
-/** 行进显灵辅助：盖房投资加倍（GOD-04/05 大/小福神） */
-function godDoublesBuild(p: Player): boolean {
-  return p.god?.godId === 'big-fortune' || p.god?.godId === 'small-fortune';
-}
-
-/** GOD-01..12：神明按天计时，期满对偶转化或离开（死神 13 天到期自动消失） */
-function godTickHook(state: GameState): void {
-  for (const p of state.players) {
-    if (isGameOver(state)) return;
-    if (p.bankrupt || !p.god) continue;
-    const current = godDef(p.god.godId);
-    if (!current) {
-      p.god = null;
-      continue;
-    }
-    p.god.remainingDays -= 1;
-    if (p.god.remainingDays > 0) continue;
-    const next = current.transformsTo ? godDef(current.transformsTo) : undefined;
-    p.god = null;
-    if (next) {
-      log(state, `${current.name} 期满，对偶转化为 ${next.name}`);
-      attachGod(state, p, next);
-    } else {
-      log(state, `${current.name} 离开了 ${p.name}`);
-    }
-  }
-}
 
 /**
  * 抽卡（机会格 / 卡片屋；ECON-12 卡片上限 15 张）。
@@ -1486,32 +1282,6 @@ function resolvePendingCard(state: GameState): void {
   state.phase = 'awaiting_action';
 }
 
-/**
- * GOD-12 死神附身于「复仇者」（UI-13 认输投降：认输者指定的死神落点）。
- *
- * 原版 help[51]「死神附身時，不但會遺失所有卡片道具，還會發生一連串倒楣的事情。為期十三天」。
- * 死神是被认输者**指名**落在复仇者头上的，因此倒霉事**加倍**（multiplier = 2）：
- * 1. 清空全部卡片与道具；
- * 2. 立刻扣一笔「死神索命」损失；
- * 3. 进入霉运状态 13 天，期间负面事件与租金按2 倍放大；
- * 4. 死神本体附身 13 天（GOD-12 期满自动消失，不转化）。
- */
-function summonDeathOnAvenger(state: GameState, avenger: Player, death: GodDef | undefined): void {
-  const cards = avenger.cards.length;
-  const items = Object.values(avenger.items).reduce((a, b) => a + b, 0);
-  avenger.cards = [];
-  avenger.items = {};
-  avenger.god = { godId: 'death', remainingDays: death?.durationDays ?? DEATH_DURATION_DAYS };
-  // 霉运加倍：13 天内倒霉事按 2 倍计
-  avenger.unlucky = { daysLeft: DEATH_DURATION_DAYS, multiplier: 2 };
-  const loss = scaled(state, 2000 * 2); // 死神索命，加倍
-  log(
-    state,
-    `【死神附身】${avenger.name} 被推举为复仇者：遗失全部 ${cards} 张卡片与 ${items} 件道具，` +
-      `并陷入 ${DEATH_DURATION_DAYS} 天霉运（倒霉事**加倍**），当下即损失 ¥${loss}`,
-  );
-  payCash(state, avenger, loss, null, 'god');
-}
 
 /** UI-13：认输时可指定的复仇者候选（存活、非当前玩家）；不可认输时为空 */
 function revengeCandidates(state: GameState): Player[] {
@@ -1568,7 +1338,7 @@ function surrender(state: GameState, revengeTargetId: string): void {
   log(state, `${p.name} 已退出对局`);
 
   // 死神附身于复仇者：清空卡片道具 + 霉运加倍 13 天 + 索命损失
-  summonDeathOnAvenger(state, avenger, godDef('death'));
+  summonDeathOnAvenger(godCtx(state), avenger, godDef('death'));
   state.phase = 'awaiting_roll';
   checkWinner(state);
   if (!isGameOver(state)) {
@@ -2142,7 +1912,7 @@ function rollDice(state: GameState, action: Extract<PlayerAction, { type: 'ROLL_
   const c = cellAt(state, pos);
 
   // 行进显灵·落格类（GOD-01 土地公侵占 / GOD-10 天使加盖 / GOD-11 恶魔拆屋）
-  applyGodTravel(state, p, c);
+  applyGodTravel(godCtx(state), p, c);
 
   if (c.type === 'start') {
     log(state, `${p.name} 正好停在起点`);
@@ -2229,7 +1999,7 @@ function rollDice(state: GameState, action: Extract<PlayerAction, { type: 'ROLL_
 
   if (c.type === 'god') {
     log(state, `${p.name} 进入神庙祈福`);
-    summonGod(state, p);
+    summonGod(godCtx(state), p);
     advanceTurn(state);
     return;
   }
@@ -2362,7 +2132,7 @@ function rollDice(state: GameState, action: Extract<PlayerAction, { type: 'ROLL_
       log(state, `「${c.name}」所在的街道正在涨价，过路费加倍`);
     }
     // 行进显灵·租金类（抵赖 / 减半 / 加倍）
-    rent = applyGodRentModifier(state, p, rent, c.name);
+    rent = applyGodRentModifier(godCtx(state), p, rent, c.name);
     // GOD-12 霉运：付出去的过路费按霉运倍率上浮（倒霉事加倍）
     const bad = unluckyMultiplier(p);
     if (bad > 1) {
@@ -2445,7 +2215,7 @@ function rollDice(state: GameState, action: Extract<PlayerAction, { type: 'ROLL_
     if (prop.facility === 'gas') {
       // EST-11 / TILE-05：按行走步数 × 交通工具等级收费
       const level = vehicleLevel(p);
-      const fee = applyGodRentModifier(state, p, gasFee(state, moved, level), c.name);
+      const fee = applyGodRentModifier(godCtx(state), p, gasFee(state, moved, level), c.name);
       if (fee <= 0) {
         advanceTurn(state);
         return;
@@ -2464,7 +2234,7 @@ function rollDice(state: GameState, action: Extract<PlayerAction, { type: 'ROLL_
     const spin = nextRandom(state.rngState);
     state.rngState = spin.nextState;
     const multiplier = 1 + Math.floor(spin.value * 3); // 1..3 档
-    const amount = applyGodRentModifier(state, p, scaled(state, facilitySpendBase(c, prop.grade) * multiplier), c.name);
+    const amount = applyGodRentModifier(godCtx(state), p, scaled(state, facilitySpendBase(c, prop.grade) * multiplier), c.name);
     let days = 0;
     if (prop.facility === 'hotel') {
       const rest = nextRandom(state.rngState);
@@ -3357,8 +3127,9 @@ const EFFECT_KIT: EffectKit = {
   isBankCell,
   detonate,
   beginAuction,
-  attachGod,
+  attachGod: (state, p, def) => attachGod(godCtx(state), p, def),
   nearestGodFor,
+  drawChanceCard,
   randomPick,
   builtProperties,
   destroyBuilding,
