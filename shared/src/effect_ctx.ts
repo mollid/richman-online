@@ -68,6 +68,20 @@ export interface EffectKit {
   builtProperties(state: GameState): BuildingRef[];
   /** 把一处建筑夷为平地（降回 1 级） */
   destroyBuilding(ref: BuildingRef): void;
+  isGameOver(state: GameState): boolean;
+  /** 路段的展示名 */
+  streetLabel(state: GameState, street: string): string;
+  /** 至少被一名玩家持有的路段列表 */
+  ownedStreets(state: GameState): string[];
+  /** 全部无主可购地格 */
+  unownedLandCells(state: GameState): BoardCell[];
+  /** 持有至少一块地的存活玩家 */
+  playersWithLand(state: GameState): Player[];
+  /** 持有至少一股的存活玩家 */
+  playersWithShares(state: GameState): Player[];
+  /** 某玩家的总持股数 */
+  totalSharesOf(state: GameState, p: Player): number;
+  isStockSuspended(state: GameState, stockId: string): boolean;
 }
 
 export type CardAction = Extract<PlayerAction, { type: 'USE_CARD' }>;
@@ -123,13 +137,17 @@ export interface FateEffectCtx extends EffectKit {
 }
 
 /**
- * 新闻事件上下文。新闻作用于全盘或随机玩家，没有「使用者」概念，
- * 故不含 `self`；目标由效果体自己用 `randomPick` 选取。
+ * 新闻事件上下文。新闻作用于全盘或随机玩家，没有「使用者」概念，故不含 `self`；
+ * 目标由效果体自己用 `randomPick` 选取。
+ *
+ * `params` 是牌面文本的占位符表（`{street}` / `{player}` / `{company}` / `{stock}` /
+ * `{amount}`），效果体往里填，最后由 `renderNewsText` 渲染。
+ * 效果体返回日志括弧里的补充说明；**返回 null 表示对局已结束**，引擎据此跳过这条
+ * 新闻日志 —— 税收类事件逐人征收时若有人因此破产倒闭，原实现就是在中途 return
+ * 而不再播报，这个语义必须保住。
  */
 export interface NewsEffectCtx extends EffectKit {
   state: GameState;
   def: NewsEventDef;
-  /** 已按物价指数缩放的金额 */
-  money: number;
-  renderParams: Record<string, string | number>;
+  params: Partial<Record<'street' | 'player' | 'company' | 'stock' | 'amount', string>>;
 }

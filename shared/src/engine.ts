@@ -16,7 +16,7 @@ import {
 import {
   DEATH_DURATION_DAYS, GODS, godDef, type GodDef } from './gods.js';
 import { addMonths, DEFAULT_START_DATE, gameDate, toSerial } from './calendar.js';
-import { landPrice, landRent, landUpgradeCost, propertyValue, scaled, totalAssets } from './economy.js';
+import { landPrice, landRent, landUpgradeCost, scaled, totalAssets } from './economy.js';
 import { CARDS, CHANCE_CARD_POOL, SHOP_CARD_IDS } from './cards.js';
 import { ITEMS, SHOP_ITEM_IDS, STARTING_ITEMS } from './items.js';
 import type { EffectKit } from './effect_ctx.js';
@@ -24,6 +24,7 @@ import { nextRandom, rollDie } from './rng.js';
 import { drawWinningNumber, isValidLotteryNumber, LOTTERY_TICKET_COST } from './lottery.js';
 import {
   NEWS_CATEGORY_LABEL,
+  NEWS_EFFECTS,
   NEWS_EVENT_COUNT,
   renderNewsText,
   supportedNewsEvents,
@@ -358,10 +359,6 @@ const LOTTERY_PENALTY_REASONS: ReadonlySet<PayReason> = new Set<PayReason>([
  * 因此不改变 RNG 抽数序列，对既有确定性回放零影响。
  */
 const CRIME_CHANCE = 0.35;
-/** EVT-01 事件 16/17：豪雨/交通阻塞强制停留天数 */
-const TRAFFIC_HALT_DAYS = 1;
-/** EVT-01 事件 24/25：股市全面崩盘/上涨的幅度（%） */
-const STOCK_NEWS_PCT = 10;
 /** EVT-05 七彩气球：安全通过 0/1/2/3 轮的金币奖励 */
 const BALLOON_PAYOUT = [0, 200, 700, 1500];
 /** EVT-05 七彩气球：踩到炸弹的门票罚金 */
@@ -718,313 +715,12 @@ function selectNewsEvent(state: GameState): NewsEventDef | null {
   return null;
 }
 
-/** 结算一条新闻事件（30 种效果；需要随机的部分统一走 state.rngState 派生） */
+/** 结算一条新闻事件：效果行为表见 `news.ts` 的 `NEWS_EFFECTS`（返回 null = 对局已结束，不再播报） */
 function applyNewsEvent(state: GameState, def: NewsEventDef): void {
   const params: Partial<Record<'street' | 'player' | 'company' | 'stock' | 'amount', string>> = {};
-  let extra = '';
-
-  switch (def.effect) {
-    // ---- 事件 0–3：囚犯 / 病患的开释与延期 ----
-    case 'clear-jail':
-    case 'extend-jail':
-    case 'clear-hospital':
-    case 'extend-hospital': {
-      const kind: 'jail' | 'hospital' = def.effect.endsWith('jail') ? 'jail' : 'hospital';
-      const clearing = def.effect.startsWith('clear');
-      const days = def.days ?? 0;
-      const targets = activePlayers(state).filter((q) => q.custody?.kind === kind);
-      for (const v of targets) {
-        if (clearing) {
-          v.skipTurns = 0;
-          v.custody = null;
-          v.rentBlockedTurns = 0;
-        } else {
-          v.skipTurns += days;
-          v.custody!.daysLeft += days;
-          blockRent(v, days);
-        }
-      }
-      extra = targets.length ? targets.map((v) => v.name).join('、') : '无人在押';
-      break;
-    }
-
-    // ---- 事件 4/5/21/15：摧毁建筑 ----
-    case 'destroy-one': {
-      const ref = randomPick(state, builtProperties(state));
-      if (ref) {
-        params.street = ref.cell.street ? streetLabel(state, ref.cell.street) : ref.cell.name;
-        extra = `「${ref.cell.name}」建筑被摧毁`;
-        destroyBuilding(ref);
-      }
-      break;
-    }
-    case 'burn-house': {
-      const ref = randomPick(state, builtProperties(state));
-      if (ref) {
-        params.street = ref.cell.street ? streetLabel(state, ref.cell.street) : ref.cell.name;
-        extra = `「${ref.cell.name}」付之一炬，建筑归零`;
-        destroyBuilding(ref);
-      }
-      break;
-    }
-    case 'destroy-many': {
-      const names: string[] = [];
-      let street = '';
-      for (let i = 0; i < 2; i++) {
-        const ref = randomPick(state, builtProperties(state));
-        if (!ref) break;
-        if (!street && ref.cell.street) street = streetLabel(state, ref.cell.street);
-        names.push(ref.cell.name);
-        destroyBuilding(ref);
-      }
-      params.street = street;
-      extra = names.length ? `${names.join('、')} 建筑受损` : '';
-      break;
-    }
-
-    // ---- 事件 6/14：地价涨跌（永久生效于买地价与租金） ----
-    case 'street-up':
-    case 'street-down': {
-      const street = randomPick(state, ownedStreets(state));
-      if (street) {
-        const factor = def.factor ?? 1;
-        state.streetPriceFactors[street] = (state.streetPriceFactors[street] ?? 1) * factor;
-        params.street = streetLabel(state, street);
-        extra = `该路段地价 ×${factor}`;
-      }
-      break;
-    }
-
-    // ---- 事件 7：公开拍卖公有土地 ----
-    case 'auction-land': {
-      const cell = randomPick(state, unownedLandCells(state));
-      if (cell) {
-        state.auctionQueue.push({ cellId: cell.id, sellerId: null, trigger: 'event' });
-        params.street = cell.street ? streetLabel(state, cell.street) : cell.name;
-        extra = `「${cell.name}」交付拍卖`;
-      }
-      break;
-    }
-
-    // ---- 事件 8/9/10：政府奖励与补助 ----
-    case 'reward-most-land': {
-      const cands = playersWithLand(state);
-      const best = cands.reduce((a, b) => (b.properties.length > a.properties.length ? b : a));
-      const gain = scaled(state, def.amount ?? 0);
-      best.deposit += gain; // 报告：奖金入存款
-      params.player = best.name;
-      params.amount = String(gain);
-      break;
-    }
-    case 'subsidize-least-land': {
-      const cands = playersWithLand(state);
-      const least = cands.reduce((a, b) => (b.properties.length < a.properties.length ? b : a));
-      const gain = scaled(state, def.amount ?? 0);
-      least.cash += gain;
-      params.player = least.name;
-      params.amount = String(gain);
-      break;
-    }
-    case 'reward-top-shareholder': {
-      const cands = playersWithShares(state);
-      const best = cands.reduce((a, b) => (totalSharesOf(state, b) > totalSharesOf(state, a) ? b : a));
-      const gain = scaled(state, def.amount ?? 0);
-      best.cash += gain;
-      params.player = best.name;
-      params.amount = String(gain);
-      break;
-    }
-
-    // ---- 事件 11/12/13：三项税收 ----
-    // 报告：税率 0.05 直接作用于名义值（现金 / 地价+造价 / 股票市值），不乘物价指数；
-    // 物价指数只用于固定金额（奖励、罚款、门票等）。
-    case 'income-tax': {
-      const rate = def.rate ?? 0;
-      let sum = 0;
-      for (const q of activePlayers(state)) {
-        const tax = Math.floor(q.cash * rate);
-        if (tax <= 0) continue;
-        sum += tax;
-        payCash(state, q, tax, null, 'news');
-        if (isGameOver(state)) return;
-      }
-      extra = `合计征收 ¥${sum}`;
-      break;
-    }
-    case 'land-tax': {
-      const rate = def.rate ?? 0;
-      let sum = 0;
-      for (const q of activePlayers(state)) {
-        let base = 0;
-        for (const prop of q.properties) base += propertyValue(state, prop);
-        const tax = Math.floor(base * rate);
-        if (tax <= 0) continue;
-        sum += tax;
-        payCash(state, q, tax, null, 'news');
-        if (isGameOver(state)) return;
-      }
-      extra = `合计征收 ¥${sum}`;
-      break;
-    }
-    case 'securities-tax': {
-      const rate = def.rate ?? 0;
-      let sum = 0;
-      for (const q of activePlayers(state)) {
-        let base = 0;
-        for (const [stockId, qty] of Object.entries(q.stocks)) {
-          const stock = stockById(state, stockId);
-          if (stock) base += stock.price * qty;
-        }
-        const tax = Math.floor(base * rate);
-        if (tax <= 0) continue;
-        sum += tax;
-        payCash(state, q, tax, null, 'news');
-        if (isGameOver(state)) return;
-      }
-      extra = `合计征收 ¥${sum}`;
-      break;
-    }
-
-    // ---- 事件 16/17：路况报道 ----
-    case 'halt-walkers':
-    case 'halt-riders': {
-      const days = def.days ?? TRAFFIC_HALT_DAYS;
-      const walking = def.effect === 'halt-walkers';
-      const targets = activePlayers(state).filter((q) => (walking ? q.diceCount <= 1 : q.diceCount > 1));
-      for (const v of targets) {
-        v.skipTurns = Math.max(v.skipTurns, days);
-        blockRent(v, days);
-      }
-      extra = targets.length ? `${targets.map((v) => v.name).join('、')} 停留 ${days} 天` : '无人受影响';
-      break;
-    }
-
-    // ---- 事件 22/23：银行业务 ----
-    case 'loan-ban': {
-      const days = def.days ?? 15;
-      state.loanBanDays = days;
-      extra = `${days} 天内停止放款`;
-      break;
-    }
-    case 'deposit-dividend': {
-      const rate = def.rate ?? 0;
-      let sum = 0;
-      for (const q of activePlayers(state)) {
-        const bonus = Math.round(q.deposit * rate);
-        if (bonus <= 0) continue;
-        q.deposit += bonus;
-        sum += bonus;
-      }
-      extra = `合计派发 ¥${sum}`;
-      break;
-    }
-
-    // ---- 事件 24–28：股市行情 ----
-    case 'stock-crash':
-    case 'stock-rally': {
-      const sign = def.effect === 'stock-rally' ? 1 : -1;
-      for (const s of state.stockMarket.stocks) {
-        if (state.stockHaltAllDays > 0 || isStockSuspended(state, s.id)) continue;
-        const pct = sign * STOCK_NEWS_PCT;
-        s.price = Math.max(5, Math.round(s.price * (1 + pct / 100)));
-        s.lastChangePct = pct;
-      }
-      extra = `全市场${sign > 0 ? '上涨' : '下跌'} ${STOCK_NEWS_PCT}%`;
-      break;
-    }
-    case 'stock-halt-all': {
-      const days = def.days ?? 10;
-      state.stockHaltAllDays = days;
-      extra = `全市场停牌 ${days} 天`;
-      break;
-    }
-    case 'stock-halt-one': {
-      const days = def.days ?? 10;
-      const stock = randomPick(state, state.stockMarket.stocks.filter((s) => !isStockSuspended(state, s.id)));
-      if (stock) {
-        state.stockHalts.push({ stockId: stock.id, kind: 'suspend', daysLeft: days });
-        params.stock = stock.name;
-        extra = `停牌 ${days} 天`;
-      }
-      break;
-    }
-    case 'stock-resume-one': {
-      const stock = randomPick(state, state.stockMarket.stocks.filter((s) => isStockSuspended(state, s.id)));
-      if (stock) {
-        state.stockHalts = state.stockHalts.filter((h) => !(h.stockId === stock.id && h.kind === 'suspend'));
-        params.stock = stock.name;
-        extra = '恢复上市交易';
-      }
-      break;
-    }
-
-    // ---- 事件 29–35：公司企业 ----
-    case 'company-jail': {
-      const company = randomPick(state, state.companies.filter((c) => c.chairmanId !== null));
-      const victim = company ? state.players.find((q) => q.id === company.chairmanId) : undefined;
-      if (company && victim && !victim.bankrupt) {
-        const days = def.days ?? 5;
-        applyDisaster(state, victim, 'jail', null, (v) => {
-          v.skipTurns = Math.max(v.skipTurns, days);
-          v.custody = { kind: 'jail', daysLeft: Math.max(v.skipTurns, days) };
-          blockRent(v, days);
-        });
-        params.company = state.board[company.cellId]?.name ?? '';
-        params.player = victim.name;
-        extra = `${victim.name} 坐牢 ${days} 天`;
-        if (isGameOver(state)) return;
-      }
-      break;
-    }
-    case 'company-fine': {
-      const company = randomPick(state, state.companies);
-      if (company) {
-        const fine = scaled(state, def.amount ?? 0);
-        company.surplus -= fine;
-        params.company = state.board[company.cellId]?.name ?? '';
-        params.amount = String(fine);
-        extra = `累积盈余 -¥${fine}`;
-      }
-      break;
-    }
-    case 'company-gain': {
-      const company = randomPick(state, state.companies);
-      if (company) {
-        const gain = scaled(state, def.amount ?? 0);
-        company.surplus += gain;
-        params.company = state.board[company.cellId]?.name ?? '';
-        params.amount = String(gain);
-        extra = `累积盈余 +¥${gain}`;
-      }
-      break;
-    }
-    case 'company-loss': {
-      const company = randomPick(state, state.companies);
-      if (company) {
-        const loss = scaled(state, def.amount ?? 0);
-        company.surplus -= loss;
-        params.company = state.board[company.cellId]?.name ?? '';
-        params.amount = String(loss);
-        extra = `累积盈余 -¥${loss}`;
-      }
-      break;
-    }
-    case 'company-profit-double': {
-      const company = randomPick(state, state.companies);
-      if (company) {
-        company.surplus *= 2;
-        params.company = state.board[company.cellId]?.name ?? '';
-        extra = `累积盈余翻倍至 ¥${company.surplus}`;
-      }
-      break;
-    }
-
-    default:
-      break;
-  }
-
-  const body = renderNewsText(def, params);
-  log(state, `【新闻】${NEWS_CATEGORY_LABEL[def.category]}｜${body}${extra ? `（${extra}）` : ''}`);
+  const extra = NEWS_EFFECTS[def.effect]({ ...EFFECT_KIT, state, def, params });
+  if (extra === null) return;
+  log(state, `【新闻】${NEWS_CATEGORY_LABEL[def.category]}｜${renderNewsText(def, params)}${extra ? `（${extra}）` : ''}`);
 }
 
 /** TILE-18 新闻格：游标轮询选一条满足前提的事件并结算；一圈全不满足则本期无事 */
@@ -3666,6 +3362,14 @@ const EFFECT_KIT: EffectKit = {
   randomPick,
   builtProperties,
   destroyBuilding,
+  isGameOver,
+  streetLabel,
+  ownedStreets,
+  unownedLandCells,
+  playersWithLand,
+  playersWithShares,
+  totalSharesOf,
+  isStockSuspended,
 };
 
 /**
