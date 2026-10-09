@@ -11,7 +11,6 @@ import {
   POINTS_START,
   STARTING_CASH,
   STOCK_DEFS,
-  TREASURE_POINTS,
 } from './board.js';
 import {
   applyGodRentModifier,
@@ -29,8 +28,9 @@ import {
 import { addMonths, DEFAULT_START_DATE, gameDate, toSerial } from './calendar.js';
 import { landPrice, landRent, landUpgradeCost, scaled, totalAssets } from './economy.js';
 import { CARDS, CHANCE_CARD_POOL, SHOP_CARD_IDS } from './cards.js';
+import { resolveLanding } from './cell_handlers.js';
 import { ITEMS, SHOP_ITEM_IDS, STARTING_ITEMS } from './items.js';
-import type { EffectKit, GodEffectCtx } from './effect_ctx.js';
+import type { CellLandingCtx, EffectKit, GodEffectCtx } from './effect_ctx.js';
 import { nextRandom, rollDie } from './rng.js';
 import { drawWinningNumber, isValidLotteryNumber, LOTTERY_TICKET_COST } from './lottery.js';
 import {
@@ -42,9 +42,7 @@ import {
   type NewsEventDef,
 } from './news.js';
 import {
-  CRIME_JAIL_DAYS,
   FATE_EFFECTS,
-  FATE_MAP_IDS,
   FATE_PUBLIC_IDS,
   fateCardById,
   renderFateText,
@@ -53,10 +51,7 @@ import {
 import { buyTrade, cancelTrade, postTrade, refreshTrades, tradableAssets } from './trade.js';
 import {
   BAIL_FEE,
-  CURSE_ORDER,
   CURSES,
-  MAGIC_CONDITION_LABEL,
-  MAGIC_CONDITIONS,
   PROTECTION_FEE_RATE,
   THIEF_POINTS_TAKE,
   VILLAIN_DAYS,
@@ -67,30 +62,23 @@ import {
 import {
   FACILITIES,
   FACILITY_ORDER,
-  HOTEL_MAX_DAYS,
   MAX_GRADE,
   RESEARCH_ORDER,
   chainRent,
   facilityBuildCost,
-  facilitySpendBase,
   facilityUpgradeable,
-  gasFee,
   gradeName,
   holdsWholeStreet,
   landPurchasePrice,
   researchDef,
   streetCells,
-  vehicleLabel,
-  vehicleLevel,
 } from './tiles.js';
 import {
   COMPANIES,
   COMPANY_LIST,
   ESTATE_BUILD_RATIO,
   MAX_SHARES_PER_BUY,
-  WHEEL_KINDS,
   companyAtCell,
-  companyFee,
   majorityHolderId,
 } from './companies.js';
 import type {
@@ -99,7 +87,6 @@ import type {
   AvailableActions,
   BankAccess,
   BoardCell,
-  CompanyKind,
   CompanyState,
   DateSerial,
   DisasterKind,
@@ -1746,13 +1733,15 @@ function startGame(state: GameState): void {
   log(state, '游戏开始！每人获赠开局道具：机器娃娃、遥控骰子、路障、定时炸弹、地雷、机器工人 各 1');
 }
 
-function rollDice(state: GameState, action: Extract<PlayerAction, { type: 'ROLL_DICE' }>): void {
-  if (state.phase !== 'awaiting_roll') throw new Error('当前不能掷骰');
-  const p = currentPlayer(state);
-
+/**
+ * 回合起点闸门（自 `rollDice` 拆出，对应 CORE-02 的 `TURN_START` 相）：
+ * 倒闭者与停留中的玩家直接消费掉本回合；工程车（ITEM-12）在此递减一回合。
+ * 返回 true 表示 `rollDice` 应立即返回 —— 回合已由本函数推进或局面已定。
+ */
+function consumeTurnDelay(state: GameState, p: Player): boolean {
   if (p.bankrupt) {
     if (!isGameOver(state)) advanceTurn(state);
-    return;
+    return true;
   }
 
   if (p.skipTurns > 0) {
@@ -1766,7 +1755,7 @@ function rollDice(state: GameState, action: Extract<PlayerAction, { type: 'ROLL_
     }
     log(state, `${p.name} 停留中，剩余 ${p.skipTurns} 回合`);
     advanceTurn(state);
-    return;
+    return true;
   }
 
   // 工程车（ITEM-12）：开动 7 回合，逐回合递减
@@ -1774,14 +1763,11 @@ function rollDice(state: GameState, action: Extract<PlayerAction, { type: 'ROLL_
     p.bulldozerTurns -= 1;
     if (p.bulldozerTurns === 0) log(state, `${p.name} 的工程车报废了`);
   }
+  return false;
+}
 
-  // 骰子个数（CORE-03）：步行 1 颗、机车 2 颗、汽车 3 颗；玩家可自选本次使用几颗（默认用满）
-  const maxDice = Math.max(1, Math.min(3, p.diceCount));
-  const requested = action.diceCount ?? maxDice;
-  if (!Number.isInteger(requested) || requested < 1 || requested > maxDice) {
-    throw new Error(`骰子数必须是 1-${maxDice} 的整数`);
-  }
-  const diceCount = requested;
+/** 逐颗掷骰（对应 CORE-02 的 `ROLL` 相）：遥控骰子（ITEM-08）占用第一颗的点数 */
+function drawDice(state: GameState, diceCount: number): number[] {
   const rolls: number[] = [];
   for (let i = 0; i < diceCount; i++) {
     if (i === 0 && state.pendingFixedDice !== null) {
@@ -1794,6 +1780,22 @@ function rollDice(state: GameState, action: Extract<PlayerAction, { type: 'ROLL_
       rolls.push(r.value);
     }
   }
+  return rolls;
+}
+
+function rollDice(state: GameState, action: Extract<PlayerAction, { type: 'ROLL_DICE' }>): void {
+  if (state.phase !== 'awaiting_roll') throw new Error('当前不能掷骰');
+  const p = currentPlayer(state);
+  if (consumeTurnDelay(state, p)) return;
+
+  // 骰子个数（CORE-03）：步行 1 颗、机车 2 颗、汽车 3 颗；玩家可自选本次使用几颗（默认用满）
+  const maxDice = Math.max(1, Math.min(3, p.diceCount));
+  const requested = action.diceCount ?? maxDice;
+  if (!Number.isInteger(requested) || requested < 1 || requested > maxDice) {
+    throw new Error(`骰子数必须是 1-${maxDice} 的整数`);
+  }
+  const diceCount = requested;
+  const rolls = drawDice(state, diceCount);
   state.dice = rolls;
   const rawSteps = rolls.reduce((a, b) => a + b, 0);
   let steps = rawSteps;
@@ -1903,7 +1905,7 @@ function rollDice(state: GameState, action: Extract<PlayerAction, { type: 'ROLL_
     return;
   }
 
-  // TILE-08 路过公立银行：开放存取款（停留当格的完整权限在下方 bank 分支覆盖）
+  // TILE-08 路过公立银行：开放存取款（停留当格的完整权限由 `cell_handlers.ts` 的 bank handler 给出）
   if (passedPublicBank) {
     state.bankAccess = { canDeposit: true, canLoan: false, cellId: publicBankId! };
     log(state, `${p.name} 路过公立银行，可办理存取款`);
@@ -1914,529 +1916,8 @@ function rollDice(state: GameState, action: Extract<PlayerAction, { type: 'ROLL_
   // 行进显灵·落格类（GOD-01 土地公侵占 / GOD-10 天使加盖 / GOD-11 恶魔拆屋）
   applyGodTravel(godCtx(state), p, c);
 
-  if (c.type === 'start') {
-    log(state, `${p.name} 正好停在起点`);
-    advanceTurn(state);
-    return;
-  }
-
-  if (c.type === 'chance') {
-    // TILE-17 机会/危险格：原版为命运卡池抽签（help[28]），此处抽公共池 33 张中的一张
-    resolveFateCard(state, p);
-    if (isGameOver(state)) return;
-    // EVT-02：机会/危险格附带违法事件风险（只读派生随机，不消耗 RNG 抽数）
-    const crimeRoll = nextRandom(state.rngState);
-    if (crimeRoll.value < CRIME_CHANCE) {
-      // 案由取自命运卡「地图专属池」（id 33–48 全是违法坐牢事件）：用同一读数值派生，零抽数
-      const causeId =
-        FATE_MAP_IDS[
-          Math.min(FATE_MAP_IDS.length - 1, Math.floor((crimeRoll.value / CRIME_CHANCE) * FATE_MAP_IDS.length))
-        ]!;
-      const cause = fateCardById(causeId);
-      const days = cause?.days ?? CRIME_JAIL_DAYS;
-      applyDisaster(state, p, 'jail', null, (v) => {
-        v.skipTurns = Math.max(v.skipTurns, days);
-        v.custody = { kind: 'jail', daysLeft: Math.max(v.skipTurns, days) };
-        blockRent(v, days);
-      });
-      log(state, `【违法事件】${renderFateText(cause ?? { id: causeId, text: '卷入违法案件', effect: 'jail' }, { days })}`);
-      if (isGameOver(state)) return;
-    }
-    advanceTurn(state);
-    return;
-  }
-
-  if (c.type === 'tax') {
-    const tax = scaled(state, Math.floor(p.cash * 0.1));
-    if (tryFreePass(state, p, tax)) {
-      advanceTurn(state);
-      return;
-    }
-    log(state, `${p.name} 需缴税 ¥${tax}`);
-    payCash(state, p, tax, null, 'tax');
-    if (isGameOver(state)) return;
-    advanceTurn(state);
-    return;
-  }
-
-  if (c.type === 'hospital') {
-    // TILE-09 医院：住院不能出门且丧失收租权利，每天 1000 医药费（help [37]）
-    // 医药费按住院天数在日切钩子逐日收取；此处只办入住
-    p.skipTurns = Math.max(p.skipTurns, 1);
-    p.custody = { kind: 'hospital', daysLeft: Math.max(p.skipTurns, 1) };
-    blockRent(p, 1);
-    log(state, `${p.name} 办理住院（住院期间丧失收租权，每天需付医药费）`);
-    advanceTurn(state);
-    return;
-  }
-
-  // TILE-10 监狱：落地不停留在牢内（安全），可在监狱门外保释在押恶人（help [34]）
-  if (c.type === 'jail') {
-    state.phase = 'awaiting_action';
-    const jailed = state.npcs.filter((n) => n.jailed && n.kind !== 'dog');
-    log(
-      state,
-      jailed.length > 0
-        ? `${p.name} 来到「${c.name}」门外（安全无恙），可花 ¥${bailFee(state)} 保释在押恶人`
-        : `${p.name} 来到「${c.name}」门外（安全无恙），当前没有在押恶人`,
-    );
-    return;
-  }
-
-  if (c.type === 'shop') {
-    state.phase = 'awaiting_action';
-    log(state, `${p.name} 来到${c.name}，可以购买卡片道具`);
-    return;
-  }
-
-  if (c.type === 'bank') {
-    // TILE-08 银行（公立）/ TILE-26 银行（公司）：停留当格开放存取款、贷款与股票交易
-    state.bankAccess = { canDeposit: true, canLoan: true, cellId: c.id };
-    state.phase = 'awaiting_action';
-    log(state, `${p.name} 来到${c.name}，可以存取款、贷款与买卖股票`);
-    return;
-  }
-
-  if (c.type === 'god') {
-    log(state, `${p.name} 进入神庙祈福`);
-    summonGod(godCtx(state), p);
-    advanceTurn(state);
-    return;
-  }
-
-  if (c.type === 'game') {
-    const kindRoll = nextRandom(state.rngState);
-    state.rngState = kindRoll.nextState;
-    // EVT-05/06：游戏厅四选一（三仙归洞 / 记忆翻牌 / 七彩气球 / 企鹅挖宝）
-    const pick = Math.floor(kindRoll.value * 4);
-    if (pick === 1) {
-      // 记忆翻牌：4 对图案洗牌
-      const symbols: number[] = [];
-      for (let i = 0; i < 4; i++) symbols.push(i, i);
-      for (let i = symbols.length - 1; i > 0; i--) {
-        const draw = nextRandom(state.rngState);
-        state.rngState = draw.nextState;
-        const j = Math.floor(draw.value * (i + 1));
-        const tmp = symbols[i]!;
-        symbols[i] = symbols[j]!;
-        symbols[j] = tmp;
-      }
-      state.minigame = {
-        kind: 'memory',
-        round: 0,
-        hits: [],
-        symbols,
-        revealed: [],
-        matched: Array(8).fill(false),
-        flips: 0,
-      };
-      state.phase = 'awaiting_pick';
-      log(state, `${p.name} 进入游戏厅玩「记忆翻牌」：8 张牌 4 对图案，翻完全部配对奖励翻倍！`);
-    } else if (pick === 2) {
-      // EVT-05 七彩气球：3 轮，踩中气球得奖、踩到炸弹提前结束
-      state.minigame = {
-        kind: 'balloon',
-        round: 0,
-        hits: [],
-        symbols: [],
-        revealed: [],
-        matched: [],
-        flips: 0,
-        exploded: false,
-      };
-      state.phase = 'awaiting_pick';
-      log(state, `${p.name} 进入游戏厅玩「七彩气球」：共 3 轮，小心别踩到炸弹！`);
-    } else if (pick === 3) {
-      // EVT-06 企鹅挖宝：3 轮，帮企鹅挖出冰下的宝物
-      state.minigame = {
-        kind: 'penguin',
-        round: 0,
-        hits: [],
-        symbols: [],
-        revealed: [],
-        matched: [],
-        flips: 0,
-      };
-      state.phase = 'awaiting_pick';
-      log(state, `${p.name} 进入游戏厅玩「企鹅挖宝」：共 3 轮，挖中宝物越多奖励越高！`);
-    } else {
-      state.minigame = {
-        kind: 'shells',
-        round: 0,
-        hits: [],
-        symbols: [],
-        revealed: [],
-        matched: [],
-        flips: 0,
-      };
-      state.phase = 'awaiting_pick';
-      log(state, `${p.name} 进入游戏厅玩「三仙归洞」：共 3 轮，猜中越多奖励越高！`);
-    }
-    return;
-  }
-
-  // 住宅用地（TILE-01 / EST-01..05）
-  if (c.type === 'property' && c.price !== undefined && c.baseRent !== undefined) {
-    const owned = cellOwner(state, c.id);
-
-    // 工程车（ITEM-12）：走到哪拆到哪
-    if (p.bulldozerTurns > 0 && owned && owned.player.id !== p.id && owned.property.grade > 1) {
-      owned.property.grade = (owned.property.grade - 1) as 1 | 2 | 3 | 4 | 5;
-      log(state, `工程车轰鸣，${owned.player.name} 的「${c.name}」被拆至 ${owned.property.grade} 级`);
-    }
-
-    if (!owned) {
-      state.phase = 'awaiting_action';
-      log(state, `${p.name} 来到无主地产「${c.name}」（售价 ¥${landPrice(state, c)}）`);
-      return;
-    }
-    if (owned.player.id === p.id) {
-      // EST-02 住宅可加盖至 5 级；EST-04 连锁店不能再加盖
-      if (!owned.property.chain && owned.property.grade < MAX_GRADE) {
-        state.phase = 'awaiting_action';
-        log(state, `${p.name} 回到自家「${c.name}」（${gradeName(owned.property.grade)}）`);
-      } else {
-        log(state, `${p.name} 回到${owned.property.chain ? '连锁店' : '满级地产'}「${c.name}」`);
-        advanceTurn(state);
-      }
-      return;
-    }
-
-    // 丧失收租权（坐牢/冬眠/梦游）；出国旅游期间同样不能收租（CORP-03）
-    if (owned.player.rentBlockedTurns > 0 || owned.player.abroadTurns > 0) {
-      const blocked =
-        owned.player.rentBlockedTurns > 0
-          ? `正在停留中（剩余 ${owned.player.rentBlockedTurns} 天）`
-          : `正在国外旅游（剩余 ${owned.player.abroadTurns} 天）`;
-      log(state, `${owned.player.name} ${blocked}，无权收租`);
-      advanceTurn(state);
-      return;
-    }
-
-    // 同盟卡（CARD-29）：互不收过路费
-    if (p.alliance && p.alliance.with === owned.player.id) {
-      log(state, `${p.name} 与 ${owned.player.name} 处于同盟，互免过路费`);
-      advanceTurn(state);
-      return;
-    }
-
-    const effect = state.rentEffects.find((e) => e.cells.includes(c.id));
-    if (effect?.kind === 'seal') {
-      log(state, `「${c.name}」所在的街道被查封，本次免收过路费`);
-      advanceTurn(state);
-      return;
-    }
-    let rent = propertyRent(state, c, owned);
-    if (effect?.kind === 'raise') {
-      rent *= 2;
-      log(state, `「${c.name}」所在的街道正在涨价，过路费加倍`);
-    }
-    // 行进显灵·租金类（抵赖 / 减半 / 加倍）
-    rent = applyGodRentModifier(godCtx(state), p, rent, c.name);
-    // GOD-12 霉运：付出去的过路费按霉运倍率上浮（倒霉事加倍）
-    const bad = unluckyMultiplier(p);
-    if (bad > 1) {
-      rent *= bad;
-      log(state, `${p.name} 霉运缠身，过路费被霉运抬高 ${bad} 倍`);
-    }
-    if (rent <= 0) {
-      advanceTurn(state);
-      return;
-    }
-
-    if (tryFreePass(state, p, rent)) {
-      advanceTurn(state);
-      return;
-    }
-    log(state, `${p.name} 进入 ${owned.player.name} 的「${c.name}」，需付租金 ¥${rent}`);
-    pay(state, p, rent, owned.player, { toDeposit: true, reason: 'rent' });
-    // NPC-04 窃取租金：记录本地上次收取的租金，供窃取租金型恶人作案
-    owned.property.lastRent = rent;
-
-    // CARD-29 同盟联合收费（CARD-29「與對手房地產聯合收費，所得各算各的」）：
-    // 地主有盟友、且该盟友在同一街道也持有地产时，本笔租金由地主与其盟友平分。
-    const ownerAlly = owned.player.alliance
-      ? state.players.find((q) => q.id === owned.player.alliance!.with)
-      : undefined;
-    const allyHoldsSameStreet = ownerAlly
-      && !ownerAlly.bankrupt
-      && ownerAlly.properties.some((q) => {
-        const allyCell = state.board[q.cellId];
-        return allyCell?.street != null && allyCell.street === c.street;
-      });
-    if (allyHoldsSameStreet) {
-      const allyHalf = Math.floor(rent / 2);
-      ownerAlly!.deposit += allyHalf;
-      log(state, `同盟联合收费：${allyHalf} 归盟友 ${ownerAlly!.name}，其余归 ${owned.player.name}`);
-    }
-    if (isGameOver(state)) return;
-    advanceTurn(state);
-    return;
-  }
-
-  // 商业用地与设施（TILE-02..07 / EST-06..12）
-  if (c.type === 'commercial' && c.price !== undefined) {
-    const owned = cellOwner(state, c.id);
-    if (!owned) {
-      state.phase = 'awaiting_action';
-      log(state, `${p.name} 来到无主商业用地「${c.name}」（购地价 ¥${landPurchasePrice(state, c)}＝标价 ×1.5；首次只能购地，再次抵达才可建设）`);
-      return;
-    }
-    if (owned.player.id === p.id) {
-      if (!owned.property.facility) {
-        state.phase = 'awaiting_action';
-        log(state, `${p.name} 回到自有商业用地「${c.name}」，可以开工建设`);
-      } else if (facilityUpgradeable(owned.property) && owned.property.grade < MAX_GRADE) {
-        state.phase = 'awaiting_action';
-        log(state, `${p.name} 回到自己的${FACILITIES[owned.property.facility].name}「${c.name}」（${gradeName(owned.property.grade)}）`);
-      } else if (owned.property.facility === 'lab') {
-        state.phase = 'awaiting_action';
-        log(state, `${p.name} 回到自己的研究所「${c.name}」，可以立项研发`);
-      } else {
-        log(state, `${p.name} 在自己的「${c.name}」稍作停留`);
-        advanceTurn(state);
-      }
-      return;
-    }
-
-    const prop = owned.property;
-    if (!prop.facility) {
-      log(state, `${owned.player.name} 的「${c.name}」尚未建设，${p.name} 无需付费`);
-      advanceTurn(state);
-      return;
-    }
-    const def = FACILITIES[prop.facility];
-    if (!def.charges) {
-      // EST-08 公园 / EST-09 研究所：不向使用者收费
-      log(state, `「${c.name}」的${def.name}免费开放，${p.name} 安全落脚`);
-      advanceTurn(state);
-      return;
-    }
-    if (prop.facility === 'gas') {
-      // EST-11 / TILE-05：按行走步数 × 交通工具等级收费
-      const level = vehicleLevel(p);
-      const fee = applyGodRentModifier(godCtx(state), p, gasFee(state, moved, level), c.name);
-      if (fee <= 0) {
-        advanceTurn(state);
-        return;
-      }
-      log(state, `${p.name} 在「${c.name}」加油（${moved} 步 × ${vehicleLabel(level)}），需付 ¥${fee}`);
-      if (tryFreePass(state, p, fee)) {
-        advanceTurn(state);
-        return;
-      }
-      pay(state, p, fee, owned.player, { toDeposit: true, reason: 'rent' });
-      if (isGameOver(state)) return;
-      advanceTurn(state);
-      return;
-    }
-    // EST-12 / TILE-06/07：购物中心 / 旅馆转轮盘决定消费金额（旅馆另加强制休息天数）
-    const spin = nextRandom(state.rngState);
-    state.rngState = spin.nextState;
-    const multiplier = 1 + Math.floor(spin.value * 3); // 1..3 档
-    const amount = applyGodRentModifier(godCtx(state), p, scaled(state, facilitySpendBase(c, prop.grade) * multiplier), c.name);
-    let days = 0;
-    if (prop.facility === 'hotel') {
-      const rest = nextRandom(state.rngState);
-      state.rngState = rest.nextState;
-      days = 1 + Math.floor(rest.value * HOTEL_MAX_DAYS); // 1..3 天
-    }
-    if (amount > 0) {
-      log(state, `${p.name} 在「${c.name}」的${def.name}消费，轮盘判定需付 ¥${amount}${days > 0 ? `，并强制休息 ${days} 天` : ''}`);
-      if (tryFreePass(state, p, amount)) {
-        advanceTurn(state);
-        return;
-      }
-      pay(state, p, amount, owned.player, { toDeposit: true, reason: 'rent' });
-      if (isGameOver(state)) return;
-    } else {
-      log(state, `${p.name} 在「${c.name}」的${def.name}落脚${days > 0 ? `，并强制休息 ${days} 天` : ''}`);
-    }
-    if (days > 0) {
-      p.skipTurns = Math.max(p.skipTurns, days);
-      blockRent(p, days);
-      log(state, `${p.name} 在旅馆休息 ${days} 天，期间丧失收租权`);
-    }
-    advanceTurn(state);
-    return;
-  }
-
-  // TILE-13 免费卡片格
-  if (c.type === 'free-card') {
-    drawChanceCard(state, p, '卡片屋');
-    advanceTurn(state);
-    return;
-  }
-
-  // TILE-14/15/16 点券格
-  if (c.type === 'points') {
-    const gain = c.pointsGain ?? 10;
-    p.points += gain;
-    log(state, `${p.name} 在「${c.name}」获得 ${gain} 点券`);
-    advanceTurn(state);
-    return;
-  }
-
-  // TILE-31 宝箱（点数来源，待验证）
-  if (c.type === 'treasure') {
-    p.points += TREASURE_POINTS;
-    log(state, `${p.name} 打开「${c.name}」，获得 ${TREASURE_POINTS} 点券！`);
-    advanceTurn(state);
-    return;
-  }
-
-  // TILE-18 新闻格：游标轮询触发 36 条新闻事件池中的一条（EVT-01）
-  if (c.type === 'news') {
-    resolveNewsEvent(state);
-    if (isGameOver(state)) return;
-    advanceTurn(state);
-    return;
-  }
-
-  // TILE-19 乐透行：自选号码投注（ECON-08），每月 15 号开奖
-  if (c.type === 'lottery') {
-    state.phase = 'awaiting_action';
-    log(state, `${p.name} 来到「${c.name}」：可自选号码投注 ¥${LOTTERY_TICKET_COST}（每月 15 号开奖）`);
-    return;
-  }
-
-  // TILE-11 魔法屋（NPC-06 女巫）：水晶球给出施法条件 + 诅咒，由玩家指定受罚者
-  if (c.type === 'magic') {
-    const conditionRoll = nextRandom(state.rngState);
-    state.rngState = conditionRoll.nextState;
-    const condition = MAGIC_CONDITIONS[Math.floor(conditionRoll.value * MAGIC_CONDITIONS.length)]!.kind;
-    const curseRoll = nextRandom(state.rngState);
-    state.rngState = curseRoll.nextState;
-    const curse = CURSE_ORDER[Math.floor(curseRoll.value * CURSE_ORDER.length)]!;
-    const curseDef = CURSES[curse];
-    const candidateIds = magicCandidates(state, p, condition);
-    const offer: MagicOffer = {
-      condition,
-      curse,
-      candidateIds,
-      amount: curse === 'fine' ? scaled(state, curseDef.amount ?? 0) : 0,
-      days: curseDef.days ?? 0,
-    };
-    state.magic = offer;
-    state.phase = 'awaiting_action';
-    log(
-      state,
-      `${p.name} 进入「${c.name}」，女巫的水晶球亮起：${MAGIC_CONDITION_LABEL[condition]}；若施法，将降下「${curseDef.name}」`,
-    );
-    if (candidateIds.length === 0) {
-      log(state, '当前没有符合条件的受罚对象，女巫悻悻收回水晶球');
-    }
-    return;
-  }
-
-  // TILE-20..30 公司企业（CORP-01..13）
-  if (c.type === 'company') {
-    landOnCompany(state, p, c);
-    return;
-  }
-
-  throw new Error(`未知格类型: ${c.type}`);
-}
-
-/**
- * 公司企业落格结算（CORP-01..13）。
- * - 经营权属他人 → 按消费方式缴费（费用充作累积盈余）+ 强制服务（出国/休息/投保）；
- * - 董事长本人 → 免付费，并享受专属福利（百货赠礼）；
- * - 银行/百货无论持股均提供公共服务；
- * - 结算后进入 `awaiting_action`：可认购股份（CORP-01）、房地产公司可加盖（CORP-13）、
- *   企业银行董事长可特别融资（CORP-09）。
- */
-function landOnCompany(state: GameState, p: Player, c: BoardCell): void {
-  const company = c.companyKind ? companyAtCell(state, c.id) : undefined;
-  const def = company ? COMPANIES[company.kind] : undefined;
-  if (!company || !def) {
-    log(state, `${p.name} 来到「${c.name}」`);
-    advanceTurn(state);
-    return;
-  }
-
-  const chairmanId = company.chairmanId;
-  const isChairman = chairmanId === p.id;
-  const chairmanName = chairmanId ? state.players.find((q) => q.id === chairmanId)?.name ?? chairmanId : null;
-  log(
-    state,
-    `${p.name} 来到「${def.name}」${isChairman ? '（董事长）' : chairmanName ? `（董事长：${chairmanName}）` : '（经营权空缺）'}`,
-  );
-
-  // CORP-09 / CORP-12：银行与百货无论经营权归属，任何人都可使用公共服务
-  if (company.kind === 'bank') {
-    state.bankAccess = { canDeposit: true, canLoan: true, cellId: c.id };
-  }
-  if (isChairman && company.kind === 'department') {
-    grantDepartmentGift(state, p, def.name);
-  }
-
-  // CORP-01：经营权属他人时按消费方式缴费，费用计入累积盈余
-  if (chairmanId !== null && !isChairman) {
-    let roll = 0;
-    if (WHEEL_KINDS.has(company.kind)) {
-      const draw = nextRandom(state.rngState);
-      state.rngState = draw.nextState;
-      roll = 1 + Math.floor(draw.value * 3); // 转轮盘 1..3 天
-    }
-    const fee = companyFee(state, company.kind, p, roll);
-    if (fee > 0) {
-      const paid = pay(state, p, fee, null, { reason: 'company' });
-      company.surplus += paid;
-      log(state, `${p.name} 在「${def.name}」缴费 ¥${paid}（计入累积盈余 ¥${company.surplus}）`);
-      if (p.bankrupt || isGameOver(state)) return;
-      applyCompanyService(state, p, company.kind, roll);
-    } else {
-      log(state, `${p.name} 在「${def.name}」无需缴费`);
-    }
-  }
-
-  state.phase = 'awaiting_action';
-}
-
-/** 公司强制服务（CORP-03/04/06）：出国旅游 / 饭店休息 / 强制投保 */
-function applyCompanyService(state: GameState, p: Player, kind: CompanyKind, roll: number): void {
-  const days = Math.max(1, Math.min(3, roll));
-  switch (kind) {
-    case 'airline':
-      p.abroadTurns = Math.max(p.abroadTurns, days);
-      p.skipTurns = Math.max(p.skipTurns, days);
-      blockRent(p, days);
-      log(state, `【航空公司】${p.name} 乘机出国旅游 ${days} 天（期间不能收租）`);
-      break;
-    case 'restaurant':
-      p.skipTurns = Math.max(p.skipTurns, days);
-      blockRent(p, days);
-      log(state, `【大饭店】${p.name} 在饭店休息 ${days} 天（期间丧失收租权）`);
-      break;
-    case 'insurance':
-      p.insurance = { daysLeft: days };
-      log(state, `【保险公司】${p.name} 强制签约，投保期 ${days} 天`);
-      break;
-    default:
-      break;
-  }
-}
-
-/** CORP-12：百货公司董事长进入时获赠一张卡片或一项道具 */
-function grantDepartmentGift(state: GameState, p: Player, companyName: string): void {
-  const kindDraw = nextRandom(state.rngState);
-  state.rngState = kindDraw.nextState;
-  const pickDraw = nextRandom(state.rngState);
-  state.rngState = pickDraw.nextState;
-  if (kindDraw.value < 0.5 && p.cards.length < MAX_HAND_CARDS) {
-    const cardId = SHOP_CARD_IDS[Math.floor(pickDraw.value * SHOP_CARD_IDS.length)]!;
-    p.cards.push(cardId);
-    log(state, `【${companyName}】董事长专享：${p.name} 获赠卡片「${CARDS[cardId]?.name ?? cardId}」`);
-    return;
-  }
-  const itemId = SHOP_ITEM_IDS[Math.floor(pickDraw.value * SHOP_ITEM_IDS.length)]!;
-  if ((p.items[itemId] ?? 0) >= MAX_ITEM_COUNT) {
-    log(state, `【${companyName}】董事长专享：道具已满（上限 ${MAX_ITEM_COUNT}），赠礼作废`);
-    return;
-  }
-  p.items[itemId] = (p.items[itemId] ?? 0) + 1;
-  log(state, `【${companyName}】董事长专享：${p.name} 获赠道具「${ITEMS[itemId]?.name ?? itemId}」`);
+  const landing = resolveLanding({ ...LANDING_KIT, state, self: p, cell: c, moved });
+  if (landing === 'advance') advanceTurn(state);
 }
 
 function buyLand(state: GameState): void {
@@ -3129,6 +2610,9 @@ const EFFECT_KIT: EffectKit = {
   beginAuction,
   attachGod: (state, p, def) => attachGod(godCtx(state), p, def),
   nearestGodFor,
+  summonGod: (state, p) => summonGod(godCtx(state), p),
+  applyGodRentModifier: (state, p, rent, cellName) => applyGodRentModifier(godCtx(state), p, rent, cellName),
+  unluckyMultiplier,
   drawChanceCard,
   randomPick,
   builtProperties,
@@ -3141,6 +2625,20 @@ const EFFECT_KIT: EffectKit = {
   playersWithShares,
   totalSharesOf,
   isStockSuspended,
+};
+
+/**
+ * 落格 handler 的能力集合：通用 `EFFECT_KIT` 加几款只有「落脚某格」才用到的引擎内部函数。
+ * 拆出来是为了让 `rollDice` 的调用点保持一行；`state` / `self` / `cell` / `moved` 每次落格注入。
+ */
+const LANDING_KIT: Omit<CellLandingCtx, 'state' | 'self' | 'cell' | 'moved'> = {
+  ...EFFECT_KIT,
+  tryFreePass,
+  propertyRent,
+  bailFee,
+  resolveFateCard,
+  resolveNewsEvent,
+  magicCandidates,
 };
 
 /**

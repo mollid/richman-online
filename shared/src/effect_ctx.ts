@@ -6,6 +6,7 @@ import type {
   BoardCell,
   DisasterKind,
   GameState,
+  MagicCondition,
   PayReason,
   Player,
   PlayerAction,
@@ -37,7 +38,8 @@ export interface EffectKit {
   ): number;
   payCash(state: GameState, from: Player, amount: number, to: Player | null, reason?: PayReason): void;
   cellAt(state: GameState, position: number): BoardCell;
-  cellOwner(state: GameState, cellId: number): { player: Player; property: PlayerProperty } | undefined;
+  /** 某格的地权：业主与其地产状态；无主时为 undefined */
+  cellOwner(state: GameState, cellId: number): CellOwner | undefined;
   propOf(p: Player, cellId: number): PlayerProperty | undefined;
   consumeCard(p: Player, cardId: string): boolean;
   consumeItem(p: Player, itemId: string): boolean;
@@ -62,9 +64,13 @@ export interface EffectKit {
   ): boolean;
   attachGod(state: GameState, p: Player, def: GodDef): void;
   nearestGodFor(p: Player): GodDef;
-  /** 抽一张机会卡（大/小福神显灵与机会格共用同一条抽卡管线） */
-  drawChanceCard(state: GameState, p: Player, source?: string): void;
-  /** 机会格 / 卡片屋 / 福神的抽卡入口（额满时挂起 awaiting_discard） */
+  /** 神庙摇籤：随机召唤一位神明附身（走 RNG） */
+  summonGod(state: GameState, p: Player): void;
+  /** 行进显灵·租金类（GOD-02/03/06/07）：返回调整后的应付过路费，0 表示完全抵赖 */
+  applyGodRentModifier(state: GameState, p: Player, rent: number, cellName: string): number;
+  /** 霉运倍率（GOD-12）：1 = 无霉运，2 = 加倍 */
+  unluckyMultiplier(p: Player): number;
+  /** 抽一张机会卡（大/小福神显灵、机会格与卡片屋共用的同一条管线，额满时挂起 awaiting_discard） */
   drawChanceCard(state: GameState, p: Player, source?: string): void;
   /** 在列表中确定性随机取一项（消耗一次抽数） */
   randomPick<T>(state: GameState, items: T[]): T | undefined;
@@ -91,6 +97,17 @@ export interface EffectKit {
 export type CardAction = Extract<PlayerAction, { type: 'USE_CARD' }>;
 export type ItemAction = Extract<PlayerAction, { type: 'USE_ITEM' }>;
 
+/** 能力集合 + 当前对局状态：所有注入上下文的最 common 形态 */
+export interface EngineCtx extends EffectKit {
+  state: GameState;
+}
+
+/** 某格的地权：业主玩家 + 该业主名下的地产状态 */
+export interface CellOwner {
+  player: Player;
+  property: PlayerProperty;
+}
+
 /** 一处已建成建筑的引用（业主 + 地产状态 + 所在格），供命运/新闻的「随机拆房」类效果使用 */
 export interface BuildingRef {
   player: Player;
@@ -99,8 +116,7 @@ export interface BuildingRef {
 }
 
 /** 卡片效果上下文：`self` 为使用者，`action` 携带 UI 收集到的目标参数 */
-export interface CardEffectCtx extends EffectKit {
-  state: GameState;
+export interface CardEffectCtx extends EngineCtx {
   self: Player;
   action: CardAction;
   /** 当前卡片的定义（效果体需要自述名称、并按 id 区分红卡/黑卡等成对卡） */
@@ -114,8 +130,7 @@ export interface CardEffectCtx extends EffectKit {
 }
 
 /** 道具效果上下文 */
-export interface ItemEffectCtx extends EffectKit {
-  state: GameState;
+export interface ItemEffectCtx extends EngineCtx {
   self: Player;
   action: ItemAction;
   item: { id: string; name: string };
@@ -131,8 +146,7 @@ export interface ItemEffectCtx extends EffectKit {
  * `renderParams.amount` 改回名义值 —— 所以它是可变的，效果体直接写它。
  * 效果体的返回值即日志尾部的补充说明文本（`extra`）。
  */
-export interface FateEffectCtx extends EffectKit {
-  state: GameState;
+export interface FateEffectCtx extends EngineCtx {
   self: Player;
   def: FateCardDef;
   renderParams: Record<string, string | number>;
@@ -150,8 +164,7 @@ export interface FateEffectCtx extends EffectKit {
  * 新闻日志 —— 税收类事件逐人征收时若有人因此破产倒闭，原实现就是在中途 return
  * 而不再播报，这个语义必须保住。
  */
-export interface NewsEffectCtx extends EffectKit {
-  state: GameState;
+export interface NewsEffectCtx extends EngineCtx {
   def: NewsEventDef;
   params: Partial<Record<'street' | 'player' | 'company' | 'stock' | 'amount', string>>;
 }
@@ -161,6 +174,38 @@ export interface NewsEffectCtx extends EffectKit {
  * 日切计时与对偶转化都读 `p.god` 并需要写日志、扣款、抽卡，故与效果族共用同一份注入。
  * 神明的**数据**（`GODS` / `GodDef`）留在 `gods.ts`，此处只补它的**行为**依赖。
  */
-export interface GodEffectCtx extends EffectKit {
-  state: GameState;
+export interface GodEffectCtx extends EngineCtx {}
+
+/**
+ * 落格结算的走向（R2 的落格 handler 协议）：
+ * - `advance`：本格结算完毕，由 `rollDice` 统一 `advanceTurn`；
+ * - `hold`：本格把相位切到 `awaiting_action` / `awaiting_pick`，等玩家当场决策，不推进；
+ * - `stop`：什么都不做 —— 对局已结束，或该格已自行安排后续（拍卖会接管回合）。
+ */
+export type LandingResult = 'advance' | 'hold' | 'stop';
+
+/**
+ * 落格结算上下文（`cell_handlers.ts`）：`self` 为落格玩家，`cell` 为落脚格，
+ * `moved` 为本次实际行走步数（加油站按步数计费）。
+ *
+ * `CELL_HANDLERS` 之所以要注入这一整份能力集合而非直接 import `engine.ts`：落格行为
+ * 属于「格子」这个系统，应与棋盘数据（`tiles.ts` / `board.ts`）就近维护，而引擎不能被
+ * 反向依赖。`tryFreePass`（免费卡反制）留在引擎，因为它要消耗反制卡并走反制栈。
+ */
+export interface CellLandingCtx extends EngineCtx {
+  self: Player;
+  cell: BoardCell;
+  moved: number;
+  /** 免费卡（CARD-21）自动抵用：金额超限或付不起时抵掉这一次 */
+  tryFreePass(state: GameState, p: Player, amount: number): boolean;
+  /** 住宅地产的应收租金（含路段倍数 / 等级 / 物价指数） */
+  propertyRent(state: GameState, cell: BoardCell, owned: CellOwner): number;
+  /** 监狱保释金（随物价指数） */
+  bailFee(state: GameState): number;
+  /** 机会格的命运卡抽签 + 结算 */
+  resolveFateCard(state: GameState, p: Player): void;
+  /** 新闻格的游标轮询选事件并结算 */
+  resolveNewsEvent(state: GameState): void;
+  /** 魔法屋：给定施法条件，列出可选的受罚者 id */
+  magicCandidates(state: GameState, caster: Player, condition: MagicCondition): string[];
 }

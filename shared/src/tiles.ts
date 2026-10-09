@@ -5,11 +5,11 @@ import { BOARD_SIZE } from './board.js';
 /**
  * 格型数据表与纯计算（波 3）：对标文档 §4 EST 与 §9 TILE。
  *
- * 本模块只放**数据 + 纯函数**（不依赖引擎内部函数），供 `engine.ts` 的落格结算调用，
+ * 本模块只放**数据 + 纯函数**（不依赖引擎内部函数），供落格 handler 与 `engine.ts` 调用，
  * 以免 `engine.ts` 因格型扩张而膨胀。
  *
- * 落格分派目前仍是 `engine.ts` 里 `rollDice` 内部的一条按格型 if-chain；
- * 抽出按 `CellType` 分派的 handler map 是既定的下一步（见重构波 R2）。
+ * 落格分派在 `cell_handlers.ts`（按 `CellType` 查表的 handler map，重构波 R2 落地）；
+ * 本模块提供它需要的价格、设施与等级计算。
  */
 
 /** 等级上限（EST-02：住宅加盖 5 个等级；EST-07：商业建设除公园/加油站外 5 级） */

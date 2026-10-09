@@ -1,14 +1,21 @@
-import type { CompanyKind, CompanyState, GameState, Player } from './types.js';
+import { MAX_HAND_CARDS, MAX_ITEM_COUNT } from './board.js';
+import { CARDS, SHOP_CARD_IDS } from './cards.js';
+import type { CellLandingCtx, LandingResult } from './effect_ctx.js';
 import { scaled } from './economy.js';
+import { ITEMS, SHOP_ITEM_IDS } from './items.js';
+import { nextRandom } from './rng.js';
+import type { BoardCell, CompanyKind, CompanyState, GameState, Player } from './types.js';
 
 /**
  * 公司企业系统（CORP-01..13 / TILE-20..30，波 5）。
  *
- * 本模块只放**数据 + 纯函数**（不抽 RNG、不依赖引擎内部函数），由 `engine.ts` 调用：
+ * 本模块承载公司的**数据 + 纯函数 + 落格行为**：
  * - 11 家公司定义（格位、股面值、消费方式）；
- * - 各公司消费金额基数（转轮盘结果由引擎抽取后传入）；
+ * - 各公司消费金额基数（转轮盘结果由调用方抽取后传入）；
  * - 经营权（董事长）判定：最大持股 + 同票先到先得；
- * - 累计盈余与 15 号分红由引擎的日切钩子处理。
+ * - 累计盈余与 15 号分红由引擎的日切钩子处理；
+ * - **落格行为**（`landOnCompany`：缴费 → 强制服务 → 挂起等待认购）自 `engine.ts` 迁来，
+ *   所需的引擎能力由调用方注入 `CellLandingCtx`，以免本模块反向依赖引擎形成循环。
  *
  * 通用规则（文档 §5.1）：
  * 1. 公司在地图固定格位，开局即存在，各公司股面值不同；
@@ -151,4 +158,111 @@ export function majorityHolderId(company: CompanyState, players: Player[]): stri
     }
   }
   return best;
+}
+/* ==========================================================================
+ * 公司落格行为（CORP-01..13 的结算实现，自 `engine.ts` 逐字迁出）
+ * ========================================================================== */
+
+/**
+ * 公司企业落格结算（CORP-01..13）。
+ * - 经营权属他人 → 按消费方式缴费（费用充作累积盈余）+ 强制服务（出国/休息/投保）；
+ * - 董事长本人 → 免付费，并享受专属福利（百货赠礼）；
+ * - 银行/百货无论持股均提供公共服务；
+ * - 结算后进入 `awaiting_action`：可认购股份（CORP-01）、房地产公司可加盖（CORP-13）、
+ *   企业银行董事长可特别融资（CORP-09）。
+ */
+export function landOnCompany(ctx: CellLandingCtx, p: Player, c: BoardCell): LandingResult {
+  const { state } = ctx;
+  const company = c.companyKind ? companyAtCell(state, c.id) : undefined;
+  const def = company ? COMPANIES[company.kind] : undefined;
+  if (!company || !def) {
+    ctx.log(state, `${p.name} 来到「${c.name}」`);
+    return 'advance';
+  }
+
+  const chairmanId = company.chairmanId;
+  const isChairman = chairmanId === p.id;
+  const chairmanName = chairmanId ? state.players.find((q) => q.id === chairmanId)?.name ?? chairmanId : null;
+  ctx.log(
+    state,
+    `${p.name} 来到「${def.name}」${isChairman ? '（董事长）' : chairmanName ? `（董事长：${chairmanName}）` : '（经营权空缺）'}`,
+  );
+
+  // CORP-09 / CORP-12：银行与百货无论经营权归属，任何人都可使用公共服务
+  if (company.kind === 'bank') {
+    state.bankAccess = { canDeposit: true, canLoan: true, cellId: c.id };
+  }
+  if (isChairman && company.kind === 'department') {
+    grantDepartmentGift(ctx, p, def.name);
+  }
+
+  // CORP-01：经营权属他人时按消费方式缴费，费用计入累积盈余
+  if (chairmanId !== null && !isChairman) {
+    let roll = 0;
+    if (WHEEL_KINDS.has(company.kind)) {
+      const draw = nextRandom(state.rngState);
+      state.rngState = draw.nextState;
+      roll = 1 + Math.floor(draw.value * 3); // 转轮盘 1..3 天
+    }
+    const fee = companyFee(state, company.kind, p, roll);
+    if (fee > 0) {
+      const paid = ctx.pay(state, p, fee, null, { reason: 'company' });
+      company.surplus += paid;
+      ctx.log(state, `${p.name} 在「${def.name}」缴费 ¥${paid}（计入累积盈余 ¥${company.surplus}）`);
+      if (p.bankrupt || ctx.isGameOver(state)) return 'stop';
+      applyCompanyService(ctx, p, company.kind, roll);
+    } else {
+      ctx.log(state, `${p.name} 在「${def.name}」无需缴费`);
+    }
+  }
+
+  state.phase = 'awaiting_action';
+  return 'hold';
+}
+
+/** 公司强制服务（CORP-03/04/06）：出国旅游 / 饭店休息 / 强制投保 */
+export function applyCompanyService(ctx: CellLandingCtx, p: Player, kind: CompanyKind, roll: number): void {
+  const { state } = ctx;
+  const days = Math.max(1, Math.min(3, roll));
+  switch (kind) {
+    case 'airline':
+      p.abroadTurns = Math.max(p.abroadTurns, days);
+      p.skipTurns = Math.max(p.skipTurns, days);
+      ctx.blockRent(p, days);
+      ctx.log(state, `【航空公司】${p.name} 乘机出国旅游 ${days} 天（期间不能收租）`);
+      break;
+    case 'restaurant':
+      p.skipTurns = Math.max(p.skipTurns, days);
+      ctx.blockRent(p, days);
+      ctx.log(state, `【大饭店】${p.name} 在饭店休息 ${days} 天（期间丧失收租权）`);
+      break;
+    case 'insurance':
+      p.insurance = { daysLeft: days };
+      ctx.log(state, `【保险公司】${p.name} 强制签约，投保期 ${days} 天`);
+      break;
+    default:
+      break;
+  }
+}
+
+/** CORP-12：百货公司董事长进入时获赠一张卡片或一项道具 */
+export function grantDepartmentGift(ctx: CellLandingCtx, p: Player, companyName: string): void {
+  const { state } = ctx;
+  const kindDraw = nextRandom(state.rngState);
+  state.rngState = kindDraw.nextState;
+  const pickDraw = nextRandom(state.rngState);
+  state.rngState = pickDraw.nextState;
+  if (kindDraw.value < 0.5 && p.cards.length < MAX_HAND_CARDS) {
+    const cardId = SHOP_CARD_IDS[Math.floor(pickDraw.value * SHOP_CARD_IDS.length)]!;
+    p.cards.push(cardId);
+    ctx.log(state, `【${companyName}】董事长专享：${p.name} 获赠卡片「${CARDS[cardId]?.name ?? cardId}」`);
+    return;
+  }
+  const itemId = SHOP_ITEM_IDS[Math.floor(pickDraw.value * SHOP_ITEM_IDS.length)]!;
+  if ((p.items[itemId] ?? 0) >= MAX_ITEM_COUNT) {
+    ctx.log(state, `【${companyName}】董事长专享：道具已满（上限 ${MAX_ITEM_COUNT}），赠礼作废`);
+    return;
+  }
+  p.items[itemId] = (p.items[itemId] ?? 0) + 1;
+  ctx.log(state, `【${companyName}】董事长专享：${p.name} 获赠道具「${ITEMS[itemId]?.name ?? itemId}」`);
 }
