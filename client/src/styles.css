@@ -1789,6 +1789,26 @@ button.mini {
   font-size: 10px;
 }
 
+/* 股票清单里的公司原始股（CORP-14）：没有涨跌，所以看面值、锁定/可卖与经营权 */
+.report-table-corp {
+  margin-top: 6px;
+  padding-top: 4px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.report-tile {
+  margin-left: 4px;
+  font-size: 10px;
+  color: #546e7a;
+}
+
+.report-subtotal {
+  margin-top: 2px;
+  font-size: 11px;
+  color: #78909c;
+  text-align: right;
+}
+
 /* ---------- 公司企业（波 5） ---------- */
 .company-panel {
   display: flex;

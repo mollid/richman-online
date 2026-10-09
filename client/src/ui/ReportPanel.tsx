@@ -9,9 +9,10 @@ import {
 
 /**
  * 三清单报表（ECON-14 / help [16]）：
- * - 资产清单：每位角色的现金、存款、土地、房屋、股票及资产总值；
+ * - 资产清单：每位角色的现金、存款、土地、房屋、股票、原始股及资产总值；
  * - 地产清单：查询拥有的土地、等级、建设与现值；
- * - 股票清单：持有股票的明细（数量/单价/成本/市值/盈亏/持股比例）。
+ * - 股票清单：上市股明细（数量/单价/成本/市值/盈亏/持股比例）+ 公司原始股明细
+ *   （面值/锁定/可卖/经营权，CORP-14）。两套并排给：原始股按面值计值，编不出「盈亏」这一列。
  */
 type ReportTab = 'asset' | 'estate' | 'stock';
 
@@ -130,11 +131,12 @@ export function ReportPanel({ game, myPlayerId }: { game: GameState; myPlayerId?
               <div key={p.id} className="report-card">
                 <div className="report-card-head">
                   <b>{p.name}</b>
+                  <span className="report-total">市值 ¥{fmt(sum.marketValue)}</span>
                   <span className={`report-total ${sum.profit >= 0 ? 'up' : 'down'}`}>
                     盈亏 {signed(sum.profit)}
                   </span>
                 </div>
-                {sum.rows.length === 0 && <div className="report-empty">暂无持股</div>}
+                {sum.rows.length === 0 && sum.corpRows.length === 0 && <div className="report-empty">暂无持股</div>}
                 {sum.rows.length > 0 && (
                   <table className="report-table">
                     <thead>
@@ -169,6 +171,40 @@ export function ReportPanel({ game, myPlayerId }: { game: GameState; myPlayerId?
                     </tbody>
                   </table>
                 )}
+                {/* CORP-14：原始股没有价差，要看的是流动性（锁定 / 可卖）与经营权 */}
+                {sum.corpRows.length > 0 && (
+                  <table className="report-table report-table-corp">
+                    <thead>
+                      <tr>
+                        <th>公司原始股</th>
+                        <th>数量</th>
+                        <th>面值</th>
+                        <th>市值</th>
+                        <th>锁定 / 可卖</th>
+                        <th>持股</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {sum.corpRows.map((r) => (
+                        <tr key={r.cellId}>
+                          <td>
+                            {r.name}
+                            <span className="report-tile">{r.tile}</span>
+                            {r.chairman && <span className="badge">董事长</span>}
+                          </td>
+                          <td>{r.quantity}</td>
+                          <td>{r.price}</td>
+                          <td>¥{fmt(r.marketValue)}</td>
+                          <td>
+                            {r.locked > 0 ? <span className="down">{r.locked}</span> : '0'} / {r.sellable}
+                          </td>
+                          <td>{r.holdingPct}%</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+                {sum.corpValue > 0 && <div className="report-subtotal">原始股小计 ¥{fmt(sum.corpValue)}</div>}
               </div>
             );
           })}

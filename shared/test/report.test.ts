@@ -4,6 +4,7 @@ import {
   allStockSummaries,
   assetSummary,
   applyAction,
+  companyAtCell,
   createGame,
   estateGroups,
   propertyValue,
@@ -17,9 +18,10 @@ import { pinIndexOne } from './helpers/state.js';
 
 /**
  * ECON-14 三清单报表测试（help [16]）：
- * - 资产清单：现金/存款/土地/房屋/股票/贷款/总值；
+ * - 资产清单：现金/存款/土地/房屋/股票/原始股/贷款/总值；
  * - 地产清单：按街道分组，含等级、建设、连锁店与现值；
- * - 股票清单：持仓数量、单价、成本、市值、盈亏、持股比例。
+ * - 股票清单：上市股给数量、单价、成本、市值、盈亏、持股比例；
+ *   公司原始股（CORP-14）给面值、锁定 / 可卖与经营权 —— 它按面值计值，没有「盈亏」可报。
  */
 
 const PLAYERS: PlayerDef[] = [
@@ -43,10 +45,11 @@ describe('ECON-14 资产清单', () => {
     expect(sum.landValue).toBe(0);
     expect(sum.houseValue).toBe(0);
     expect(sum.stockValue).toBe(0);
+    expect(sum.corpValue).toBe(0);
     expect(sum.loan).toBe(0);
     expect(sum.total).toBe(p.cash);
-    // 明细行覆盖 help [16] 的六项
-    expect(sum.rows.map((r) => r.key)).toEqual(['cash', 'deposit', 'land', 'house', 'stock', 'loan']);
+    // 明细行覆盖 help [16] 的六项，再加本作补的公司原始股（CORP-14）
+    expect(sum.rows.map((r) => r.key)).toEqual(['cash', 'deposit', 'land', 'house', 'stock', 'corp', 'loan']);
   });
 
   it('土地与房屋分开计价：土地取地价，房屋取加盖与建设增值', () => {
@@ -91,6 +94,19 @@ describe('ECON-14 资产清单', () => {
     const sum = assetSummary(g, p);
     expect(sum.stockValue).toBe(tech.price * 10);
     expect(sum.total).toBe(p.cash + tech.price * 10);
+  });
+
+  it('原始股按面值计入资产总额（CORP-14，报表总值不与 totalAssets 打架）', () => {
+    let g = newGame();
+    const before = assetSummary(g, g.players[0]!);
+    const cash = g.players[0]!.cash;
+    g = applyAction(g, { type: 'BUY_SHARES', cellId: 43, quantity: 10 }); // 电脑公司 ¥400/张
+    const sum = assetSummary(g, g.players[0]!);
+    expect(sum.corpValue).toBe(4000);
+    expect(sum.rows.find((r) => r.key === 'corp')!.label).toBe('原始股');
+    // 现金换成面值相等的持股 ⇒ 总值一分不动（早先漏算时会凭空少 4000）
+    expect(sum.total).toBe(before.total);
+    expect(g.players[0]!.cash).toBe(cash - 4000);
   });
 
   it('全员资产清单按总值降序', () => {
@@ -186,9 +202,13 @@ describe('ECON-14 股票清单', () => {
     expect(row.cost).toBe(2000);
     expect(row.marketValue).toBe(tech.price * 20);
     expect(row.profit).toBe(tech.price * 20 - 2000);
-    expect(row.holdingPct).toBeCloseTo(2, 5); // 20 / 1000
+    // 持股比例的分母是这支的**流通股本**（§3.4），不是早先硬写的 1000；报表按一位小数取整
+    expect(row.holdingPct).toBeCloseTo((20 / tech.floatShares) * 100, 0);
     expect(sum.marketValue).toBe(row.marketValue);
     expect(sum.profit).toBe(row.profit);
+    // 没有原始股时 corp 明细为空，不影响合计
+    expect(sum.corpRows).toEqual([]);
+    expect(sum.corpValue).toBe(0);
   });
 
   it('股价上涨后盈亏转正，下跌后转负', () => {
@@ -217,6 +237,60 @@ describe('ECON-14 股票清单', () => {
     const g = newGame();
     g.players[0]!.stocks.tech = 99999;
     expect(stockSummary(g, g.players[0]!).rows[0]!.holdingPct).toBeLessThanOrEqual(100);
+  });
+
+  it('原始股明细给面值、锁定 / 可卖与经营权（CORP-14）', () => {
+    let g = newGame();
+    g = applyAction(g, { type: 'BUY_SHARES', cellId: 43, quantity: 10 });
+    let sum = stockSummary(g, g.players[0]!);
+    expect(sum.rows).toEqual([]); // 一股上市股都没买 ⇒ 传统表为空，不至于「暂无持股」
+    expect(sum.corpRows).toHaveLength(1);
+    const row = sum.corpRows[0]!;
+    expect(row.kind).toBe('computer');
+    expect(row.name).toBe('电脑公司');
+    expect(row.quantity).toBe(10);
+    expect(row.price).toBe(400); // 面值就是卖出单价：不涨跌、无冲击
+    expect(row.marketValue).toBe(4000);
+    expect(row.locked).toBe(10); // 本回合刚认购 ⇒ 全部待解锁
+    expect(row.sellable).toBe(0);
+    expect(row.chairman).toBe(true);
+    expect(row.holdingPct).toBe(100); // 唯一的在场股东
+    expect(sum.corpValue).toBe(4000);
+    expect(sum.marketValue).toBe(4000);
+    expect(sum.profit).toBe(0); // 原始股没有价差可报
+    // 解锁之后（回合推进的语义已由 companies.test 钉，这里只喂给报表）
+    companyAtCell(g, 43)!.lockedShares = {};
+    sum = stockSummary(g, g.players[0]!);
+    expect(sum.corpRows[0]!.locked).toBe(0);
+    expect(sum.corpRows[0]!.sellable).toBe(10);
+  });
+
+  it('原始股占比按在场股东合计，两家分持 6 / 4', () => {
+    const g = newGame();
+    const comp = companyAtCell(g, 43)!;
+    comp.shares = { p1: 60, p2: 40 };
+    comp.firstHeldDayIndex = { p1: 0, p2: 0 };
+    comp.chairmanId = 'p1';
+    const s1 = stockSummary(g, g.players[0]!).corpRows[0]!;
+    const s2 = stockSummary(g, g.players[1]!).corpRows[0]!;
+    expect(s1.holdingPct).toBe(60);
+    expect(s1.chairman).toBe(true);
+    expect(s2.holdingPct).toBe(40);
+    expect(s2.chairman).toBe(false);
+  });
+
+  it('两档合起来的市值 = 上市股市价 + 原始股面值', () => {
+    const g = newGame();
+    const p = g.players[0]!;
+    p.stocks.tech = 10;
+    p.stockCost = { tech: 1000 };
+    companyAtCell(g, 43)!.shares.p1 = 5;
+    const sum = stockSummary(g, p);
+    const tech = g.stockMarket.stocks.find((s) => s.id === 'tech')!;
+    expect(sum.marketValue).toBe(tech.price * 10 + 400 * 5);
+    expect(sum.cost).toBe(1000 + 400 * 5);
+    expect(sum.profit).toBe(tech.price * 10 - 1000);
+    expect(allStockSummaries(g)).toHaveLength(3);
   });
 });
 

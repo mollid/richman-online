@@ -3,15 +3,40 @@ import { landPrice, landUpgradeCost } from './economy.js';
 import { CARDS, SHOP_CARD_IDS } from './cards.js';
 import { ITEMS, SHOP_ITEM_IDS } from './items.js';
 import { MAX_HAND_CARDS, MAX_ITEM_COUNT } from './board.js';
+import { sellableSharesOf } from './companies.js';
 import { facilityBuildCost } from './tiles.js';
 import { isNegativeGod } from './gods.js';
-import type { FacilityType, GameState, PlayerAction } from './types.js';
+import type { FacilityType, GameState, Player, PlayerAction } from './types.js';
 
 /** AI 建设偏好：研究所（可研发道具）优先，其次购物中心/旅馆/加油站/公园 */
 const BUILD_PREFERENCE: FacilityType[] = ['lab', 'mall', 'hotel', 'gas', 'park'];
 
 /** AI 炒股时保留的存款安全垫（股票只能用存款买入，help[07]） */
 const STOCK_RESERVE_DEPOSIT = 5000;
+
+/** AI 现金低于此线就先变现原始股救急（CORP-14） */
+const SHARES_CASH_FLOOR = 3000;
+
+/**
+ * CORP-14：现金告急时把公司原始股按面值卖回股市。
+ *
+ * 两条自律：
+ * - **不动经营权在自己手里的那家** —— 董事长免付费是每天都能兑现的实惠，卖股只换一次现金；
+ *   真被反超了才把那家的股份套现，反正特权已经不是自己的了。
+ * - 只卖**已解锁**的部分，并且数量交给注册表复核（`actionRefusal`）—— 「面板/bot 算出来的数量
+ *   被引擎拒绝」正是本项目反复踩过的 bug 类，门控与引擎必须同源。
+ */
+function liquidateShares(state: GameState, me: Player): PlayerAction | null {
+  if (me.cash >= SHARES_CASH_FLOOR) return null;
+  const best = state.companies
+    .filter((c) => c.chairmanId !== me.id)
+    .map((c) => ({ c, sellable: sellableSharesOf(c, me.id) }))
+    .filter((x) => x.sellable > 0)
+    .sort((a, b) => b.sellable * b.c.sharePrice - a.sellable * a.c.sharePrice)[0];
+  if (!best) return null;
+  const action: PlayerAction = { type: 'SELL_SHARES', cellId: best.c.cellId, quantity: best.sellable };
+  return actionRefusal(state, action) === null ? action : null;
+}
 
 /**
  * AI 参与拍卖的必得价：公定地价 ×（1 + 每级建筑 20%）。
@@ -32,7 +57,8 @@ function auctionValueCeiling(state: GameState, cellId: number): number {
  * AI 托管决策（纯函数）：
  * - 掷骰阶段：有天使卡且状态负面先解除，否则掷骰
  * - 猜杯阶段：按注入的 rng 随机选杯
- * - 决策阶段：买地/升级保留 ¥2000 安全垫；商店随机购卡；银行现金充裕买最便宜股票 10 股；否则结束回合
+ * - 决策阶段：买地/升级保留 ¥2000 安全垫；商店随机购卡；现金告急先按面值卖回原始股（CORP-14）；
+ *   银行现金充裕买最便宜股票 10 股；否则结束回合
  * 返回 null 表示当前无可执行动作
  */
 export function botDecide(state: GameState, botId: string, rng: () => number): PlayerAction | null {
@@ -135,6 +161,10 @@ export function botDecide(state: GameState, botId: string, rng: () => number): P
       return { type: 'BUY_ITEM', itemId: pick };
     }
   }
+
+  // CORP-14：现金告急 ⇒ 先按面值卖回原始股筹现金，再谈投资
+  const liquidate = liquidateShares(state, me);
+  if (liquidate) return liquidate;
 
   // 股票只能用**存款**买入（help[07]）。旧实现按 `me.cash >= 8000` 推测买得起，
   // 于是每回撞上引擎的「现金不能用于炒股」——买哪只、买几只一律问注册表。
