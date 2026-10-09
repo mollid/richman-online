@@ -55,10 +55,9 @@ export const ITEMS: Record<string, ItemDef> = {
     phase: 'any',
     target: 'none',
     researchLevel: null,
-    apply: ({ state, self: p, log }) => {
+    apply: ({ state, self: p, log, cellsAhead, clearBoardGods }) => {
       // ITEM-01：踢除前方 9 步内的路障 / 地雷 / 定时炸弹
-      const ahead: number[] = [];
-      for (let i = 1; i <= 9; i++) ahead.push((p.position + p.direction * i + BOARD_SIZE) % BOARD_SIZE);
+      const ahead = cellsAhead(state, p.position, p.direction, 9);
       const beforeRoad = state.roadblocks.length;
       const beforeMine = state.mines.length;
       state.roadblocks = state.roadblocks.filter((id) => !ahead.includes(id));
@@ -84,12 +83,15 @@ export const ITEMS: Record<string, ItemDef> = {
         q.god = null;
         kickedGods += 1;
       }
-      const total = cleared + kickedNpcs + kickedGods;
+      // W2：神明除附身在人身上之外，还会**驻留在棋盘格上**，一并扫走
+      const sweptGods = clearBoardGods(state, ahead, '被机器娃娃扫走');
+      const total = cleared + kickedNpcs + kickedGods + sweptGods;
       if (total === 0) throw new Error('前方 9 步内没有障碍物或特殊单位');
       const detail = [
         cleared > 0 ? `${cleared} 处障碍` : '',
         kickedNpcs > 0 ? `${kickedNpcs} 个特殊人物` : '',
         kickedGods > 0 ? `${kickedGods} 位神明` : '',
+        sweptGods > 0 ? `${sweptGods} 尊驻留神明` : '',
       ].filter(Boolean).join('、');
       log(state, `${p.name} 使用「机器娃娃」，清除前方 9 步内 ${detail}`);
     },

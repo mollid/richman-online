@@ -98,6 +98,8 @@ export interface ReplayRecord extends ReplayRecordSummary {
   /** 起始日期；老记录可能为空 */
   start_date?: DateSerial | null;
   actions: Array<{ turn: number; action: PlayerAction }>;
+  /** 录制时神明现身机制是否开启；老记录没有这列 ⇒ 按关闭重放才能复现原轨迹 */
+  spawn_gods?: boolean | null;
 }
 
 export async function fetchRecentRecords(limit = 20): Promise<ReplayRecordSummary[]> {

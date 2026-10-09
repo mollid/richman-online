@@ -83,6 +83,18 @@ export interface GodStatus {
   remainingDays: number;
 }
 
+/** 驻留在棋盘上的一尊神明（GOD 现身机制，W2） */
+export interface BoardGod {
+  /** `GODS[].id`；死神不参与随机现身（只由认输投降 / 魔法屋渠道降临） */
+  godId: string;
+  /** 驻留格（BOARD_SIZE 圈上的格号），玩家经过即附身 */
+  cellId: number;
+  /** 剩余驻留天数；日切递减，≤0 即离开并让对偶进入冷却 */
+  ttlDays: number;
+  /** 现身当天的 `elapsedDays` */
+  bornDay: number;
+}
+
 /** 保险状态（ECON-07 / CORP-06）：强制签约，按天计时 */
 export interface InsuranceStatus {
   /** 保险有效期剩余天数 */
@@ -482,6 +494,18 @@ export interface GameState {
    * 同一自然月内不再随机到土地公；跨月后恢复可出现。为 0 表示尚未出现过。
    */
   landGodCooldownMonth: number;
+
+  /**
+   * 神明现身机制（GOD-01..12 / W2）：驻留在棋盘上的神明，最多 `GOD_MAX_ON_BOARD` 尊。
+   *
+   * `null` = **机制关闭**（老存档与老录像没有这个键，由 `normalizeGameState` 补成 null），
+   * 空数组 = 机制已开启、此刻无人驻留。两者必须区分：回放铁律要求
+   * 「字段缺失 ⇒ 机制未启用 ⇒ 在任何抽数之前短路」—— 若老录像也开启该机制，
+   * 日切就多消耗 RNG 抽数，同 seed 的老录像再也复现不出原轨迹。
+   */
+  boardGods: BoardGod[] | null;
+  /** 对偶神的再现身冷却：`godPairKey(...)` → 该 `elapsedDays` 之前不得再现身 */
+  godPairBanUntil: Record<string, number>;
   /** ECON-12：手牌额满时待玩家选择舍弃的卡片 id；null 表示无 */
   pendingCard: string | null;
   /** UI-06 公布栏：当前所有公开挂牌 */

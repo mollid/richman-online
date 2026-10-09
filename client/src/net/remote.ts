@@ -256,6 +256,8 @@ function emptyState(): GameState {
     currentPlayerIndex: 0,
     phase: 'lobby',
     turnStage: 'start',
+    boardGods: [],
+    godPairBanUntil: {},
     dice: null,
     turn: 0,
     round: 1,

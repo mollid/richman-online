@@ -21,3 +21,15 @@ export function pinIndexOne(state: GameState): GameState {
   state.initialPlayerCount = 1;
   return state;
 }
+
+/**
+ * 把一尊神明放上棋盘（GOD 现身机制，W2）。
+ *
+ * 测试里「附身某人」的正路是请神卡或经过附身，两者都只看**在场**的神明，
+ * 所以要先造在场。机制关闭（`boardGods === null`）的局面里这函数会先把开关打开。
+ */
+export function putGodOnBoard(state: GameState, godId: string, cellId: number, ttlDays = 3): GameState {
+  state.boardGods ??= [];
+  state.boardGods.push({ godId, cellId, ttlDays, bornDay: state.calendar.elapsedDays });
+  return state;
+}

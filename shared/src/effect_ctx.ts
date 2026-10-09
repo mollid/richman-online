@@ -63,7 +63,19 @@ export interface EffectKit {
     opts: { cellId: number; sellerId: string | null; trigger: AuctionTrigger; afterComplete: 'resume' | 'advance' },
   ): boolean;
   attachGod(state: GameState, p: Player, def: GodDef): void;
-  nearestGodFor(p: Player): GodDef;
+  /** 请神卡用：取此刻在场、离自己最近的一尊神明；棋盘上没有神明时返回 null */
+  nearestGodFor(state: GameState, p: Player): GodDef | null;
+  /** 请神卡的前提（GOD 现身机制，W2）：无神可请时给出拒绝理由，门控与 apply 共用 */
+  godSummonRefusal(state: GameState): string | null;
+  /** 清退指定格上的驻留神明，返回清退数（机器娃娃与送神卡共用一条口径） */
+  clearBoardGods(state: GameState, cellIds: readonly number[], reason: string): number;
+  /**
+   * 把某尊驻留神明请到玩家身上（请神卡用）：从棋盘摘走，但**不算清退**，
+   * 因此不写对偶冷却 —— 它只是换了个在场方式，对偶仍由「同对不共现」挡着。
+   */
+  claimBoardGod(state: GameState, godId: string): boolean;
+  /** 行进方向上前方 n 步的格号（机器娃娃 / 送神卡的「前方 9 步」同源口径） */
+  cellsAhead(state: GameState, from: number, dir: 1 | -1, steps: number): number[];
   /** 神庙摇籤：随机召唤一位神明附身（走 RNG） */
   summonGod(state: GameState, p: Player): void;
   /** 行进显灵·租金类（GOD-02/03/06/07）：返回调整后的应付过路费，0 表示完全抵赖 */

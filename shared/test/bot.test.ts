@@ -52,6 +52,47 @@ describe('M9 AI 托管决策', () => {
     expect(action.hole).toBe(2);
   });
 
+  it('记忆翻牌只翻「还没翻开、也未配对」的牌', () => {
+    let g = applyAction(createGame(BOTS, 413), { type: 'START_GAME' });
+    g.players[0]!.position = 17;
+    g.phase = 'awaiting_pick';
+    g.minigame = {
+      kind: 'memory',
+      round: 0,
+      hits: [],
+      symbols: [7, 3, 3, 1, 8, 2, 5, 9],
+      revealed: [0],
+      matched: [false, true, true, false, false, false, false, false],
+      flips: 3,
+    };
+    // 旧实现一律猜 0-2 号「杯」：这游戏是 8 张牌，0 号已翻开、1、2 号已配对，
+    // 每次都被引擎以「这张牌不能翻」拒绝，而兜底只在 awaiting_action 下结束回合
+    // ⇒ 整局卡在 awaiting_pick（实测一局两千多个被吞错误）。
+    for (const roll of [0, 0.2, 0.4, 0.6, 0.8, 0.99]) {
+      const action = botDecide(g, 'b1', () => roll) as PlayerAction & { hole: number };
+      expect(action.type).toBe('MINIGAME_PICK');
+      expect([0, 1, 2]).not.toContain(action.hole);
+      expect(action.hole).toBeGreaterThanOrEqual(0);
+      expect(action.hole).toBeLessThan(8);
+    }
+  });
+
+  it('一张都翻不动时不再产出必然被拒的动作', () => {
+    let g = applyAction(createGame(BOTS, 415), { type: 'START_GAME' });
+    g.players[0]!.position = 17;
+    g.phase = 'awaiting_pick';
+    g.minigame = {
+      kind: 'memory',
+      round: 0,
+      hits: [],
+      symbols: [1, 1, 2, 2, 3, 3, 4, 4],
+      revealed: [],
+      matched: [true, true, true, true, true, true, true, true],
+      flips: 6,
+    };
+    expect(botDecide(g, 'b1', () => 0.5)).toBeNull();
+  });
+
   it('非本方回合返回 null', () => {
     let g = applyAction(createGame(BOTS, 411), { type: 'START_GAME' });
     expect(botDecide(g, 'b2', () => 0.5)).toBeNull();

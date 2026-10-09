@@ -50,6 +50,16 @@ export function botDecide(state: GameState, botId: string, rng: () => number): P
   }
 
   if (state.phase === 'awaiting_pick') {
+    // 记忆翻牌是 8 张牌（下标 0-7），且已翻开 / 已配对的不能再翻。
+    // 旧实现一律 `Math.floor(rng()*3)`，在这局里会反复撞上同一张已翻开的牌：
+    // 引擎每次都以「这张牌已经翻开」拒绝，而兜底逻辑只在 awaiting_action 下退化为
+    // END_TURN ⇒ 整局卡在 awaiting_pick 死循环（实测一局刷出两千多个被拒动作）。
+    const mg = state.minigame;
+    if (mg?.kind === 'memory') {
+      const open = mg.matched.map((matched, i) => (matched || mg.revealed.includes(i) ? -1 : i)).filter((i) => i >= 0);
+      if (open.length === 0) return null;
+      return { type: 'MINIGAME_PICK', hole: open[Math.floor(rng() * open.length)]! };
+    }
     return { type: 'MINIGAME_PICK', hole: Math.floor(rng() * 3) };
   }
 

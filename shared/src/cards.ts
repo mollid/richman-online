@@ -2,8 +2,10 @@ import { MAX_HAND_CARDS, MAX_ITEM_COUNT } from './board.js';
 import type { CardEffectCtx } from './effect_ctx.js';
 import { scaled, upgradeCost } from './economy.js';
 import { godDef } from './gods.js';
+import { clearBoardGodsOnCells, godSummonRefusal } from './godspawn.js';
 import { ITEMS } from './items.js';
 import { FACILITIES, MAX_GRADE, facilityUpgradeable, gradeName, viewportCells } from './tiles.js';
+import type { GameState, Player } from './types.js';
 
 /**
  * 卡片系统（CARD-01 – CARD-30，对标 `docs/gameplay/玩法系统_游戏开发文档.md` §6）。
@@ -44,6 +46,15 @@ export interface CardDef {
    * （不进商店货架、不进机会池）。
    */
   available: boolean;
+  /**
+   * 能否使用这张卡的**额外棋盘前提**（时机 / 是否持有 / 是否自动这些通用项由引擎判）。
+   * 返回字符串 = 拒绝理由。
+   *
+   * 为什么要有它：像「请神卡」这类卡的合法性取决于局面（此刻棋盘上有没有神可请），
+   * 而 `checkUseCard` 只查得到卡片自身的条件。没有 guard 就会出现
+   * 「卡片列在可用手牌里、按下去却报错」—— 门控与引擎同源的老毛病。
+   */
+  guard?: (state: GameState, actor: Player) => string | null;
   /**
    * 卡片效果。自动触发类（`auto`）没有本函数，由反制栈处理。
    * 校验不通过时抛错（引擎把错误回传给客户端），副作用直接写 `ctx.state`。
@@ -524,7 +535,7 @@ export const CARDS: Record<string, CardDef> = {
     phase: 'any',
     target: 'none',
     available: true,
-    apply: ({ state, self: p, log }) => {
+    apply: ({ state, self: p, log, cellsAhead, clearBoardGods }) => {
       let done = false;
       const bomb = state.bombs.find((b) => b.playerId === p.id);
       if (bomb) {
@@ -538,7 +549,13 @@ export const CARDS: Record<string, CardDef> = {
         log(state, `${p.name} 使用「送神卡」，送走了 ${godName}`);
         done = true;
       }
-      if (!done) throw new Error('身上没有神明或定时炸弹');
+      // 既未被附身也没带炸弹时，退而请走前方 9 步内**驻留在棋盘上**的神明（W2）：
+      // 神明会挡在必经之路上，经过就被动附身，提前送走等于给自己让路。
+      if (!done && clearBoardGods(state, cellsAhead(state, p.position, p.direction, 9), '被送神卡请回') > 0) {
+        log(state, `${p.name} 使用「送神卡」，请走了前方 9 步内的驻留神明`);
+        return;
+      }
+      if (!done) throw new Error('身上没有神明或定时炸弹，前方也没有驻留的神明');
     },
   },
   'invite-god': {
@@ -549,9 +566,13 @@ export const CARDS: Record<string, CardDef> = {
     phase: 'any',
     target: 'none',
     available: true,
-    apply: ({ state, self: p, nearestGodFor, attachGod, log }) => {
-      // CARD-23 请神：召唤视窗内最靠近自己的一位神明（纯计算，零抽数）
-      const def = nearestGodFor(p);
+    guard: (state) => godSummonRefusal(state),
+    apply: ({ state, self: p, nearestGodFor, attachGod, claimBoardGod, log }) => {
+      // CARD-23 请神：召唤此刻在场、且离自己最近的一位神明（纯计算，零抽数）
+      const def = nearestGodFor(state, p);
+      if (!def) throw new Error('棋盘上此刻没有可请的神明');
+      // 请到身上就等于离开棋盘（不算清退，所以不写对偶冷却）
+      claimBoardGod(state, def.id);
       log(state, `${p.name} 请神，召唤了最靠近自己的 ${def.name}`);
       attachGod(state, p, def);
     },

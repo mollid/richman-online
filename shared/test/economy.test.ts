@@ -432,6 +432,9 @@ describe('TIME-06 确定性：同 seed + startDate + actions 完整复现', () =
       phase: s.phase,
       rngState: s.rngState,
       calendar: s.calendar,
+      // 神明现身本身也是一条必须复现的轨迹：它写 boardGods / 对偶冷却，也吃 RNG 抽数
+      boardGods: s.boardGods,
+      godPairBanUntil: s.godPairBanUntil,
       players: s.players.map((p) => [p.position, p.cash, p.deposit, p.points, p.loan, p.properties]),
     });
 
@@ -443,12 +446,18 @@ describe('TIME-06 确定性：同 seed + startDate + actions 完整复现', () =
 
   it('ReplayEngine 用同一 seed/startDate/动作序列复现出相同局面', () => {
     const a = drive(777);
-    const engine = new ReplayEngine({
+    const record = {
       seed: 777,
       startDate: { ...MONDAY },
       players: PLAYERS.map((p) => ({ player_name: p.name, color: p.color })),
       actions: a.actions.map((action, i) => ({ turn: i, action })),
-    });
+    };
+    // 录制时开着神明现身，重放就必须带着这个标记：它会在日切消耗 RNG 抽数，
+    // 开关不一致整局就对不上（服务端把 this.game.boardGods !== null 存进 spawn_gods 列）。
+    const engine = new ReplayEngine({ ...record, spawnGods: true });
     expect(fingerprint(engine.finalState)).toBe(fingerprint(a.state));
+    // 反向：漏掉标记（按老录像处理）就不是同一条轨迹了 —— 动作日志与局面一旦错位，
+    // 重放会中途撞上「当前不能掷骰」这类拒绝。这说明这个标记不是可有可无的装饰。
+    expect(() => new ReplayEngine(record)).toThrow();
   });
 });

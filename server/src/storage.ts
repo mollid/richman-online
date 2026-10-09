@@ -44,6 +44,10 @@ export async function initStorage(): Promise<void> {
         );
         ALTER TABLE game_records ADD COLUMN IF NOT EXISTS actions JSONB NOT NULL DEFAULT '[]'::jsonb;
         ALTER TABLE game_records ADD COLUMN IF NOT EXISTS start_date JSONB;
+        -- 神明现身机制（W2）的开关。录像必须知道录制时它开没开：这条机制会在日切消耗
+        -- RNG 抽数，重放时若开关状态不同，整局轨迹就对不上。
+        -- 默认 FALSE 而不是 TRUE：补列时已存在的记录录于该机制之前，关掉才复现得出来。
+        ALTER TABLE game_records ADD COLUMN IF NOT EXISTS spawn_gods BOOLEAN NOT NULL DEFAULT FALSE;
         CREATE TABLE IF NOT EXISTS game_record_players (
           record_id UUID NOT NULL REFERENCES game_records(id) ON DELETE CASCADE,
           user_id UUID REFERENCES users(id),
@@ -140,6 +144,8 @@ export interface GameRecordInput {
   rounds: number;
   /** 回放动作日志（含 START_GAME），引擎确定性回放用 */
   actions: Array<{ turn: number; action: unknown }>;
+  /** 录制时神明现身机制是否开启（`GameState.boardGods !== null`） */
+  spawnGods: boolean;
   players: Array<{ userId: string | null; playerName: string; color: number; cash: number; bankrupt: boolean }>;
 }
 
@@ -149,8 +155,8 @@ export async function saveGameRecord(input: GameRecordInput): Promise<void> {
   try {
     await client.query('BEGIN');
     const recordRes = await client.query<{ id: string }>(
-      `INSERT INTO game_records (room_id, seed, start_date, winner_name, player_count, turns, rounds, actions)
-       VALUES ($1, $2, $3::jsonb, $4, $5, $6, $7, $8::jsonb) RETURNING id`,
+      `INSERT INTO game_records (room_id, seed, start_date, winner_name, player_count, turns, rounds, actions, spawn_gods)
+       VALUES ($1, $2, $3::jsonb, $4, $5, $6, $7, $8::jsonb, $9) RETURNING id`,
       [
         input.roomId,
         input.seed,
@@ -160,6 +166,7 @@ export async function saveGameRecord(input: GameRecordInput): Promise<void> {
         input.turns,
         input.rounds,
         JSON.stringify(input.actions),
+        input.spawnGods,
       ],
     );
     const recordId = recordRes.rows[0]!.id;
@@ -195,6 +202,8 @@ export interface ReplayRecord extends ReplayRecordSummary {
   /** 老记录可能为空，客户端缺省时引擎用固定常量兜底 */
   start_date: DateSerial | null;
   actions: Array<{ turn: number; action: unknown }>;
+  /** 老记录补列后为 false；为 null 只可能出现在视图里，客户端同样按关闭处理 */
+  spawn_gods: boolean | null;
 }
 
 export async function listRecentRecords(limit = 20): Promise<ReplayRecordSummary[]> {
@@ -220,7 +229,7 @@ export async function getRecord(id: string): Promise<ReplayRecord | null> {
   if (!pool || !storageReady.pg) return null;
   if (!/^[0-9a-f-]{36}$/i.test(id)) return null;
   const res = await pool.query<ReplayRecord>(
-    `SELECT gr.id, gr.room_id, gr.seed, gr.start_date, gr.winner_name, gr.player_count, gr.turns, gr.rounds, gr.actions, gr.finished_at,
+    `SELECT gr.id, gr.room_id, gr.seed, gr.start_date, gr.spawn_gods, gr.winner_name, gr.player_count, gr.turns, gr.rounds, gr.actions, gr.finished_at,
             COALESCE(
               json_agg(json_build_object('player_name', rp.player_name, 'color', rp.color, 'cash', rp.cash, 'bankrupt', rp.bankrupt)
                        ORDER BY rp.player_name)

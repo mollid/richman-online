@@ -32,8 +32,12 @@ export interface GodDef {
   /** 期满对偶转化目标 godId；不填表示期满自动离开 */
   transformsTo?: string;
   /**
-   * 神明所居格（BOARD_SIZE 圈上的格号），用于 CARD-23 请神卡「取最靠近自己的神明」。
-   * 围绕神庙（TILE 神庙格 15）左右散布；缺省表示与神庙同格。
+   * 神明的**候选居格**（围绕神庙散布的固定格号）。
+   *
+   * W2 之后它不再是「神明实际在哪」—— 实际在场的神明记在 `GameState.boardGods`
+   * （日切随机现身、经过即附身）。这里只保留原版「每位神明有习惯出没的格」这层含义，
+   * 并且仅在**现身机制关闭**（老存档 / 老录像）时继续作为 CARD-23 请神卡的取神依据。
+   * 新代码不要拿它当棋盘上的神明位置读。
    */
   cellId?: number;
 }
@@ -161,6 +165,17 @@ export function godDef(id: string): GodDef | undefined {
   return GODS.find((g) => g.id === id);
 }
 
+/**
+ * 对偶神的分组键：`transformsTo` 互为对偶（大财神⇄小财神、天使⇄恶魔…），
+ * 排序后拼接保证两尊神得到同一个键；无对偶者（土地公 / 死神）以自身为键。
+ * 「同对不共现」与「清退后对偶才现身」都按这个键判定。
+ */
+export function godPairKey(godId: string): string {
+  const rival = godDef(godId)?.transformsTo;
+  if (!rival || !godDef(rival)) return godId;
+  return [godId, rival].sort().join('|');
+}
+
 /** 不祥神明（穷神/衰神/死神）——AI 优先用送神卡送走 */
 export function isNegativeGod(id: string | undefined): boolean {
   if (!id) return false;
@@ -196,25 +211,46 @@ function loseRandomCards(state: GameState, p: Player, n: number): string[] {
   return lost;
 }
 
-/** 当前自然月的序号（跨月即变化，用于 GOD-01 隔月冷却） */
-function currentMonthIndex(state: GameState): number {
+/** 当前自然月的序号（跨月即变化，用于 GOD-01 隔月冷却；现身路径共用同一口径） */
+export function currentMonthIndex(state: GameState): number {
   const d = gameDate(state);
   return d.year * 12 + d.month;
 }
 
 /**
- * 请神卡（CARD-23）：取「最靠近自己」的一位神明（help/文档 CARD-23）。
- * 原版按棋盘距离取最近，改为纯计算（零抽数）；并列时取定义序靠前者。
+ * 请神卡（CARD-23）：取「最靠近自己」的一位神明（help/文档 CARD-23），纯计算零抽数；
+ * 并列时取 `GODS` 定义序靠前者。
+ *
+ * 神明驻留棋盘（W2）之后，「最近的神明」指的是**此刻在场的那几尊**，不再是定义表里的
+ * 假格位。返回 null 表示棋盘上没有可请的神 —— 请神卡因此应当不可用。
+ *
+ * 老存档 / 老录像（`boardGods === null`，机制关闭）走的仍是旧的纯定义表计算：
+ * 那时请神卡总能请到一尊，改成新规则会让老局面里这张卡突然作废。
  */
-export function nearestGodFor(p: Player): GodDef {
+export function nearestGodFor(ctx: GodEffectCtx, p: Player): GodDef | null {
+  const { state } = ctx;
   const dist = (cellId: number): number => {
     const d = Math.abs(cellId - p.position);
     return Math.min(d, BOARD_SIZE - d);
   };
-  let best = GODS[0]!;
+  if (!state.boardGods) {
+    let legacy = GODS[0]!;
+    let legacyDist = Infinity;
+    for (const def of GODS) {
+      const d = dist(def.cellId ?? 5);
+      if (d < legacyDist) {
+        legacyDist = d;
+        legacy = def;
+      }
+    }
+    return legacy;
+  }
+  let best: GodDef | null = null;
   let bestDist = Infinity;
-  for (const def of GODS) {
-    const d = dist(def.cellId ?? 5);
+  for (const god of state.boardGods) {
+    const def = godDef(god.godId);
+    if (!def) continue;
+    const d = dist(god.cellId);
     if (d < bestDist) {
       bestDist = d;
       best = def;
@@ -227,6 +263,9 @@ export function nearestGodFor(p: Player): GodDef {
 export function attachGod(ctx: GodEffectCtx, p: Player, def: GodDef): void {
   const { state } = ctx;
   p.god = { godId: def.id, remainingDays: def.durationDays };
+  // GOD-01 土地公「隔月才会再出现」（help [40]）：不管它是摇籤摇到、经过撞上还是被请来，
+  // 附身即占用本月的名额 —— 只在现身钩子里记的话，附身离场后它当月还能再现一次。
+  if (def.id === 'land-god') state.landGodCooldownMonth = currentMonthIndex(state);
   ctx.log(state, `${def.name} 附身 ${p.name}！${def.possession}（持续 ${def.durationDays} 天）`);
   applyGodPossession(ctx, p, def);
 }

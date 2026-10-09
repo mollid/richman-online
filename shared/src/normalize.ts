@@ -13,6 +13,11 @@ import type { GameState } from './types.js';
  * 引擎内部构造的状态本就带齐全部字段，无需再走这里。
  */
 export function normalizeGameState(state: GameState): GameState {
+  // 回放铁律：新机制字段的默认值必须是「机制关闭」，而不是「开启但为空」。
+  // 神明现身会在日切消耗 RNG 抽数，老录像若开启就无法逐帧复现 ⇒ 缺失一律补 null。
+  if (state.boardGods === undefined) state.boardGods = null;
+  if (!state.godPairBanUntil) state.godPairBanUntil = {};
+
   // 老状态没有回合子阶段：按可见相位反推一个合理值（该字段不参与任何规则判定）
   if (!state.turnStage) {
     state.turnStage =

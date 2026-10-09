@@ -16,7 +16,8 @@ const PLAYERS: PlayerDef[] = [
 const MONDAY = { year: 2026, month: 1, day: 5 } as const;
 
 function newGame(seed = 42): GameState {
-  const g = applyAction(createGame(PLAYERS, seed, { startDate: { ...MONDAY } }), { type: 'START_GAME' });
+  // spawnGods:false —— 神明随机现身会占用日切的 RNG 抽数，本文件的断言基于固定骰子序列
+  const g = applyAction(createGame(PLAYERS, seed, { startDate: { ...MONDAY }, spawnGods: false }), { type: 'START_GAME' });
   // 迁移（波 2 / CORE-03）：步行默认 1 颗骰子，机车 2 颗、汽车 3 颗。
   // 下列历史断言基于「两骰之和」，故统一给测试玩家配机车（diceCount=2）以保持既有语义。
   for (const p of g.players) p.diceCount = 2;

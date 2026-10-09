@@ -342,6 +342,8 @@ export class GameRoom extends Room {
         turns: this.game.turn,
         rounds: this.game.round,
         actions: this.actionLog,
+        // 神明现身开着的话，重放必须同样开着才能逐帧复现（见 storage 的 spawn_gods 列）
+        spawnGods: this.game.boardGods !== null,
         players: this.game.players.map((p) => ({
           userId: this.userIds.get(p.id) ?? null,
           playerName: p.name,

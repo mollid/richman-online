@@ -12,7 +12,7 @@ import {
   type GameState,
   type PlayerDef,
 } from '../src/index.js';
-import { pinIndexOne } from './helpers/state.js';
+import { pinIndexOne, putGodOnBoard } from './helpers/state.js';
 
 /**
  * 波 10a 缺口补齐测试（对应需求项）：
@@ -35,8 +35,13 @@ const PLAYERS: PlayerDef[] = [
 const MONDAY = { year: 2026, month: 1, day: 5 } as const;
 const HOSPITAL_CELL = 14;
 
-function newGame(seed = 42): GameState {
-  return applyAction(createGame(PLAYERS, seed, { startDate: { ...MONDAY } }), { type: 'START_GAME' });
+function newGame(seed = 42, opts: { spawnGods?: boolean } = {}): GameState {
+  // 默认关掉神明随机现身：它会占用日切 RNG 抽数，本文件多处断言固定骰子序列与逐日金额。
+  // 需要它的用例（如现身规则本身）在 gods_board.test.ts 里，那边默认开启。
+  return applyAction(
+    createGame(PLAYERS, seed, { startDate: { ...MONDAY }, spawnGods: opts.spawnGods ?? false }),
+    { type: 'START_GAME' },
+  );
 }
 
 /** 站到指定格并固定唯一一颗骰子（掷骰 0 抽） */
@@ -70,6 +75,8 @@ describe('CARD-23 请神卡：召唤视窗内最靠近自己的神明', () => {
     const g = pinIndexOne(newGame());
     g.players[0]!.cards = ['invite-god'];
     g.players[0]!.position = def.cellId ?? 5;
+    // W2：请神卡请的是「此刻在场」的神明，所以先把这尊放上棋盘
+    putGodOnBoard(g, 'big-wealth', def.cellId ?? 5);
     const r = applyAction(g, { type: 'USE_CARD', cardId: 'invite-god' });
     expect(r.players[0]!.god?.godId).toBe('big-wealth');
     expect(r.players[0]!.god?.remainingDays).toBe(GOD_DURATION_DAYS);
@@ -83,6 +90,10 @@ describe('CARD-23 请神卡：召唤视窗内最靠近自己的神明', () => {
   it('相邻格时取距离更近的那一位', () => {
     const g = pinIndexOne(newGame());
     g.players[0]!.cards = ['invite-god'];
+    putGodOnBoard(g, 'angel', 2);
+    putGodOnBoard(g, 'land-god', 3);
+    putGodOnBoard(g, 'devil', 4);
+    putGodOnBoard(g, 'big-fortune', 8);
     // 4 号格：距 devil(4)=0、land-god(3)=1、angel(2)=2 → 请到 devil
     g.players[0]!.position = 4;
     const r = applyAction(g, { type: 'USE_CARD', cardId: 'invite-god' });
@@ -93,15 +104,23 @@ describe('CARD-23 请神卡：召唤视窗内最靠近自己的神明', () => {
     expect(r2.players[0]!.god?.godId).toBe('big-fortune');
   });
 
-  it('12 神明都有唯一格号，且 46 号格外按环形距离就近取神', () => {
+  it('12 神明都有唯一候选格；无神在场时请神卡不可用', () => {
     const ids = GODS.map((x) => x.id);
     expect(new Set(ids).size).toBe(12);
     for (const def of GODS) expect(typeof def.cellId).toBe('number');
     const g = pinIndexOne(newGame());
     g.players[0]!.cards = ['invite-god'];
     g.players[0]!.position = 3; // 环上最近：land-god(3) 距离 0
+    putGodOnBoard(g, 'angel', 2);
+    putGodOnBoard(g, 'land-god', 3);
     const r = applyAction(g, { type: 'USE_CARD', cardId: 'invite-god' });
     expect(r.players[0]!.god?.godId).toBe('land-god');
+
+    // 棋盘上没神：门控与引擎给出同一句拒绝（W2 的「无物可请」）
+    const empty = pinIndexOne(newGame(42, { spawnGods: true }));
+    empty.players[0]!.cards = ['invite-god'];
+    expect(availableActions(empty).usableCards).not.toContain('invite-god');
+    expect(() => applyAction(empty, { type: 'USE_CARD', cardId: 'invite-god' })).toThrow('棋盘上此刻没有可请的神明');
   });
 });
 

@@ -6,6 +6,7 @@ import {
   FACILITIES,
   facilityBuildCost,
   gameDate,
+  godDef,
   gradeName,
   ITEMS,
   landPrice,
@@ -63,6 +64,12 @@ export function ControlPanel({
   const maxDice = Math.max(1, current?.diceCount ?? 1);
   const effectiveDice = diceChoice !== null && diceChoice >= 1 && diceChoice <= maxDice ? diceChoice : maxDice;
   const shownDice: (number | null)[] = game.dice ?? Array.from({ length: maxDice }, () => null);
+  // 场上驻留的神明（W2）：机制关闭的老录像里 boardGods 为 null，这里自然就是空列表
+  const godBoard = (game.boardGods ?? []).map((god) => ({
+    name: godDef(god.godId)?.name ?? god.godId,
+    cellName: game.board[god.cellId]?.name ?? `${god.cellId} 格`,
+    ttlDays: god.ttlDays,
+  }));
 
   return (
     <div className="panel control-panel">
@@ -82,6 +89,14 @@ export function ControlPanel({
 
       {actions.canTradeStock && !actions.isHoliday && <div className="cell-hint">已进入银行/证交所，可存取、贷款与交易股票</div>}
       {actions.isHoliday && waitingForTurn && <div className="cell-hint holiday-hint">例假日休市：银行与股市暂停服务</div>}
+
+      {/* 神明现身（W2）：日切现身的驻留神明，玩家经过即被附身 —— 先让玩家看得见场上有谁 */}
+      {godBoard.length > 0 && (
+        <div className="cell-hint">
+          场上神明：
+          {godBoard.map(({ name, cellName, ttlDays }) => ` ${name}（${cellName}，驻留 ${ttlDays} 天）`).join('、')}
+        </div>
+      )}
 
       {current && <div className="current-name">当前：{current.name}</div>}
 

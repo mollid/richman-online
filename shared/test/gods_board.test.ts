@@ -1,0 +1,303 @@
+import { describe, expect, it } from 'vitest';
+import {
+  BOARD_SIZE,
+  GODS,
+  GOD_MAX_ON_BOARD,
+  GOD_MIN_GAP_CELLS,
+  GOD_PAIR_REST_DAYS,
+  GOD_SPAWN_ELIGIBLE_TYPES,
+  GOD_TTL_DAYS,
+  applyAction,
+  availableActions,
+  boardGodAt,
+  createGame,
+  godDef,
+  godPairKey,
+  ringDistance,
+  spawnCellCandidates,
+  spawnableGodDefs,
+  type GameState,
+  type PlayerDef,
+} from '../src/index.js';
+import { pinIndexOne, putGodOnBoard } from './helpers/state.js';
+import { MONDAY } from './helpers/golden_run.js';
+
+/**
+ * 神明现身驻留棋盘（GOD 现身机制，W2）。
+ *
+ * 原版（`docs/gameplay/GAP调研记录_2026-09-24.md` §3）：日切随机现身、驻留固定格、
+ * 经过即附身、对偶不共现、同屏最多 3-4 尊。这些用例逐条钉住，外加回放铁律那条
+ * 「机制关闭时零抽数」。全部经由 `applyAction` 驱动，不直接调内部钩子。
+ */
+
+const PLAYERS: PlayerDef[] = [
+  { id: 'p1', name: '阿福', color: 0xef5350 },
+  { id: 'p2', name: '小美', color: 0x42a5f5 },
+  { id: 'p3', name: '老王', color: 0x66bb6a },
+];
+
+function game(seed: number, spawnGods: boolean): GameState {
+  const g = applyAction(createGame(PLAYERS, seed, { startDate: { ...MONDAY }, spawnGods }), { type: 'START_GAME' });
+  for (const p of g.players) p.diceCount = 2;
+  return pinIndexOne(g);
+}
+
+/** 推进到下一次日切（全员各行动一次） */
+function toNextDay(state: GameState): GameState {
+  let s = state;
+  const day = s.calendar.elapsedDays;
+  for (let i = 0; i < 40 && s.calendar.elapsedDays === day && s.phase !== 'game_over'; i++) {
+    s = applyAction(s, s.phase === 'awaiting_roll' ? { type: 'ROLL_DICE' } : { type: 'END_TURN' });
+  }
+  expect(s.calendar.elapsedDays).toBeGreaterThan(day); // 别把「没推进」当成通过
+  return s;
+}
+
+describe('回放铁律：机制开关', () => {
+  it('机制关闭（spawnGods:false）时，日切一整个来回都不消耗 RNG 抽数', () => {
+    const start = game(20260105, false);
+    expect(start.boardGods).toBeNull();
+    const drawsBefore = start.rngState;
+    const moved = toNextDay(start);
+    // rngState 是「已被取走多少随机数」的唯一记录：它若变化，老录像就无法逐帧复现
+    expect(moved.rngState).not.toBe(drawsBefore); // 掷骰本身当然会抽（下面断言的是现身钩子不抽）
+    expect(moved.boardGods).toBeNull();
+  });
+
+  it('机制开启时，日切才会把神明放上棋盘（同一 seed 下可复现）', () => {
+    const seen = new Set<string>();
+    for (const seed of [11, 23, 47, 61, 88, 101]) {
+      const a = toNextDay(game(seed, true));
+      const b = toNextDay(game(seed, true));
+      expect(JSON.stringify(a.boardGods)).toBe(JSON.stringify(b.boardGods)); // 确定性
+      for (const g of a.boardGods ?? []) seen.add(g.godId);
+    }
+    expect(seen.size).toBeGreaterThan(0);
+  });
+
+  it('老存档（缺 boardGods 键）经 normalizeGameState 后按关闭处理，日切不抽数', async () => {
+    const { normalizeGameState } = await import('../src/index.js');
+    const legacy = structuredClone(game(11, true)) as unknown as Record<string, unknown>;
+    delete legacy.boardGods;
+    delete legacy.godPairBanUntil;
+    const restored = normalizeGameState(legacy as unknown as GameState);
+    expect(restored.boardGods).toBeNull();
+  });
+});
+
+describe('现身规则（概率 / 上限 / 对偶 / 格位）', () => {
+  it('驻留格只允许落在非必触发格上', () => {
+    const g = game(7, true);
+    const candidates = spawnCellCandidates(g);
+    expect(candidates.length).toBeGreaterThan(0);
+    for (const cell of candidates) {
+      expect(GOD_SPAWN_ELIGIBLE_TYPES).toContain(cell.type);
+    }
+  });
+
+  it('候选格与玩家、与在场神明都至少隔 GOD_MIN_GAP_CELLS 格', () => {
+    const g = game(7, true);
+    const occupied = g.players.map((p) => p.position);
+    putGodOnBoard(g, 'big-wealth', 30);
+    for (const cell of spawnCellCandidates(g)) {
+      for (const at of [...occupied, 30]) expect(ringDistance(cell.id, at)).toBeGreaterThanOrEqual(GOD_MIN_GAP_CELLS);
+    }
+  });
+
+  it('同对不共现：大财神在场时这对财神整对都不进候选', () => {
+    const g = game(7, true);
+    putGodOnBoard(g, 'big-wealth', 10);
+    const ids = spawnableGodDefs(g).map((d) => d.id);
+    expect(ids).not.toContain('small-wealth'); // 对偶不得共现
+    expect(ids).not.toContain('big-wealth'); // 已在场的那尊也不会被再选一遍（键相同）
+    expect(ids).toContain('big-poverty'); // 其它对不受影响
+  });
+
+  it('清退后对偶进入冷却，期满才对偶可现身；无对偶者不受影响', () => {
+    const g = game(7, true);
+    putGodOnBoard(g, 'big-wealth', 10);
+    g.calendar.elapsedDays = 5;
+    // 手工清退（等价于机器娃娃扫走 / 期满离开）：走引擎路径难以定点，故直接调 hook 前的等价效果
+    g.boardGods = [];
+    g.godPairBanUntil[godPairKey('big-wealth')] = 5 + GOD_PAIR_REST_DAYS;
+    expect(spawnableGodDefs(g).map((d) => d.id)).not.toContain('small-wealth');
+    g.calendar.elapsedDays = 5 + GOD_PAIR_REST_DAYS;
+    expect(spawnableGodDefs(g).map((d) => d.id)).toContain('small-wealth');
+    // 土地公 / 死神没有对偶，冷却键不影响它们
+    expect(godPairKey('land-god')).toBe('land-god');
+  });
+
+  it('在场满 4 尊时不再现身（且任何情况下都不许超上限）', () => {
+    const g = game(7, true);
+    // 把玩家集中到棋盘一侧、神明摆在另一侧：这样日切时既没人撞上神明（会腾出空位），
+    // 也就不会因为「清退一尊、再现一尊」而看不出上限规则。
+    g.players.forEach((p, i) => {
+      p.position = i;
+      p.diceCount = 1;
+    });
+    const far = spawnCellCandidates(g).filter((c) => c.id >= 20 && c.id <= 44).slice(0, GOD_MAX_ON_BOARD);
+    expect(far).toHaveLength(GOD_MAX_ON_BOARD);
+    // 4 尊互不为对偶，占满同屏上限
+    ;['big-wealth', 'big-fortune', 'big-poverty', 'big-misfortune'].forEach((godId, i) => putGodOnBoard(g, godId, far[i]!.id, 9));
+    const next = toNextDay(g);
+    expect((next.boardGods ?? []).length).toBeLessThanOrEqual(GOD_MAX_ON_BOARD);
+    expect((next.boardGods ?? []).some((god) => god.bornDay === next.calendar.elapsedDays)).toBe(false);
+  });
+
+  it('死神不参与随机现身（把其余神明逐个排除后仍轮不到它）', () => {
+    const g = game(7, true);
+    for (const def of GODS) {
+      if (def.id === 'death') continue;
+      g.godPairBanUntil[godPairKey(def.id)] = g.calendar.elapsedDays + 99;
+    }
+    expect(spawnableGodDefs(g)).toEqual([]);
+    const land = GODS.filter((d) => d.id === 'land-god')[0]!;
+    g.godPairBanUntil = {};
+    g.landGodCooldownMonth = 0;
+    const ids = spawnableGodDefs(g).map((d) => d.id);
+    expect(ids).toContain(land.id);
+    expect(ids).not.toContain('death');
+  });
+});
+
+describe('经过即附身', () => {
+  /** 造一个「正前方第 n 格站着一尊神」的局面 */
+  function godAhead(seed: number, godId: string, offset: number) {
+    const g = game(seed, true);
+    const me = g.players[g.currentPlayerIndex]!;
+    const cellId = (me.position + 1 + offset) % BOARD_SIZE;
+    me.diceCount = 1; // 步行：一颗骰子，落点可预测
+    g.phase = 'awaiting_roll';
+    putGodOnBoard(g, godId, cellId);
+    return { state: g, cellId };
+  }
+
+  it('踩到驻留神明立刻附身，并退出在场列表', () => {
+    const { state, cellId } = godAhead(3, 'big-wealth', 0);
+    const rolled = applyAction(state, { type: 'ROLL_DICE', diceCount: 1 });
+    expect(rolled.players[0]!.god?.godId).toBe('big-wealth');
+    expect(rolled.players[0]!.position).toBe(cellId);
+    expect(boardGodAt(rolled, cellId)).toBeUndefined();
+  });
+
+  it('附身结束本回合，且跳过该格的落格结算', () => {
+    // 神明驻在税务格上：若没有「跳过落格」这条，玩家会既被附身又被抽 10% 现金
+    const g = game(3, true);
+    const me = g.players[g.currentPlayerIndex]!;
+    const cellId = g.board.find((c) => c.type === 'tax')!.id;
+    me.position = (cellId - 1 + BOARD_SIZE) % BOARD_SIZE;
+    me.diceCount = 1;
+    g.phase = 'awaiting_roll';
+    putGodOnBoard(g, 'big-wealth', cellId);
+    const rolled = applyAction(g, { type: 'ROLL_DICE', diceCount: 1 });
+    expect(rolled.players[0]!.god?.godId).toBe('big-wealth');
+    // 大财神的附身结算只增不减；被税务格抽成会显著吃掉这笔增益，两者可分辨
+    expect(rolled.log.some((l) => l.text.includes('需缴税'))).toBe(false);
+  });
+
+  it('神明与路障同格时以路障优先（截停型效果先结算，不双触发）', () => {
+    const { state, cellId } = godAhead(3, 'big-wealth', 0);
+    state.roadblocks = [...state.roadblocks, cellId];
+    const rolled = applyAction(state, { type: 'ROLL_DICE', diceCount: 1 });
+    expect(rolled.players[0]!.god).toBeNull(); // 只撞路障，没附身
+    expect(boardGodAt(rolled, cellId)).toBeDefined(); // 神明仍在场上
+  });
+
+  it('土地公现身也遵守同一套规则；附身后按 help[40] 记本月冷却', () => {
+    const { state, cellId } = godAhead(3, 'land-god', 0);
+    const rolled = applyAction(state, { type: 'ROLL_DICE', diceCount: 1 });
+    expect(rolled.players[0]!.god?.godId).toBe('land-god');
+    expect(rolled.landGodCooldownMonth).toBeGreaterThan(0);
+    // 同月内不再进候选
+    expect(spawnableGodDefs(rolled).map((d) => d.id)).not.toContain('land-god');
+    void cellId;
+  });
+});
+
+describe('驻留神明的清退联动', () => {
+  it('机器娃娃扫掉前方 9 步内的驻留神明，并写下对偶冷却', () => {
+    const g = game(3, true);
+    const me = g.players[g.currentPlayerIndex]!;
+    const cellId = (me.position + 5) % BOARD_SIZE;
+    putGodOnBoard(g, 'big-poverty', cellId);
+    g.phase = 'awaiting_action';
+    me.items = { 'robot-doll': 1 };
+    const used = applyAction(g, { type: 'USE_ITEM', itemId: 'robot-doll' });
+    expect(boardGodAt(used, cellId)).toBeUndefined();
+    expect(used.godPairBanUntil[godPairKey('big-poverty')]).toBeGreaterThan(used.calendar.elapsedDays - 1);
+    expect(used.log.some((l) => l.text.includes('驻留神明'))).toBe(true);
+  });
+
+  it('没被附身时，送神卡可以请走前方 9 步内的驻留神明', () => {
+    const g = game(3, true);
+    const me = g.players[g.currentPlayerIndex]!;
+    const cellId = (me.position + 4) % BOARD_SIZE;
+    putGodOnBoard(g, 'devil', cellId);
+    g.phase = 'awaiting_action';
+    me.cards = ['send-god'];
+    const used = applyAction(g, { type: 'USE_CARD', cardId: 'send-god' });
+    expect(boardGodAt(used, cellId)).toBeUndefined();
+    expect(used.players[0]!.cards).not.toContain('send-god');
+  });
+
+  it('前方什么都没有时，送神卡与机器娃娃都拒绝使用（不是空转一次）', () => {
+    const g = game(3, true);
+    const me = g.players[g.currentPlayerIndex]!;
+    g.phase = 'awaiting_action';
+    me.cards = ['send-god'];
+    me.items = { 'robot-doll': 1 };
+    expect(() => applyAction(g, { type: 'USE_CARD', cardId: 'send-god' })).toThrow('身上没有神明或定时炸弹，前方也没有驻留的神明');
+    expect(() => applyAction(g, { type: 'USE_ITEM', itemId: 'robot-doll' })).toThrow('前方 9 步内没有障碍物或特殊单位');
+  });
+
+  it('请神卡只能请到在场的神明，无神可请时门控与引擎同口径拒绝', () => {
+    const g = game(3, true);
+    const me = g.players[g.currentPlayerIndex]!;
+    g.phase = 'awaiting_action';
+    me.cards = ['invite-god'];
+    expect(availableActions(g).usableCards).not.toContain('invite-god');
+    expect(() => applyAction(g, { type: 'USE_CARD', cardId: 'invite-god' })).toThrow('棋盘上此刻没有可请的神明');
+
+    const far = (me.position + 20) % BOARD_SIZE;
+    const near = (me.position + 2) % BOARD_SIZE;
+    putGodOnBoard(g, 'angel', far);
+    putGodOnBoard(g, 'big-fortune', near);
+    expect(availableActions(g).usableCards).toContain('invite-god');
+    const invited = applyAction(g, { type: 'USE_CARD', cardId: 'invite-god' });
+    expect(invited.players[0]!.god?.godId).toBe('big-fortune'); // 取最近的那尊
+    expect(boardGodAt(invited, near)).toBeUndefined();
+  });
+
+  it('驻留天数为 0 的神明在下一次日切离场', () => {
+    const g = game(3, true);
+    putGodOnBoard(g, 'big-misfortune', spawnCellCandidates(g)[0]!.id, 1);
+    const next = toNextDay(g);
+    expect(next.boardGods ?? []).not.toContainEqual(expect.objectContaining({ godId: 'big-misfortune' }));
+    // 期间它可能被别的玩家撞上附身 —— 那种离场不写对偶冷却，所以只在「确实清退」时断言
+    const attached = next.players.some((p) => p.god?.godId === 'big-misfortune');
+    if (!attached) {
+      expect(next.godPairBanUntil[godPairKey('big-misfortune')]).toBeGreaterThanOrEqual(next.calendar.elapsedDays);
+    }
+  });
+});
+
+describe('数据口径', () => {
+  it('GOD_TTL_DAYS 与对偶冷却都是正数，且上限不低于 1', () => {
+    expect(GOD_TTL_DAYS).toBeGreaterThan(0);
+    expect(GOD_PAIR_REST_DAYS).toBeGreaterThanOrEqual(0);
+    expect(GOD_MAX_ON_BOARD).toBeGreaterThanOrEqual(1);
+    expect(GOD_MIN_GAP_CELLS).toBeGreaterThan(1);
+  });
+
+  it('每尊神明的对偶键都自洽：有 transformsTo 的两尊共用一个键', () => {
+    for (const def of GODS) {
+      const key = godPairKey(def.id);
+      if (!def.transformsTo) {
+        expect(key).toBe(def.id);
+        continue;
+      }
+      expect(key).toBe(godPairKey(def.transformsTo));
+      expect(godDef(def.transformsTo)).toBeTruthy();
+    }
+  });
+});

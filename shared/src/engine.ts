@@ -27,6 +27,7 @@ import {
 } from './gods.js';
 import { addMonths, DEFAULT_START_DATE, gameDate, toSerial } from './calendar.js';
 import { landPrice, landRent, landUpgradeCost, scaled, totalAssets } from './economy.js';
+import { boardGodAt, clearBoardGodsOnCells, detachGodForPossession, godSpawnHook, godSummonRefusal } from './godspawn.js';
 import { CARDS, CHANCE_CARD_POOL, SHOP_CARD_IDS } from './cards.js';
 import { resolveLanding } from './cell_handlers.js';
 import { ITEMS, SHOP_ITEM_IDS, STARTING_ITEMS } from './items.js';
@@ -109,6 +110,12 @@ import type {
 export interface CreateGameOptions {
   /** 起始日期；缺省用固定常量，保证 shared 不读系统时钟 */
   startDate?: DateSerial;
+  /**
+   * 神明是否随机现身驻留棋盘（GOD 现身机制，W2）。默认开启。
+   * 关掉它 = `boardGods` 置 null，与老存档同一个语义：日切不消耗任何 RNG 抽数。
+   * 数值断言型测试用它隔离这条随机源（同 `pinIndexOne` 隔离物价指数）。
+   */
+  spawnGods?: boolean;
 }
 
 /** 新玩家的初始字段（createGame 与 addPlayer 共用） */
@@ -205,6 +212,9 @@ export function createGame(players: PlayerDef[], seed = Date.now() % 2147483647,
     magic: null,
     // GOD-01 土地公隔月再现（help [40]）：初始未出现过，可随机到
     landGodCooldownMonth: 0,
+    // 神明现身机制（W2）：新开的局默认开启；老存档由 normalizeGameState 补成 null
+    boardGods: options.spawnGods === false ? null : [],
+    godPairBanUntil: {},
     pendingCard: null,
     // UI-06 公布栏：初始无挂牌、无成交记录
     trades: [],
@@ -1158,6 +1168,8 @@ const DAY_HOOKS: DayHook[] = [
   (state) => godTickHook(godCtx(state)),
   dogActivityHook,
   villainActivityHook,
+  // 神明现身必须在 godTickHook 之后：先完成期满转化与清退，才知道还挤不挤得下第 4 尊
+  (state) => godSpawnHook(godCtx(state)),
 ];
 
 /** 日切唯一收口点：逐钩子执行，game_over 时提前返回 */
@@ -1762,9 +1774,12 @@ function rollDice(state: GameState, action: Extract<PlayerAction, { type: 'ROLL_
   const oldPos = p.position;
   let pos = oldPos;
   let crossedStart = false;
+  state.turnStage = 'move';
   let moved = 0;
   let steppedOnMine = false;
   let bittenByDog = false;
+  /** 移动途中撞上的驻留神明所在格（null = 没撞上；路障等截停优先时保持 null） */
+  let godCell: number | null = null;
   /** EVT-04：途中遇到的原地乞讨者 */
   let beggar: Player | null = null;
   // TILE-08 公立银行：路过开放存取款（停留当格的完整权限由落格分派给出）
@@ -1804,12 +1819,19 @@ function rollDice(state: GameState, action: Extract<PlayerAction, { type: 'ROLL_
       }
       log(state, `${p.name} 驾车在「${dogCell.name}」撞跑了恶犬`);
     }
+    // GOD 现身机制（W2）：日切现身的驻留神明，**经过即附身**。
+    // 排在路障 / 地雷 / 恶犬之后：那三者是截停型强效果，必须优先，
+    // 否则「被路障截停在神明格」会既算截停又算附身，一个回合双触发。
+    // 因此这里只记格号并 break，附身留到循环外结算 —— 被前三者截停时本行根本不会执行。
+    if (boardGodAt(state, pos)) {
+      godCell = pos;
+      break;
+    }
   }
   if (crossedStart) {
     p.cash += PASS_START_SALARY;
     log(state, `${p.name} 经过起点，领取薪水 ¥${PASS_START_SALARY}`);
   }
-  state.turnStage = 'move';
   p.position = pos;
   // 停在公立银行当格时，由落格分派给出完整权限，不再算「路过」
   if (publicBankId !== undefined && pos === publicBankId) passedPublicBank = false;
@@ -1857,6 +1879,17 @@ function rollDice(state: GameState, action: Extract<PlayerAction, { type: 'ROLL_
   if (passedPublicBank) {
     state.bankAccess = { canDeposit: true, canLoan: false, cellId: publicBankId! };
     log(state, `${p.name} 路过公立银行，可办理存取款`);
+  }
+
+  // 经过即附身：神明随附身离场（这不算「清退」，不写对偶冷却），本回合直接结束。
+  // 该格的落格结算被跳过 —— 神明只驻留在非必触发格，跳过是为了让这条规则没有例外分支可走。
+  const godHere = godCell === null ? undefined : boardGodAt(state, godCell);
+  if (godHere) {
+    const godId = detachGodForPossession(state, godHere.cellId);
+    const god = godId ? godDef(godId) : undefined;
+    if (god) attachGod(godCtx(state), p, god);
+    advanceTurn(state);
+    return;
   }
 
   const c = cellAt(state, pos);
@@ -2492,7 +2525,15 @@ const EFFECT_KIT: EffectKit = {
   detonate,
   beginAuction,
   attachGod: (state, p, def) => attachGod(godCtx(state), p, def),
-  nearestGodFor,
+  nearestGodFor: (state, p) => nearestGodFor(godCtx(state), p),
+  godSummonRefusal: (state) => godSummonRefusal(state),
+  clearBoardGods: (state, cellIds, reason) => clearBoardGodsOnCells(godCtx(state), cellIds, reason),
+  claimBoardGod: (state, godId) => {
+    const god = state.boardGods?.find((g) => g.godId === godId);
+    return god ? detachGodForPossession(state, god.cellId) !== null : false;
+  },
+  cellsAhead: (state, from, dir, steps) =>
+    Array.from({ length: steps }, (_, i) => (from + dir * (i + 1) + BOARD_SIZE) % BOARD_SIZE),
   summonGod: (state, p) => summonGod(godCtx(state), p),
   applyGodRentModifier: (state, p, rent, cellName) => applyGodRentModifier(godCtx(state), p, rent, cellName),
   unluckyMultiplier,
@@ -2927,7 +2968,8 @@ function checkUseCard(state: GameState, p: Player | null, action: ActionOf<'USE_
   if (card.phase === 'pre_roll' && state.phase !== 'awaiting_roll') return '该卡片只能在掷骰前使用';
   if (card.phase === 'post_roll' && state.phase !== 'awaiting_action') return '该卡片只能在掷骰后使用';
   if (!card.apply) return '未知卡片效果';
-  return null;
+  // 卡片自带的棋盘前提（如请神卡要有神可请）也在这里判，门控与 apply 因此同源
+  return card.guard?.(state, p) ?? null;
 }
 
 function checkDiscardCard(state: GameState, p: Player | null, action: ActionOf<'DISCARD_CARD'>): ActionRefusal {

@@ -13,6 +13,8 @@ export class ReplaySession {
       startDate: record.start_date ?? undefined,
       players: record.players.map((p) => ({ player_name: p.player_name, color: p.color })),
       actions: record.actions,
+      // 缺省 false：这条老记录是在神明现身机制之前录的，关掉才逐帧对得上
+      spawnGods: record.spawn_gods ?? false,
     });
   }
 

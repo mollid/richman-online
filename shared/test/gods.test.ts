@@ -11,7 +11,7 @@ import {
   rollDie,
 } from '../src/index.js';
 import type { GameState, PlayerDef } from '../src/index.js';
-import { pinIndexOne } from './helpers/state.js';
+import { pinIndexOne, putGodOnBoard } from './helpers/state.js';
 
 /**
  * 波 4 神明系统测试（对标文档 §8.1 GOD-01..12）：
@@ -80,6 +80,8 @@ function inviteGodAt(godId: string): GameState {
   const g = pinIndexOne(newGame(1));
   g.players[0]!.cards = ['invite-god'];
   g.players[0]!.position = def.cellId ?? 5;
+  // W2 之后请神卡请的是「此刻在场」的神明，因此得先把这尊摆上棋盘
+  putGodOnBoard(g, godId, def.cellId ?? 5);
   const r = applyAction(g, { type: 'USE_CARD', cardId: 'invite-god' });
   if (r.players[0]!.god?.godId !== godId) {
     throw new Error(`请神未落到 ${godId}，实际为 ${r.players[0]!.god?.godId}`);
@@ -94,6 +96,7 @@ function prepareInvite(godId: string): GameState {
   const g = pinIndexOne(newGame(1));
   g.players[0]!.cards = ['invite-god'];
   g.players[0]!.position = def.cellId ?? 5;
+  putGodOnBoard(g, godId, def.cellId ?? 5);
   return g;
 }
 
