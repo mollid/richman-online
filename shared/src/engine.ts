@@ -30,6 +30,8 @@ import {
   type NewsEventDef,
 } from './news.js';
 import {
+  CRIME_JAIL_DAYS,
+  FATE_EFFECTS,
   FATE_MAP_IDS,
   FATE_PUBLIC_IDS,
   fateCardById,
@@ -356,8 +358,6 @@ const LOTTERY_PENALTY_REASONS: ReadonlySet<PayReason> = new Set<PayReason>([
  * 因此不改变 RNG 抽数序列，对既有确定性回放零影响。
  */
 const CRIME_CHANCE = 0.35;
-/** EVT-02：违法事件判处拘役天数 */
-const CRIME_JAIL_DAYS = 2;
 /** EVT-01 事件 16/17：豪雨/交通阻塞强制停留天数 */
 const TRAFFIC_HALT_DAYS = 1;
 /** EVT-01 事件 24/25：股市全面崩盘/上涨的幅度（%） */
@@ -1899,215 +1899,29 @@ function resolveFateCard(state: GameState, p: Player): void {
   applyFateEffect(state, p, def);
 }
 
-/** 结算单张命运卡效果；金额类过 `scaled()`（固定金额），百分比类直接作用于名义值 */
 /**
  * 结算单张命运卡效果（导出供测试直接验证单个事件，如「变卖所有股票求现」）。
  * 生产路径请走 `resolveFateCard`（含抽签 + 落格），不要直接调用。
+ *
+ * 本函数只负责「算好缩放金额 → 委托 `FATE_EFFECTS[def.effect]` → 拼一条日志」；
+ * 作用代码在 `fate.ts`，与牌面数据同处一处。金额类过 `scaled()`（固定金额），
+ * 百分比类直接作用于名义值。
  */
 export function applyFateEffect(state: GameState, p: Player, def: FateCardDef): void {
-  // 日志占位符参数（金额默认按物价指数缩放，百分比类在分支内改回原值）
+  // 日志占位符参数（金额默认按物价指数缩放，百分比类在效果体内改回原值）
   const renderParams: Record<string, string | number> = {
     amount: scaled(state, def.amount ?? 0),
     days: def.days ?? 0,
     player: p.name,
   };
-  const money = scaled(state, def.amount ?? 0);
-  let extra = '';
-
-  switch (def.effect) {
-    case 'demolish-house': {
-      const ref = randomPick(state, builtProperties(state));
-      if (ref) {
-        destroyBuilding(ref);
-        extra = `「${ref.cell.name}」建筑被强制拆除`;
-      } else {
-        extra = '（无人拥有可拆的建筑，无事发生）';
-      }
-      break;
-    }
-    case 'requisition-land': {
-      const pool: BuildingRef[] = [];
-      for (const q of activePlayers(state)) {
-        for (const prop of q.properties) pool.push({ player: q, prop, cell: state.board[prop.cellId]! });
-      }
-      const ref = randomPick(state, pool);
-      if (ref) {
-        ref.player.properties = ref.player.properties.filter((q) => q !== ref.prop);
-        extra = `${ref.player.name} 的「${ref.cell.name}」被强制征收`;
-      } else {
-        extra = '（无人拥有土地，无事发生）';
-      }
-      break;
-    }
-    case 'fake-loan': {
-      renderParams.amount = money;
-      payCash(state, p, money, null, 'other');
-      extra = `被冒名贷款，损失 ¥${money}`;
-      break;
-    }
-    case 'check-bounce': {
-      state.loanBanDays = 30;
-      extra = '银行拒绝往来 30 天（停止放款）';
-      break;
-    }
-    case 'bank-hack': {
-      const pct = def.amount ?? 10;
-      renderParams.amount = pct;
-      let stolen = 0;
-      for (const q of activePlayers(state)) {
-        if (q.id === p.id) continue;
-        const take = Math.floor((q.deposit * pct) / 100);
-        if (take <= 0) continue;
-        q.deposit -= take;
-        stolen += take;
-      }
-      p.deposit += stolen;
-      extra = `挪用他人存款共 ¥${stolen}`;
-      break;
-    }
-    case 'birthday-cards': {
-      let got = 0;
-      for (const q of activePlayers(state)) {
-        if (q.id === p.id || q.cards.length === 0) continue;
-        if (p.cards.length >= MAX_HAND_CARDS) break;
-        p.cards.push(q.cards.shift()!);
-        got += 1;
-      }
-      extra = `向每人收取一张卡片，共得 ${got} 张`;
-      break;
-    }
-    case 'forced-abroad': {
-      const days = def.days ?? 5;
-      renderParams.days = days;
-      p.abroadTurns = Math.max(p.abroadTurns, days);
-      extra = `被迫出国观光 ${days} 天（期间不能收租）`;
-      break;
-    }
-    case 'abduct': {
-      const days = def.days ?? 5;
-      renderParams.days = days;
-      p.skipTurns = Math.max(p.skipTurns, days);
-      blockRent(p, days);
-      extra = `被外星人绑架 ${days} 天（暂停行动并丧失收租权）`;
-      break;
-    }
-    case 'stock-default': {
-      const pct = def.amount ?? 20;
-      renderParams.amount = pct;
-      for (const [stockId, qty] of Object.entries(p.stocks)) {
-        const lost = Math.floor((qty * pct) / 100);
-        if (lost <= 0) continue;
-        const left = qty - lost;
-        if (left > 0) p.stocks[stockId] = left;
-        else delete p.stocks[stockId];
-      }
-      extra = `违约交割损失 ${pct}% 持股`;
-      break;
-    }
-    case 'sell-all-stocks': {
-      let total = 0;
-      for (const [stockId, qty] of Object.entries(p.stocks)) {
-        const stock = stockById(state, stockId);
-        if (!stock || qty <= 0) continue;
-        total += stock.price * qty;
-        delete p.stocks[stockId];
-        if (p.stockCost) delete p.stockCost[stockId];
-      }
-      p.cash += total;
-      extra = `变卖所有股票求现 ¥${total}`;
-      break;
-    }
-    case 'lose-bike':
-    case 'crash-car': {
-      p.diceCount = 1;
-      extra = '交通工具损毁，恢复步行（1 颗骰子）';
-      break;
-    }
-    case 'ditch-hospital':
-    case 'bike-hospital': {
-      const days = def.days ?? 2;
-      renderParams.days = days;
-      p.skipTurns = Math.max(p.skipTurns, days);
-      p.custody = { kind: 'hospital', daysLeft: Math.max(p.skipTurns, days) };
-      blockRent(p, days);
-      extra = `就医住院 ${days} 天（暂停行动并丧失收租权）`;
-      break;
-    }
-    case 'jaywalk-fine':
-    case 'helmet-fine':
-    case 'speeding-fine':
-    case 'litter-fine':
-    case 'dog-fine': {
-      renderParams.amount = money;
-      payCash(state, p, money, null, 'other');
-      extra = `罚款 ¥${money}`;
-      break;
-    }
-    case 'treat-all': {
-      renderParams.amount = money;
-      const others = activePlayers(state).filter((q) => q.id !== p.id);
-      const share = others.length > 0 ? Math.floor(money / others.length) : 0;
-      for (const q of others) {
-        if (share > 0) pay(state, p, share, q, { toDeposit: true, reason: 'other' });
-      }
-      extra = `请所有人吃大餐，共花 ¥${share * others.length}`;
-      break;
-    }
-    case 'found-money':
-    case 'inherit':
-    case 'invoice-win': {
-      renderParams.amount = money;
-      p.cash += money;
-      extra = `获得 ¥${money}`;
-      break;
-    }
-    case 'lose-wallet':
-    case 'bad-loan': {
-      renderParams.amount = money;
-      payCash(state, p, money, null, 'other');
-      extra = `损失 ¥${money}`;
-      break;
-    }
-    case 'pay-insurance': {
-      renderParams.amount = money;
-      payCash(state, p, money, null, 'other');
-      extra = `支付保险金 ¥${money}`;
-      break;
-    }
-    case 'claim-insurance': {
-      renderParams.amount = money;
-      if (p.insurance) {
-        p.cash += money;
-        extra = `领取保险金 ¥${money}`;
-      } else {
-        extra = '（无有效保单，未获理赔）';
-      }
-      break;
-    }
-    case 'sell-all-cards': {
-      let gained = 0;
-      for (const cardId of p.cards) gained += Math.floor((CARDS[cardId]?.cost ?? 0) / 2);
-      for (const [itemId, count] of Object.entries(p.items)) {
-        gained += Math.floor((ITEMS[itemId]?.cost ?? 0) / 2) * count;
-      }
-      p.cards = [];
-      p.items = {};
-      p.points += gained;
-      extra = `变卖所有卡片道具，回收 ${gained} 点券`;
-      break;
-    }
-    case 'jail': {
-      const days = def.days ?? CRIME_JAIL_DAYS;
-      renderParams.days = days;
-      applyDisaster(state, p, 'jail', null, (v) => {
-        v.skipTurns = Math.max(v.skipTurns, days);
-        v.custody = { kind: 'jail', daysLeft: Math.max(v.skipTurns, days) };
-        blockRent(v, days);
-      });
-      extra = `坐牢 ${days} 天（丧失收租权）`;
-      break;
-    }
-  }
+  const extra = FATE_EFFECTS[def.effect]({
+    ...EFFECT_KIT,
+    state,
+    self: p,
+    def,
+    renderParams,
+    money: scaled(state, def.amount ?? 0),
+  });
 
   log(state, `【命运】${p.name} 抽到「${renderFateText(def, renderParams)}」 —— ${extra}`);
 }
@@ -3849,6 +3663,9 @@ const EFFECT_KIT: EffectKit = {
   beginAuction,
   attachGod,
   nearestGodFor,
+  randomPick,
+  builtProperties,
+  destroyBuilding,
 };
 
 /**
