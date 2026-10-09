@@ -9,10 +9,10 @@ import {
   GOD_DURATION_DAYS,
   GODS,
   MAX_HAND_CARDS,
-  totalAssets,
   type GameState,
   type PlayerDef,
 } from '../src/index.js';
+import { pinIndexOne } from './helpers/state.js';
 
 /**
  * 波 10a 缺口补齐测试（对应需求项）：
@@ -37,15 +37,6 @@ const HOSPITAL_CELL = 14;
 
 function newGame(seed = 42): GameState {
   return applyAction(createGame(PLAYERS, seed, { startDate: { ...MONDAY } }), { type: 'START_GAME' });
-}
-
-/** 冻结物价指数为 1，使缩放金额断言精确 */
-function pinIndexOne(state: GameState): GameState {
-  let total = 0;
-  for (const p of state.players) if (!p.bankrupt) total += totalAssets(state, p);
-  state.initialCashPerPlayer = Math.max(1, total);
-  state.initialPlayerCount = 1;
-  return state;
 }
 
 /** 站到指定格并固定唯一一颗骰子（掷骰 0 抽） */

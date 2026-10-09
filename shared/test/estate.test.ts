@@ -17,10 +17,10 @@ import {
   RESEARCH_ORDER,
   rollDie,
   streetCells,
-  totalAssets,
   TREASURE_POINTS,
 } from '../src/index.js';
 import type { GameState, PlayerDef } from '../src/index.js';
+import { pinIndexOne } from './helpers/state.js';
 
 /**
  * 波 3 商业建设与扩棋盘测试（对标文档 §4 EST-01..12 与 §9 TILE-01..31）：
@@ -51,17 +51,6 @@ function newGame(seed = 42): GameState {
   // 机车（diceCount=2）：历史断言基于「两骰之和」
   for (const p of g.players) p.diceCount = 2;
   return g;
-}
-
-/** 冻结物价指数为 1（分母对齐为当前总资产） */
-function pinIndexOne(state: GameState): GameState {
-  let total = 0;
-  for (const p of state.players) {
-    if (!p.bankrupt) total += totalAssets(state, p);
-  }
-  state.initialCashPerPlayer = Math.max(1, total);
-  state.initialPlayerCount = 1;
-  return state;
 }
 
 /** 找一个能让两骰之和等于 target 的确定性种子 */

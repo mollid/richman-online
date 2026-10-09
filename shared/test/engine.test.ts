@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { addPlayer, allAssetSummaries, allStockSummaries, applyAction, availableActions, BOARD_SIZE, gameDate, createGame, priceIndex, forceGameOver, GOD_DURATION_DAYS, GODS, nextRandom, removePlayer, rentOf, ReplayEngine, rollDie, STARTING_ITEMS, totalAssets, upgradeCost } from '../src/index.js';
+import { addPlayer, allAssetSummaries, allStockSummaries, applyAction, availableActions, BOARD_SIZE, gameDate, createGame, priceIndex, forceGameOver, GOD_DURATION_DAYS, GODS, nextRandom, removePlayer, rentOf, ReplayEngine, rollDie, STARTING_ITEMS, upgradeCost } from '../src/index.js';
 import type { GameState, PlayerAction, PlayerDef } from '../src/index.js';
+import { pinIndexOne } from './helpers/state.js';
 
 const PLAYERS: PlayerDef[] = [
   { id: 'p1', name: '阿福', color: 0xef5350 },
@@ -20,22 +21,6 @@ function newGame(seed = 42): GameState {
   // 下列历史断言基于「两骰之和」，故统一给测试玩家配机车（diceCount=2）以保持既有语义。
   for (const p of g.players) p.diceCount = 2;
   return g;
-}
-
-/**
- * 迁移策略二：冻结物价指数为 1。
- * 波 1 起所有交易金额都过 `scaled()`（乘物价指数），指数的分母是「开局总资产」。
- * 测试里直接篡改现金/无偿授予地产会改变总资产 → 指数漂移 → 数值断言失真。
- * 该辅助函数把分母就地对齐为当前总资产，此后只要只发生玩家间守恒转移，指数恒为 1。
- */
-function pinIndexOne(state: GameState): GameState {
-  let total = 0;
-  for (const p of state.players) {
-    if (!p.bankrupt) total += totalAssets(state, p);
-  }
-  state.initialCashPerPlayer = Math.max(1, total);
-  state.initialPlayerCount = 1;
-  return state;
 }
 
 /** 找一个能让两骰之和等于 target 的确定性种子 */

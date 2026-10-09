@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { applyAction, availableActions, createGame, totalAssets } from '../src/index.js';
+import { applyAction, availableActions, createGame } from '../src/index.js';
 import type { GameState, PlayerDef } from '../src/index.js';
+import { pinIndexOne } from './helpers/state.js';
 
 /**
  * 波 6 拍卖器测试（ECON-13 / CARD-08 / EVT-03）：
@@ -23,17 +24,6 @@ function newGame(seed = 42): GameState {
   const g = applyAction(createGame(PLAYERS, seed, { startDate: { ...MONDAY } }), { type: 'START_GAME' });
   for (const p of g.players) p.diceCount = 2;
   return g;
-}
-
-/** 冻结物价指数为 1（起拍价等 scaled 数值可预测） */
-function pinIndexOne(state: GameState): GameState {
-  let total = 0;
-  for (const p of state.players) {
-    if (!p.bankrupt) total += totalAssets(state, p);
-  }
-  state.initialCashPerPlayer = Math.max(1, total);
-  state.initialPlayerCount = 1;
-  return state;
 }
 
 /** p1 手持拍卖卡、站在决策阶段，可对指定土地开拍 */

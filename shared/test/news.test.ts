@@ -13,9 +13,9 @@ import {
   newsEventById,
   renderNewsText,
   supportedNewsEvents,
-  totalAssets,
 } from '../src/index.js';
 import type { GameState, PlayerDef } from '../src/index.js';
+import { pinIndexOne } from './helpers/state.js';
 
 /**
  * 波 7 新闻格 / 违法事件 / 小游戏扩容测试
@@ -40,17 +40,6 @@ function newGame(seed = 42): GameState {
   // 机车（diceCount=2）：默认基础上便于「步行 vs 汽车」类事件筛选
   for (const p of g.players) p.diceCount = 2;
   return g;
-}
-
-/** 冻结物价指数为 1（分母对齐为当前总资产） */
-function pinIndexOne(state: GameState): GameState {
-  let total = 0;
-  for (const p of state.players) {
-    if (!p.bankrupt) total += totalAssets(state, p);
-  }
-  state.initialCashPerPlayer = Math.max(1, total);
-  state.initialPlayerCount = 1;
-  return state;
 }
 
 /**

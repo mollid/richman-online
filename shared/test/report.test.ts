@@ -9,11 +9,11 @@ import {
   propertyValue,
   scaled,
   stockSummary,
-  totalAssets,
   vehicleOf,
   type GameState,
   type PlayerDef,
 } from '../src/index.js';
+import { pinIndexOne } from './helpers/state.js';
 
 /**
  * ECON-14 三清单报表测试（help [16]）：
@@ -31,15 +31,6 @@ const MONDAY = { year: 2026, month: 1, day: 5 } as const;
 
 function newGame(seed = 42): GameState {
   return applyAction(createGame(PLAYERS, seed, { startDate: { ...MONDAY } }), { type: 'START_GAME' });
-}
-
-/** 冻结物价指数为 1，使缩放类断言可写死数值 */
-function pinIndexOne(state: GameState): GameState {
-  let total = 0;
-  for (const p of state.players) total += totalAssets(state, p);
-  state.initialCashPerPlayer = Math.max(1, total);
-  state.initialPlayerCount = 1;
-  return state;
 }
 
 describe('ECON-14 资产清单', () => {

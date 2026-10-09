@@ -22,6 +22,7 @@ import {
   weekdayOf,
 } from '../src/index.js';
 import type { DateSerial, GameState, PlayerAction, PlayerDef } from '../src/index.js';
+import { pinIndexOne } from './helpers/state.js';
 
 const PLAYERS: PlayerDef[] = [
   { id: 'p1', name: '阿福', color: 0xef5350 },
@@ -72,17 +73,6 @@ function landOnBank(startDate: DateSerial = MONDAY): GameState {
   s.rngState = seedForSum(7);
   s.players[s.currentPlayerIndex]!.position = 28; // 28 + 7 = 35
   return applyAction(s, { type: 'ROLL_DICE' });
-}
-
-/** 冻结物价指数为 1：把分母就地对齐为当前总资产 */
-function pinIndexOne(state: GameState): GameState {
-  let total = 0;
-  for (const p of state.players) {
-    if (!p.bankrupt) total += totalAssets(state, p);
-  }
-  state.initialCashPerPlayer = Math.max(1, total);
-  state.initialPlayerCount = 1;
-  return state;
 }
 
 /**

@@ -336,63 +336,7 @@ function bankruptPlayer(state: GameState, p: Player): void {
   log(state, `${p.name} 破产出局，名下资产被银行没收`);
 }
 
-/**
- * 资产变卖阶梯：优先卖股票 → 降级地产 → 出售地产。
- *
- * **注意：负债支付时不会调用本函数**（见 `pay`）。保留供将来新增的
- * 随机事件/卡牌效果复用（如需"变卖资产偿债"类效果时调用）。
- */
-function liquidateFor(state: GameState, p: Player, needed: number): void {
-  // 1. 变卖全部股票
-  for (const [stockId, qty] of Object.entries(p.stocks)) {
-    if (qty > 0 && p.cash < needed) {
-      const stock = stockById(state, stockId);
-      if (!stock) continue;
-      p.cash += stock.price * qty;
-      delete p.stocks[stockId];
-      if (p.stockCost) delete p.stockCost[stockId];
-      log(state, `${p.name} 变卖 ${stock.name} ×${qty}，回收 ¥${stock.price * qty}`);
-    }
-  }
-
-  // 2. 降级最高等级地产（回收对应升级成本的一半）
-  while (p.cash < needed) {
-    const candidates = p.properties.filter((q) => q.grade > 1);
-    if (!candidates.length) break;
-    const target = candidates.reduce((best, q) => {
-      const cellB = state.board[q.cellId]!;
-      const cellBest = state.board[best.cellId]!;
-      const valueB = q.grade * 1000 + (cellB.price ?? 0);
-      const valueBest = best.grade * 1000 + (cellBest.price ?? 0);
-      return valueB > valueBest ? q : best;
-    });
-    const cell = state.board[target.cellId]!;
-    const recovery = Math.round(upgradeCost(cell.price ?? 0, target.grade - 1) / 2);
-    target.grade = (target.grade - 1) as 1 | 2 | 3 | 4 | 5;
-    p.cash += recovery;
-    log(state, `${p.name} 将「${cell.name}」降级为 ${target.grade} 级，回收 ¥${recovery}`);
-  }
-
-  // 3. 出售最便宜地产（回收买价一半）
-  while (p.cash < needed) {
-    if (!p.properties.length) break;
-    const target = p.properties.reduce((cheapest, q) => {
-      const cellQ = state.board[q.cellId]!;
-      const cellC = state.board[cheapest.cellId]!;
-      return (cellQ.price ?? 0) < (cellC.price ?? 0) ? q : cheapest;
-    });
-    const cell = state.board[target.cellId]!;
-    const recovery = Math.round((cell.price ?? 0) / 2);
-    p.properties = p.properties.filter((q) => q !== target);
-    p.cash += recovery;
-    log(state, `${p.name} 以 ¥${recovery} 出售「${cell.name}」`);
-  }
-}
-
-/** 支付用途（波 6 罚金汇总用；波 1 仅作日志语义） */
-/**
- * 支付用途。`'stock'` = ECON-09 买入股票的支出（钱进股市，不属于「意外损失」，不汇入乐透奖池）。
- */
+/** 支付用途。`'stock'` = ECON-09 买入股票的支出（钱进股市，不属于「意外损失」，不汇入乐透奖池）。 */
 export type PayReason =
   | 'rent'
   | 'tax'
@@ -503,7 +447,6 @@ function creditPayee(to: Player | null, paid: number, toDeposit: boolean): void 
   else to.cash += paid;
 }
 
-/** `pay` 的薄包装：现金/存款/变卖，收款方入现金；`reason` 用于乐透奖池罚金汇总 */
 /**
  * 无收款方的支出（罚款/损失/倒霉事）。
  *
@@ -2720,12 +2663,6 @@ function rollDice(state: GameState, action: Extract<PlayerAction, { type: 'ROLL_
 
   if (c.type === 'start') {
     log(state, `${p.name} 正好停在起点`);
-    advanceTurn(state);
-    return;
-  }
-
-  if (c.type === 'neutral') {
-    log(state, `${p.name} 在${c.name}休息了一会`);
     advanceTurn(state);
     return;
   }

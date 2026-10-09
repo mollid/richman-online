@@ -9,9 +9,9 @@ import {
   GODS,
   isNegativeGod,
   rollDie,
-  totalAssets,
 } from '../src/index.js';
 import type { GameState, PlayerDef } from '../src/index.js';
+import { pinIndexOne } from './helpers/state.js';
 
 /**
  * 波 4 神明系统测试（对标文档 §8.1 GOD-01..12）：
@@ -36,17 +36,6 @@ function newGame(seed = 42): GameState {
   const g = applyAction(createGame(PLAYERS, seed, { startDate: { ...MONDAY } }), { type: 'START_GAME' });
   for (const p of g.players) p.diceCount = 2; // 机车：两骰之和（历史语义）
   return g;
-}
-
-/** 冻结物价指数为 1（分母对齐为当前总资产），使数值断言精确 */
-function pinIndexOne(state: GameState): GameState {
-  let total = 0;
-  for (const p of state.players) {
-    if (!p.bankrupt) total += totalAssets(state, p);
-  }
-  state.initialCashPerPlayer = Math.max(1, total);
-  state.initialPlayerCount = 1;
-  return state;
 }
 
 function seedForSum(target: number): number {

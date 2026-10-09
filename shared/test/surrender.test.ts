@@ -4,11 +4,11 @@ import {
   availableActions,
   createGame,
   DEATH_DURATION_DAYS,
-  totalAssets,
   unluckyMultiplier,
   type GameState,
   type PlayerDef,
 } from '../src/index.js';
+import { pinIndexOne } from './helpers/state.js';
 
 /**
  * UI-13 认输投降 + GOD-12 死神效果（对标 help[13]、help[51]、文档 UI-13 与 GOD-12）。
@@ -39,15 +39,6 @@ function arm(p: GameState, playerId: string, cards = 3, items = 2): GameState {
   target.cards = Array.from({ length: cards }, () => 'angel');
   target.items = { teleporter: items };
   return p;
-}
-
-/** 冻结核桃指数为 1，让金额断言可写死 */
-function pinIndexOne(state: GameState): GameState {
-  let total = 0;
-  for (const p of state.players) if (!p.bankrupt) total += totalAssets(state, p);
-  state.initialCashPerPlayer = Math.max(1, total);
-  state.initialPlayerCount = 1;
-  return state;
 }
 
 describe('UI-13 认输：指定复仇者时死神不落在自己头上', () => {

@@ -11,9 +11,9 @@ import {
   LOTTERY_NUMBER_COUNT,
   LOTTERY_TICKET_COST,
   rollDie,
-  totalAssets,
 } from '../src/index.js';
 import type { GameState, PlayerDef } from '../src/index.js';
+import { pinIndexOne } from './helpers/state.js';
 
 /**
  * 波 6 乐透测试（TILE-19 / ECON-08）：
@@ -43,17 +43,6 @@ function newGame(seed = 42, startDate: { year: number; month: number; day: numbe
   const g = applyAction(createGame(PLAYERS, seed, { startDate }), { type: 'START_GAME' });
   for (const p of g.players) p.diceCount = 2;
   return g;
-}
-
-/** 冻结物价指数为 1（分母对齐为当前总资产） */
-function pinIndexOne(state: GameState): GameState {
-  let total = 0;
-  for (const p of state.players) {
-    if (!p.bankrupt) total += totalAssets(state, p);
-  }
-  state.initialCashPerPlayer = Math.max(1, total);
-  state.initialPlayerCount = 1;
-  return state;
 }
 
 function seedForSum(target: number): number {

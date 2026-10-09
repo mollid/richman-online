@@ -13,9 +13,9 @@ import {
   rollDie,
   SHOP_CARD_IDS,
   SHOP_ITEM_IDS,
-  totalAssets,
 } from '../src/index.js';
 import type { GameState, PlayerDef } from '../src/index.js';
+import { pinIndexOne } from './helpers/state.js';
 
 /**
  * 波 2 卡片 / 道具系统测试：
@@ -48,17 +48,6 @@ function seedForSum(target: number): number {
     if (a.value + b.value === target) return s;
   }
   throw new Error(`找不到和为 ${target} 的种子`);
-}
-
-/** 冻结物价指数为 1（分母对齐当前总资产） */
-function pinIndexOne(state: GameState): GameState {
-  let total = 0;
-  for (const p of state.players) {
-    if (!p.bankrupt) total += totalAssets(state, p);
-  }
-  state.initialCashPerPlayer = Math.max(1, total);
-  state.initialPlayerCount = 1;
-  return state;
 }
 
 /** 把 p1 直接摆到商店格并进入决策阶段 */

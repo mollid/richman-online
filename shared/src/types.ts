@@ -6,7 +6,7 @@ export type CellType =
   | 'start'     // 起点：经过/停留发放薪水
   | 'property'  // TILE-01 空地/住宅用地：可购买、可加盖 5 级
   | 'commercial'// TILE-02 商业用地：首次只买地，再次走到可选 5 种建设
-  | 'chance'    // TILE-17 机会/危险格：抽卡片
+  | 'chance'    // TILE-17 机会/危险格：抽命运卡池（help[28]），并可能因违法事件坐牢
   | 'news'      // TILE-18 新闻格：触发新闻事件
   | 'free-card' // TILE-13 免费卡片格：免费获得一张卡片
   | 'points'    // TILE-14/15/16 点券格：+10/+30/+50 点券
@@ -20,8 +20,7 @@ export type CellType =
   | 'shop'      // TILE-12 卡片店/道具店
   | 'bank'      // TILE-08/26 银行：存取款；停留可贷款
   | 'god'       // 神庙：召唤神仙附身
-  | 'company'   // TILE-20..30 公司企业（波 5 开放经营）
-  | 'neutral';  // 中性格：暂无效果
+  | 'company';  // TILE-20..30 公司企业（波 5 开放经营）
 
 /** 地产分区（仅用于配色与展示） */
 export type PropertyGroup = 'residential' | 'commercial' | 'industrial' | 'tech' | 'coastal' | 'financial';
@@ -621,9 +620,3 @@ export interface AvailableActions {
   /** UI-13：认输时可指定的复仇者候选（存活且非自己）；不可认输时为空 */
   revengeCandidates: Player[];
 }
-
-
-
-
-
-

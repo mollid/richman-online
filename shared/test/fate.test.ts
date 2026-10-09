@@ -11,9 +11,9 @@ import {
   fateCardById,
   nextRandom,
   renderFateText,
-  totalAssets,
 } from '../src/index.js';
 import type { GameState, PlayerDef } from '../src/index.js';
+import { pinIndexOne } from './helpers/state.js';
 
 /**
  * 波 8 命运卡池 / 乞讨 / 恶犬测试
@@ -38,17 +38,6 @@ function newGame(seed = 42): GameState {
   const g = applyAction(createGame(PLAYERS, seed, { startDate: { ...MONDAY } }), { type: 'START_GAME' });
   for (const p of g.players) p.diceCount = 2;
   return g;
-}
-
-/** 冻结物价指数为 1（分母对齐为当前总资产） */
-function pinIndexOne(state: GameState): GameState {
-  let total = 0;
-  for (const p of state.players) {
-    if (!p.bankrupt) total += totalAssets(state, p);
-  }
-  state.initialCashPerPlayer = Math.max(1, total);
-  state.initialPlayerCount = 1;
-  return state;
 }
 
 /** 找种子使「下一次 nextRandom」的取值落在指定命运卡下标（公共池 33 张）内 */

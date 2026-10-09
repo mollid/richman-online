@@ -20,11 +20,11 @@ import {
   RESTAURANT_FEE_PER_DAY,
   rollDie,
   scaled,
-  totalAssets,
   WATER_FEE_PER_LAND,
   WHEEL_KINDS,
 } from '../src/index.js';
 import type { DateSerial, GameState, PlayerDef } from '../src/index.js';
+import { pinIndexOne } from './helpers/state.js';
 
 const PLAYERS: PlayerDef[] = [
   { id: 'p1', name: '阿福', color: 0xef5350 },
@@ -103,17 +103,6 @@ function advanceOneDay(state: GameState): GameState {
     s = applyAction(s, { type: 'ROLL_DICE' });
   }
   return s;
-}
-
-/** 冻结物价指数为 1：把分母就地对齐为当前总资产 */
-function pinIndexOne(state: GameState): GameState {
-  let total = 0;
-  for (const p of state.players) {
-    if (!p.bankrupt) total += totalAssets(state, p);
-  }
-  state.initialCashPerPlayer = Math.max(1, total);
-  state.initialPlayerCount = 1;
-  return state;
 }
 
 describe('CORP 公司企业：数据与经营权', () => {
