@@ -1,5 +1,6 @@
 import { BOARD_SIZE } from './board.js';
 import type { CardPhase } from './cards.js';
+import { godDef } from './gods.js';
 import type { ItemEffectCtx } from './effect_ctx.js';
 import { MAX_GRADE, facilityUpgradeable } from './tiles.js';
 
@@ -79,7 +80,7 @@ export const ITEMS: Record<string, ItemDef> = {
       let kickedGods = 0;
       for (const q of state.players) {
         if (q.bankrupt || !q.god || !ahead.includes(q.position)) continue;
-        log(state, `${p.name} 的机器娃娃赶走了 ${q.name} 身上的${q.god.godId}神`);
+        log(state, `${p.name} 的机器娃娃赶走了 ${q.name} 身上的${godDef(q.god.godId)?.name ?? q.god.godId}`);
         q.god = null;
         kickedGods += 1;
       }
