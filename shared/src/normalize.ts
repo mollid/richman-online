@@ -7,9 +7,10 @@ import type { GameState } from './types.js';
  * 老录像与老存档不做保底，所以默认值取**当前规则的默认值**即可（新机制默认就是开的）。
  * 以后给 `GameState` 加字段，只在这里补默认值。
  *
- * 只在**外部 GameState 进入内存**的两个入口调用：
+ * 只在**外部 GameState 进入内存**的三个入口调用：
  * - `client/src/net/session.ts` 的 `loadHotseatGame`（本地存档可能是重构前存的）；
- * - `shared/src/replay.ts` 的 `ReplayEngine`（外部传入的录像记录）。
+ * - `shared/src/replay.ts` 的 `ReplayEngine`（外部传入的录像记录）；
+ * - `client/src/net/remote.ts` 的房间快照（服务端可能与客户端不同源，例如 dev 服务没重启）。
  * 引擎内部构造的状态本就带齐全部字段，无需再走这里。
  */
 export function normalizeGameState(state: GameState): GameState {

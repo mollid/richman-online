@@ -1,5 +1,5 @@
 import { Client, type Room } from 'colyseus.js';
-import { availableActions, type GameState, type PlayerAction } from '@richman/shared';
+import { availableActions, normalizeGameState, type GameState, type PlayerAction } from '@richman/shared';
 import type { GameSession } from './session.js';
 import { getSettings } from '../game/settings.js';
 
@@ -115,7 +115,10 @@ export class ColyseusSession implements GameSession {
     this.room = room;
 
     room.onMessage<RemoteSnapshot>('state', (snapshot) => {
-      this.game = snapshot.game;
+      // 房间快照是「外部 GameState 进入内存」的第三个入口，一样要先过 normalize：
+      // 服务端与客户端不同步时（例如 dev 服务没重启）缺字段会在这里补上，
+      // 而不是等 UI 拿着 undefined 去 .map 把整棵 React 树炸掉。
+      this.game = normalizeGameState(snapshot.game);
       for (const fn of this.listeners) fn(this.game);
     });
 
