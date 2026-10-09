@@ -1,5 +1,5 @@
 import type { BoardCell, FacilityType, GameState, PlayerProperty } from './types.js';
-import { landPrice, scaled } from './economy.js';
+import { scaled } from './economy.js';
 import { BOARD_SIZE } from './board.js';
 
 /**
@@ -150,18 +150,6 @@ export function viewportCells(position: number): number[] {
   const out: number[] = [];
   for (let d = -7; d <= 8; d++) out.push((position + d + BOARD_SIZE) % BOARD_SIZE);
   return out;
-}
-
-/** 商业用地购地溢价倍数（用户规则：商业地要比原价贵——按自身标价 ×1.5 收购） */
-export const COMMERCIAL_PRICE_MULTIPLIER = 1.5;
-
-/**
- * 购地价（引擎与 UI 同源）：住宅 = 公定地价；
- * 商业用地 = 自身标价 ×1.5（用户规则：商业地要比原价贵）。
- */
-export function landPurchasePrice(state: GameState, cell: BoardCell): number {
-  if (cell.type !== 'commercial') return landPrice(state, cell);
-  return scaled(state, Math.round((cell.price ?? 0) * COMMERCIAL_PRICE_MULTIPLIER));
 }
 
 /**

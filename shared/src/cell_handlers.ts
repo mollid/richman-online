@@ -32,7 +32,6 @@ import {
   facilityUpgradeable,
   gasFee,
   gradeName,
-  landPurchasePrice,
   vehicleLabel,
   vehicleLevel,
 } from './tiles.js';
@@ -291,7 +290,7 @@ function onLandingCommercial(ctx: CellLandingCtx): LandingResult {
   const owned = ctx.cellOwner(state, c.id);
   if (!owned) {
     state.phase = 'awaiting_action';
-    ctx.log(state, `${p.name} 来到无主商业用地「${c.name}」（购地价 ¥${landPurchasePrice(state, c)}＝标价 ×1.5；首次只能购地，再次抵达才可建设）`);
+    ctx.log(state, `${p.name} 来到无主商业用地「${c.name}」（购地价 ¥${landPrice(state, c)}；首次只能购地，再次抵达才可建设）`);
     return 'hold';
   }
   if (owned.player.id === p.id) {

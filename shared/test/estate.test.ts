@@ -10,7 +10,7 @@ import {
   facilityBuildCost,
   gradeName,
   holdsWholeStreet,
-  landPurchasePrice,
+  landPrice,
   landRent,
   MAX_GRADE,
   POINTS_START,
@@ -97,14 +97,14 @@ describe('商业用地与设施（EST-06..12）', () => {
     expect(bought.players[0]!.properties[0]!.facility).toBeUndefined();
   });
 
-  it('商业用地购地价 = 自身标价 ×1.5（用户规则：商业地要比原价贵）', () => {
-    // 40 号世贸天阶标价 600 → 600 × 1.5 = 900
+  it('商业用地按公定地价购买（help[22]：「依公定价格购买」；曾自定的标价 ×1.5 溢价已取消）', () => {
+    // 40 号世贸天阶标价 600 → 成交价就是 600，「贵」应体现在标价本身而非隐藏倍数
     const g = pinIndexOne(landOn(newGame(1010), 40));
     const rolled = applyAction(g, { type: 'ROLL_DICE' });
-    expect(landPurchasePrice(rolled, rolled.board[40]!)).toBe(900);
+    expect(landPrice(rolled, rolled.board[40]!)).toBe(600);
     const bought = applyAction(rolled, { type: 'BUY_LAND' });
-    expect(bought.players[0]!.cash).toBe(15000 - 900);
-    expect(bought.log.some((l) => l.text.includes('标价 ×1.5'))).toBe(true);
+    expect(bought.players[0]!.cash).toBe(15000 - 600);
+    expect(bought.log.some((l) => l.text.includes('×1.5'))).toBe(false);
   });
 
   it('机器工人加盖商业用地需先建设施，且公园/加油站不可升级（EST-08/11）', () => {

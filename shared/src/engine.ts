@@ -69,7 +69,6 @@ import {
   facilityUpgradeable,
   gradeName,
   holdsWholeStreet,
-  landPurchasePrice,
   researchDef,
   streetCells,
 } from './tiles.js';
@@ -1875,15 +1874,15 @@ function buyLand(state: GameState): void {
   const p = currentPlayer(state);
   const c = cellAt(state, p.position);
   const freeBuy = godFreeLandPurchase(p);
-  // 用户规则：住宅按公定地价；商业用地按「自身标价 ×1.5」计费（比原价贵）
-  const price = freeBuy ? 0 : landPurchasePrice(state, c);
+  // help[22]：商业用地同样「依公定价格购买」——标价即成交价，不设溢价（见 tiles.ts 的 W1 说明）
+  const price = freeBuy ? 0 : landPrice(state, c);
   p.cash -= price;
   p.properties.push({ cellId: c.id, grade: 1 });
   if (freeBuy) {
     log(state, `大福神显灵，${p.name} 免费获得「${c.name}」`);
   } else if (c.type === 'commercial') {
     // EST-06：商业用地首次只能购地，须再次抵达才能选择建设项目
-    log(state, `${p.name} 以 ¥${price} 购入商业用地「${c.name}」（标价 ×1.5；下次抵达可选择建设项目）`);
+    log(state, `${p.name} 以 ¥${price} 购入商业用地「${c.name}」（下次抵达可选择建设项目）`);
   } else {
     log(state, `${p.name} 以 ¥${price} 购入「${c.name}」`);
   }
@@ -2850,8 +2849,8 @@ function checkBuyLand(state: GameState, p: Player | null, _action: ActionOf<'BUY
   if ((c.type !== 'property' && c.type !== 'commercial') || c.price === undefined) return '此格不可购买';
   if (cellOwner(state, c.id)) return '该地产已有主人';
   if (godBlocksInvestment(p)) return '衰神附身，买地流拍';
-  // 用户规则：住宅按公定地价；商业用地按「自身标价 ×1.5」计费（比原价贵）
-  const price = godFreeLandPurchase(p) ? 0 : landPurchasePrice(state, c);
+  // help[22]：商业用地按自身公定地价购买，与住宅同源
+  const price = godFreeLandPurchase(p) ? 0 : landPrice(state, c);
   if (p.cash < price) return '现金不足';
   return null;
 }

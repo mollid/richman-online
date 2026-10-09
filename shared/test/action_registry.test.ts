@@ -7,7 +7,6 @@ import {
   availableActions,
   createGame,
   landPrice,
-  landPurchasePrice,
   landUpgradeCost,
 } from '../src/index.js';
 import { FACILITIES } from '../src/tiles.js';
@@ -179,14 +178,20 @@ describe('门控与引擎同源（边界局面逐条钉死）', () => {
     expect(availableActions(cursed).canUpgrade).toBe(false);
   });
 
-  it('买价按实付价 landPurchasePrice 判定（旧实现按标价 landPrice，商业地上按钮可点却现金不足）', () => {
-    const g = standOn(newGame(), 'commercial');
+  it('买价跟随公定地价（含路段调价因子），门控不会按裸标价放行', () => {
+    // 历史 bug：门控按 landPrice 判断而引擎按另一个价（商业地 ×1.5）收钱。
+    // W1 取消溢价后两者同源，这里改用「公告地价调涨」来钉住同源性：
+    // 成交价一旦随路段因子上涨，门控必须跟着变严，不能还按旧标价放行。
+    const g = standOn(newGame(), 'property');
     const cell = g.board[g.players[g.currentPlayerIndex]!.position]!;
-    const price = landPurchasePrice(g, cell);
-    // 标价与实付价必须真的有差距，否则这条断言没有意义
-    expect(price).toBeGreaterThan(landPrice(g, cell));
-    expect(availableActions(withCash(g, price - 1)).canBuy).toBe(false);
-    const exact = withCash(g, price);
+    expect(cell.street, '前提：住宅格属于某个路段').toBeTruthy();
+    const base = landPrice(g, cell);
+    const bumped = structuredClone(g);
+    bumped.streetPriceFactors[cell.street!] = (bumped.streetPriceFactors[cell.street!] ?? 1) * 1.5;
+    const price = landPrice(bumped, cell);
+    expect(price).toBeGreaterThan(base);
+    expect(availableActions(withCash(bumped, price - 1)).canBuy).toBe(false);
+    const exact = withCash(bumped, price);
     expect(availableActions(exact).canBuy).toBe(true);
     expect(() => applyAction(exact, { type: 'BUY_LAND' })).not.toThrow();
   });

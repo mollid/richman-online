@@ -1,6 +1,6 @@
 import { actionRefusal, availableActions } from './engine.js';
 import { landUpgradeCost } from './economy.js';
-import { landPurchasePrice } from './tiles.js';
+import { landPrice } from './economy.js';
 import { CARDS, SHOP_CARD_IDS } from './cards.js';
 import { ITEMS, SHOP_ITEM_IDS } from './items.js';
 import { MAX_HAND_CARDS, MAX_ITEM_COUNT } from './board.js';
@@ -62,8 +62,7 @@ export function botDecide(state: GameState, botId: string, rng: () => number): P
     return { type: 'USE_CARD', cardId: 'send-god' };
   }
 
-  // 买地按**实付价**留安全垫（商业地实付价含溢价，用标价会低估）
-  if (acts.canBuy && cell.price !== undefined && me.cash >= landPurchasePrice(state, cell) + 2000) {
+  if (acts.canBuy && cell.price !== undefined && me.cash >= landPrice(state, cell) + 2000) {
     return { type: 'BUY_LAND' };
   }
 

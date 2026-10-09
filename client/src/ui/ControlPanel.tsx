@@ -8,7 +8,7 @@ import {
   gameDate,
   gradeName,
   ITEMS,
-  landPurchasePrice,
+  landPrice,
   landUpgradeCost,
   MAX_HAND_CARDS,
   priceIndex,
@@ -55,8 +55,8 @@ export function ControlPanel({
   const ownedBy = current && game.players.find((p) => p.properties.some((q) => q.cellId === cell?.id));
   const myProp = ownedBy?.properties.find((q) => q.cellId === cell?.id);
   const date = gameDate(game);
-  // 购地价与引擎同源：住宅=公定地价；商业用地=标价 ×1.5
-  const price = cell && cell.price !== undefined ? landPurchasePrice(game, cell) : undefined;
+  // 购地价与引擎同源：一律公定地价（help[22]，商业地不设溢价）
+  const price = cell && cell.price !== undefined ? landPrice(game, cell) : undefined;
   const upgrade = myProp && cell ? landUpgradeCost(game, cell, myProp.grade) : undefined;
   const waitingForTurn = game.phase === 'awaiting_action' || game.phase === 'awaiting_roll';
   // CORE-03：步行 1 颗骰子、机车 2 颗、汽车 3 颗；掷骰前可自选本次使用几颗（默认用满）
