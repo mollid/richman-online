@@ -3,9 +3,9 @@ import type { GameState } from './types.js';
 /**
  * 给 `GameState` 幂等地补齐**新增字段的默认值**。
  *
- * 铁律：本项目所有新机制一律「字段缺失 ⇒ 在任何 `nextRandom` 之前短路 ⇒ 零抽数」，
- * 老录像因此能逐帧复现。本函数是这条铁律的统一兜底处 —— 以后给 `GameState`
- * 加字段，只在这里补默认值，并保证默认值对应的行为就是「该机制未启用」。
+ * 目的是「缺字段的旧对象进了内存也能照常跑」，不是「复现历史」：本项目处于开发阶段，
+ * 老录像与老存档不做保底，所以默认值取**当前规则的默认值**即可（新机制默认就是开的）。
+ * 以后给 `GameState` 加字段，只在这里补默认值。
  *
  * 只在**外部 GameState 进入内存**的两个入口调用：
  * - `client/src/net/session.ts` 的 `loadHotseatGame`（本地存档可能是重构前存的）；
@@ -13,10 +13,19 @@ import type { GameState } from './types.js';
  * 引擎内部构造的状态本就带齐全部字段，无需再走这里。
  */
 export function normalizeGameState(state: GameState): GameState {
-  // 回放铁律：新机制字段的默认值必须是「机制关闭」，而不是「开启但为空」。
-  // 神明现身会在日切消耗 RNG 抽数，老录像若开启就无法逐帧复现 ⇒ 缺失一律补 null。
-  if (state.boardGods === undefined) state.boardGods = null;
+  // 神明现身机制（W2）：缺键按「开启但场上没有神明」补
+  state.boardGods ??= [];
+  state.spawnGods ??= true;
   if (!state.godPairBanUntil) state.godPairBanUntil = {};
+
+  // 拍卖器换规则（W3）：老存档里记的是「连续放弃次数」`passes`，新规则按「谁让过」判定，
+  // 人数无法从计数还原 ⇒ 保守当作没人让过（下一圈重新数）。只会最多多轮一轮，不会收不了口。
+  const legacyAuction = state.auction as (typeof state.auction & { passes?: number }) | null;
+  if (legacyAuction) {
+    legacyAuction.passedSinceBid ??= [];
+    legacyAuction.withdrawn ??= [];
+    delete legacyAuction.passes;
+  }
 
   // 老状态没有回合子阶段：按可见相位反推一个合理值（该字段不参与任何规则判定）
   if (!state.turnStage) {

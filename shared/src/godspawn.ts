@@ -55,13 +55,13 @@ export function ringDistance(a: number, b: number): number {
 
 /** 某格上驻留的神明（无则 undefined） */
 export function boardGodAt(state: GameState, cellId: number) {
-  return state.boardGods?.find((g) => g.cellId === cellId);
+  return state.boardGods.find((g) => g.cellId === cellId);
 }
 
 /** 此刻「占住某一对偶」的 godId 集合：棋盘驻留的 + 已经附身在玩家身上的 */
 function presentPairs(state: GameState): Set<string> {
   const pairs = new Set<string>();
-  for (const g of state.boardGods ?? []) pairs.add(godPairKey(g.godId));
+  for (const g of state.boardGods) pairs.add(godPairKey(g.godId));
   for (const p of state.players) {
     if (p.god?.godId) pairs.add(godPairKey(p.god.godId));
   }
@@ -85,8 +85,7 @@ export function spawnableGodDefs(state: GameState): GodDef[] {
 
 /** 可选的驻留格：排除已驻留格，以及与在场神明 / 任一玩家距离过近的格 */
 export function spawnCellCandidates(state: GameState): BoardCell[] {
-  const onBoard = state.boardGods ?? [];
-  const taken = new Set(onBoard.map((g) => g.cellId));
+  const taken = new Set(state.boardGods.map((g) => g.cellId));
   const occupied = [...new Set([...taken, ...state.players.map((p) => p.position)])];
   return state.board.filter(
     (c) =>
@@ -99,22 +98,21 @@ export function spawnCellCandidates(state: GameState): BoardCell[] {
 /**
  * 日切钩子：先让在场神明计时并清退（清退即触发对偶冷却），再按概率现一尊。
  *
- * 抽数纪律：本函数在**机制关闭时零抽数**（老录像短路，见 `normalize.ts` 的铁律）；
- * 机制开启时最多消耗 3 次抽数（现身判定 1 次 + 选人 1 次 + 选位 1 次）。
+ * 抽数纪律：`spawnGods` 关闭时**零抽数**（数值断言型测试用它隔离这条随机源）；
+ * 开启时最多消耗 3 次抽数（现身判定 1 次 + 选人 1 次 + 选位 1 次）。
  * 选人之后若已无合格格，本次放弃且**已消耗的抽数不回滚** —— 回滚等于伪造一条
  * 从未发生的随机序列，回放时会出现「同样的 seed 走出不同局面」。
  */
 export function godSpawnHook(ctx: GodEffectCtx): void {
   const { state } = ctx;
-  const onBoard = state.boardGods;
-  if (!onBoard) return; // 机制关闭（老存档 / 老录像）：必须在任何 nextRandom 之前短路
+  if (!state.spawnGods) return; // 必须在任何 nextRandom 之前短路
 
-  for (const god of [...onBoard]) {
+  for (const god of [...state.boardGods]) {
     god.ttlDays -= 1;
     if (god.ttlDays > 0) continue;
     removeBoardGod(ctx, god.cellId, '期满回坛');
   }
-  if ((state.boardGods?.length ?? 0) >= GOD_MAX_ON_BOARD) return;
+  if (state.boardGods.length >= GOD_MAX_ON_BOARD) return;
 
   const chance = nextRandom(state.rngState);
   state.rngState = chance.nextState;
@@ -132,7 +130,7 @@ export function godSpawnHook(ctx: GodEffectCtx): void {
   state.rngState = spot.nextState;
   const cell = cells[Math.floor(spot.value * cells.length)]!;
 
-  state.boardGods!.push({ godId: def.id, cellId: cell.id, ttlDays: GOD_TTL_DAYS, bornDay: state.calendar.elapsedDays });
+  state.boardGods.push({ godId: def.id, cellId: cell.id, ttlDays: GOD_TTL_DAYS, bornDay: state.calendar.elapsedDays });
   if (def.id === 'land-god') state.landGodCooldownMonth = currentMonthIndex(state);
   ctx.log(state, `【神明】${def.name} 现身「${cell.name}」，驻留 ${GOD_TTL_DAYS} 天`);
 }
@@ -146,11 +144,9 @@ export function godSpawnHook(ctx: GodEffectCtx): void {
  */
 export function removeBoardGod(ctx: GodEffectCtx, cellId: number, reason: string): boolean {
   const { state } = ctx;
-  const onBoard = state.boardGods;
-  if (!onBoard) return false;
-  const idx = onBoard.findIndex((g) => g.cellId === cellId);
+  const idx = state.boardGods.findIndex((g) => g.cellId === cellId);
   if (idx < 0) return false;
-  const [god] = onBoard.splice(idx, 1);
+  const [god] = state.boardGods.splice(idx, 1);
   const def = godDef(god!.godId);
   const rest = banRivalPair(ctx, god!.godId);
   ctx.log(
@@ -163,11 +159,9 @@ export function removeBoardGod(ctx: GodEffectCtx, cellId: number, reason: string
 
 /** 被附身而离场：不写对偶冷却、不播报离开（附身本身另有一条日志） */
 export function detachGodForPossession(state: GameState, cellId: number): string | null {
-  const onBoard = state.boardGods;
-  if (!onBoard) return null;
-  const idx = onBoard.findIndex((g) => g.cellId === cellId);
+  const idx = state.boardGods.findIndex((g) => g.cellId === cellId);
   if (idx < 0) return null;
-  const [god] = onBoard.splice(idx, 1);
+  const [god] = state.boardGods.splice(idx, 1);
   return god!.godId;
 }
 
@@ -190,13 +184,9 @@ export function clearBoardGodsOnCells(ctx: GodEffectCtx, cellIds: readonly numbe
 }
 
 /**
- * 请神卡（CARD-23）的额外前提：神明现身机制开启、而棋盘上一尊都没有时，这张卡无物可请。
+ * 请神卡（CARD-23）的额外前提：棋盘上一尊神明都没有时，这张卡无物可请。
  * 门控与 `apply` 共用这一个判断，因此不会出现「列在可用手牌里、用了却报错」。
- *
- * 机制关闭（老存档 / 老录像，`boardGods === null`）时不设前提 —— 那时请神卡按定义表
- * 总能请到一尊，套用新规则会让老局面里这张卡突然作废。
  */
 export function godSummonRefusal(state: GameState): string | null {
-  if (!state.boardGods) return null;
   return state.boardGods.length === 0 ? '棋盘上此刻没有可请的神明' : null;
 }

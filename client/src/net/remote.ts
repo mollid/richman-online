@@ -257,6 +257,8 @@ function emptyState(): GameState {
     phase: 'lobby',
     turnStage: 'start',
     boardGods: [],
+    // 房间状态还没到手的占位：没有神明会现身
+    spawnGods: false,
     godPairBanUntil: {},
     dice: null,
     turn: 0,

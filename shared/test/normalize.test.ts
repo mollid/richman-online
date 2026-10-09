@@ -4,11 +4,12 @@ import type { GameState } from '../src/index.js';
 import { GOLDEN_PLAYERS, MONDAY } from './helpers/golden_run.js';
 
 /**
- * 回放兼容铁律的回归测试。
+ * `normalizeGameState` 的回归测试。
  *
- * 铁律：给 `GameState` 新增字段时，**字段缺失必须等价于「该机制未启用」**，且补默认值
- * 只能发生在外部状态流入点（`normalizeGameState`）。否则重构前存下的热座存档、录下的
- * 录像，在新引擎里会走出另一条轨迹 —— 老录像不能再逐帧复现，也没有任何测试会提醒你我。
+ * 要守住的是：给 `GameState` 新增字段时，补默认值**只能发生在外部状态流入点**
+ * （`normalizeGameState`），且补进去的默认值不得改变局面 —— 它是表现层的兜底，不是规则开关。
+ * 老录像本身不做保底（开发阶段没有需要复现的历史数据），但**老热座存档**仍在玩，
+ * 缺字段必须照样能跑，且跑出来的与字段本来就齐的局面一致。
  */
 
 function midGame(steps = 12): GameState {

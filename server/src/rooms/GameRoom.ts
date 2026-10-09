@@ -237,15 +237,20 @@ export class GameRoom extends Room {
     }, OFFLINE_AUTO_ACT_DELAY_MS);
   }
 
-  /** 掉线玩家托管：自动掷骰 + 结束回合 */
+  /** 掉线玩家托管：拍卖里弃权退出，其余自动掷骰 + 结束回合 */
   private autoActForOffline() {
     if (this.game.phase === 'awaiting_auction') {
       const bidder = this.actingPlayerId();
       const p = bidder ? this.game.players.find((q) => q.id === bidder) : undefined;
       if (!p || p.online) return;
+      // 不在场的人不该留在竞价轮次里：PASS 会保留资格，于是每一轮都要等他一个
+      // `OFFLINE_AUTO_ACT_DELAY_MS`；直接弃权退出，拍卖立刻能往下走。
+      // 但他若已是最高出价者就不能弃权（已经是要付钱的人），那时只能让过。
+      const canGiveUp = this.game.auction && this.game.auction.highestBidderId !== bidder;
       try {
-        this.game = applyAction(this.game, { type: 'AUCTION_PASS' });
-        this.actionLog.push({ turn: this.game.turn, action: { type: 'AUCTION_PASS' } });
+        const action = canGiveUp ? { type: 'AUCTION_GIVE_UP' as const } : { type: 'AUCTION_PASS' as const };
+        this.game = applyAction(this.game, action);
+        this.actionLog.push({ turn: this.game.turn, action });
         this.broadcastState();
         this.scheduleAutoAct();
       } catch {
@@ -342,8 +347,6 @@ export class GameRoom extends Room {
         turns: this.game.turn,
         rounds: this.game.round,
         actions: this.actionLog,
-        // 神明现身开着的话，重放必须同样开着才能逐帧复现（见 storage 的 spawn_gods 列）
-        spawnGods: this.game.boardGods !== null,
         players: this.game.players.map((p) => ({
           userId: this.userIds.get(p.id) ?? null,
           playerName: p.name,

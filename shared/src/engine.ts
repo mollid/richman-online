@@ -112,8 +112,8 @@ export interface CreateGameOptions {
   startDate?: DateSerial;
   /**
    * 神明是否随机现身驻留棋盘（GOD 现身机制，W2）。默认开启。
-   * 关掉它 = `boardGods` 置 null，与老存档同一个语义：日切不消耗任何 RNG 抽数。
-   * 数值断言型测试用它隔离这条随机源（同 `pinIndexOne` 隔离物价指数）。
+   * 关掉 ⇒ 日切不为这条机制消耗 RNG 抽数，数值断言型测试用它隔离这条随机源
+   * （同 `pinIndexOne` 隔离物价指数）。
    */
   spawnGods?: boolean;
 }
@@ -212,8 +212,9 @@ export function createGame(players: PlayerDef[], seed = Date.now() % 2147483647,
     magic: null,
     // GOD-01 土地公隔月再现（help [40]）：初始未出现过，可随机到
     landGodCooldownMonth: 0,
-    // 神明现身机制（W2）：新开的局默认开启；老存档由 normalizeGameState 补成 null
-    boardGods: options.spawnGods === false ? null : [],
+    // 神明现身机制（W2）：新开的局默认开启
+    boardGods: [],
+    spawnGods: options.spawnGods !== false,
     godPairBanUntil: {},
     pendingCard: null,
     // UI-06 公布栏：初始无挂牌、无成交记录
@@ -1618,6 +1619,9 @@ export function availableActions(state: GameState): AvailableActions {
       canBuyLottery: can({ type: 'BUY_LOTTERY_TICKET', number: 0 }),
       lotteryTicketCost: LOTTERY_TICKET_COST,
       auction: null,
+      auctionMinBid: 0,
+      canAuctionPass: false,
+      canAuctionGiveUp: false,
       bailableVillains: bailable,
       bailFee: bailFee(state),
       magic: state.magic,
@@ -1640,6 +1644,10 @@ export function availableActions(state: GameState): AvailableActions {
  */
 function idleActions(state: GameState): AvailableActions {
   const p = currentPlayerOrNull(state);
+  const auction = state.phase === 'awaiting_auction' ? state.auction : null;
+  // 拍卖的三个动作同样只问注册表：面板上的「弃权」在最高价者面前就该是灰的
+  const auctionRefusal = (action: PlayerAction): ActionRefusal =>
+    auction ? actionRefusal(state, action) : '当前没有进行中的拍卖';
   return {
     canRoll: false,
     canBuy: false,
@@ -1666,7 +1674,10 @@ function idleActions(state: GameState): AvailableActions {
     usableItems: [],
     canBuyLottery: false,
     lotteryTicketCost: LOTTERY_TICKET_COST,
-    auction: state.phase === 'awaiting_auction' ? state.auction : null,
+    auction,
+    auctionMinBid: auction ? nextBidAmount(auction) : 0,
+    canAuctionPass: auctionRefusal({ type: 'AUCTION_PASS' }) === null,
+    canAuctionGiveUp: auctionRefusal({ type: 'AUCTION_GIVE_UP' }) === null,
     bailableVillains: p ? bailableVillains(state) : [],
     bailFee: bailFee(state),
     magic: state.magic,
@@ -2322,10 +2333,40 @@ function castMagic(state: GameState, action: Extract<PlayerAction, { type: 'CAST
 // ECON-13 拍卖器：触发源（倒闭/拍卖卡/事件/银行）+ 出价轮询 + 价高者得
 // ---------------------------------------------------------------------------
 
+/** 最小加价的地板值：低价标的按 10% 算会小到可以忽略，用 ¥50 兜住 */
+export const AUCTION_MIN_STEP = 50;
+
 /** 起拍价：有地价者取其半价（含物价指数），否则 100 */
 function auctionMinBid(state: GameState, cell: BoardCell): number {
   if (cell.price === undefined) return 100;
   return Math.max(1, Math.floor(scaled(state, cell.price) / 2));
+}
+
+/**
+ * 最小加价（原版没有这一条，GAP 调研 §1 只钉住「PASS 下一轮仍可加价」）。
+ *
+ * 老实现是 +1 元，于是两个都不肯认输的竞买人可以永远打下去：实测 seed=77 / 424242
+ * 在 200 回合窗口里烧完 2400 个动作仍停在 `awaiting_auction`。乘性加价把「出价次数」
+ * 从 `现金 ÷ 1` 压成对数量级（150 元跟到 1.5 万约 50 次），拍卖因此必然收口。
+ */
+export function auctionBidStep(highestBid: number): number {
+  return Math.max(AUCTION_MIN_STEP, Math.ceil((highestBid * 0.1) / 10) * 10);
+}
+
+/** 竞买人此刻至少要出多少：无人出价时为起拍价，否则为当前价 + 最小加价 */
+export function nextBidAmount(a: AuctionState): number {
+  return a.highestBidderId ? a.highestBid + auctionBidStep(a.highestBid) : a.minBid;
+}
+
+/**
+ * 收锤判定：除最高价者之外，在场竞买人都已经在本轮让过。
+ * 尚无人出价时 `highestBidderId` 为 null，条件退化成「在场者全体让过」⇒ 流拍。
+ *
+ * 原版是「其他人都放弃后由最后出价者得标」—— 老实现把最高价者本人也算进放弃人数，
+ * 每场拍卖都要多等他放弃一次才收锤；而他明明已经是要付钱的人了。
+ */
+function auctionIsSettled(a: AuctionState): boolean {
+  return !a.bidders.some((id) => id !== a.highestBidderId && !a.passedSinceBid.includes(id));
 }
 
 /** 竞买人：非破产且有现金者（ECON-13「无现金不得参与」）；卖家本人不参与 */
@@ -2356,7 +2397,8 @@ function beginAuction(
     minBid: auctionMinBid(state, cell),
     highestBid: 0,
     highestBidderId: null,
-    passes: 0,
+    passedSinceBid: [],
+    withdrawn: [],
     afterComplete: opts.afterComplete,
   };
   state.phase = 'awaiting_auction';
@@ -2382,9 +2424,16 @@ function currentBidder(state: GameState): Player {
   return p;
 }
 
-/** 下一次允许的最低出价 */
-function nextBidAmount(a: AuctionState): number {
-  return a.highestBidderId ? a.highestBid + 1 : a.minBid;
+/**
+ * 轮到下一位竞买人；`withdrewIndex` 非空表示该下标上的竞买人刚弃权。
+ *
+ * 弃权者直接从 `bidders` 移出，他后面的人正好顶到同一个下标，所以轮次不再 +1，
+ * 而是对该下标取模（全场弃权则归零）。轮询人数因此单调递减 —— 这是「拍卖一定收得了口」
+ * 的另一半保证：加价幅度管住出价次数，弃权管住轮次长度。
+ */
+function advanceBidderTurn(a: AuctionState, withdrewIndex: number | null): void {
+  if (withdrewIndex !== null) a.bidders.splice(withdrewIndex, 1);
+  a.turnIndex = a.bidders.length === 0 ? 0 : (withdrewIndex ?? a.turnIndex + 1) % a.bidders.length;
 }
 
 function auctionBid(state: GameState, action: Extract<PlayerAction, { type: 'AUCTION_BID' }>): void {
@@ -2393,20 +2442,36 @@ function auctionBid(state: GameState, action: Extract<PlayerAction, { type: 'AUC
   const bidder = currentBidder(state);
   a.highestBid = action.amount;
   a.highestBidderId = bidder.id;
-  a.passes = 0;
+  // 有人加价 ⇒ 这一圈重新数
+  a.passedSinceBid = [];
   log(state, `【拍卖】${bidder.name} 出价 ¥${action.amount}`);
-  a.turnIndex = (a.turnIndex + 1) % a.bidders.length;
-  if (a.passes >= a.bidders.length) settleAuction(state);
+  advanceBidderTurn(a, null);
+  // 其余人早已弃权 ⇒ 当场成交，不必再空转一轮
+  if (auctionIsSettled(a)) settleAuction(state);
 }
 
+/** 本轮让过（原版 PASS）：不加价，但保留下一轮加价的权利 */
 function auctionPass(state: GameState): void {
   assertLegal(state, { type: 'AUCTION_PASS' });
   const a = state.auction!;
   const bidder = currentBidder(state);
-  a.passes += 1;
-  log(state, `【拍卖】${bidder.name} 放弃出价`);
-  a.turnIndex = (a.turnIndex + 1) % a.bidders.length;
-  if (a.passes >= a.bidders.length) settleAuction(state);
+  a.passedSinceBid = [...a.passedSinceBid, bidder.id];
+  log(state, `【拍卖】${bidder.name} 本轮让过（下一轮仍可加价）`);
+  advanceBidderTurn(a, null);
+  if (auctionIsSettled(a)) settleAuction(state);
+}
+
+/** 弃权退出本场拍卖（原版 GIVE UP）：此后不再被轮到 */
+function auctionGiveUp(state: GameState): void {
+  assertLegal(state, { type: 'AUCTION_GIVE_UP' });
+  const a = state.auction!;
+  const idx = a.turnIndex;
+  const bidder = currentBidder(state);
+  a.withdrawn = [...a.withdrawn, bidder.id];
+  a.passedSinceBid = [...a.passedSinceBid, bidder.id];
+  log(state, `【拍卖】${bidder.name} 弃权，退出「${state.board[a.cellId]?.name ?? ''}」的争夺`);
+  advanceBidderTurn(a, idx);
+  if (auctionIsSettled(a)) settleAuction(state);
 }
 
 /** 收锤：价高者得；地权与款项一并交割，随后继续下一件标的或恢复流程 */
@@ -2529,7 +2594,7 @@ const EFFECT_KIT: EffectKit = {
   godSummonRefusal: (state) => godSummonRefusal(state),
   clearBoardGods: (state, cellIds, reason) => clearBoardGodsOnCells(godCtx(state), cellIds, reason),
   claimBoardGod: (state, godId) => {
-    const god = state.boardGods?.find((g) => g.godId === godId);
+    const god = state.boardGods.find((g) => g.godId === godId);
     return god ? detachGodForPossession(state, god.cellId) !== null : false;
   },
   cellsAhead: (state, from, dir, steps) =>
@@ -2849,7 +2914,7 @@ const NO_ACTOR_MESSAGE = '当前玩家不存在';
 /** 该动作的实际操作者：拍卖中是轮到的竞买人（未必是当前玩家），大厅阶段可能尚无玩家 */
 function actorForAction(state: GameState, action: PlayerAction): Player | null {
   if (action.type === 'START_GAME') return null;
-  if (action.type === 'AUCTION_BID' || action.type === 'AUCTION_PASS') {
+  if (action.type === 'AUCTION_BID' || action.type === 'AUCTION_PASS' || action.type === 'AUCTION_GIVE_UP') {
     const a = state.auction;
     if (!a) return null;
     return state.players.find((q) => q.id === a.bidders[a.turnIndex]) ?? null;
@@ -3183,18 +3248,32 @@ function checkBuyLotteryTicket(state: GameState, p: Player | null, action: Actio
   return null;
 }
 
-function checkAuctionBid(state: GameState, bidder: Player | null, action: ActionOf<'AUCTION_BID'>): ActionRefusal {
+/** 拍卖三个动作共用的前提：正在拍卖中，且轮到的这位竞买人还在场 */
+function auctionTurnRefusal(state: GameState, bidder: Player | null): ActionRefusal {
   if (state.phase !== 'awaiting_auction' || !state.auction) return '当前没有进行中的拍卖';
   if (!bidder) return '竞买人不存在';
-  const min = nextBidAmount(state.auction);
+  return null;
+}
+
+function checkAuctionBid(state: GameState, bidder: Player | null, action: ActionOf<'AUCTION_BID'>): ActionRefusal {
+  const base = auctionTurnRefusal(state, bidder);
+  if (base) return base;
+  const min = nextBidAmount(state.auction!);
   if (!Number.isInteger(action.amount) || action.amount < min) return `出价不得低于 ¥${min}`;
-  if (action.amount > bidder.cash) return '出价不能超过自己的现金';
+  if (action.amount > bidder!.cash) return '出价不能超过自己的现金';
   return null;
 }
 
 function checkAuctionPass(state: GameState, bidder: Player | null, _action: ActionOf<'AUCTION_PASS'>): ActionRefusal {
-  if (state.phase !== 'awaiting_auction' || !state.auction) return '当前没有进行中的拍卖';
-  if (!bidder) return '竞买人不存在';
+  return auctionTurnRefusal(state, bidder);
+}
+
+function checkAuctionGiveUp(state: GameState, bidder: Player | null, _action: ActionOf<'AUCTION_GIVE_UP'>): ActionRefusal {
+  const base = auctionTurnRefusal(state, bidder);
+  if (base) return base;
+  // 最高价者不能弃权：弃权是从这场拍卖里脱身，而他已经是注定要付钱的人。
+  // 允许的话，「把别人挤到弃权后再自己退场」会变成一条空手套白狼的路。
+  if (state.auction!.highestBidderId === bidder!.id) return '已是最高出价者，不能弃权';
   return null;
 }
 
@@ -3288,6 +3367,7 @@ const ACTION_SPECS: ActionSpecMap = {
   BUY_LOTTERY_TICKET: { check: checkBuyLotteryTicket, apply: (s, a) => buyLotteryTicket(s, a) },
   AUCTION_BID: { check: checkAuctionBid, apply: (s, a) => auctionBid(s, a) },
   AUCTION_PASS: { check: checkAuctionPass, apply: (s) => auctionPass(s) },
+  AUCTION_GIVE_UP: { check: checkAuctionGiveUp, apply: (s) => auctionGiveUp(s) },
   BAIL_PRISONER: { check: checkBailPrisoner, apply: (s, a) => bailPrisoner(s, a) },
   CAST_MAGIC: { check: checkCastMagic, apply: (s, a) => castMagic(s, a) },
   DISCHARGE_PATIENT: { check: checkDischargePatient, apply: (s, a) => dischargePatient(s, a) },

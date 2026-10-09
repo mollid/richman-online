@@ -452,12 +452,9 @@ describe('TIME-06 确定性：同 seed + startDate + actions 完整复现', () =
       players: PLAYERS.map((p) => ({ player_name: p.name, color: p.color })),
       actions: a.actions.map((action, i) => ({ turn: i, action })),
     };
-    // 录制时开着神明现身，重放就必须带着这个标记：它会在日切消耗 RNG 抽数，
-    // 开关不一致整局就对不上（服务端把 this.game.boardGods !== null 存进 spawn_gods 列）。
-    const engine = new ReplayEngine({ ...record, spawnGods: true });
+    // 录像只需要三样东西：seed、起始日期、动作序列。神明现身（W2）这类会吃 RNG 抽数的
+    // 随机源不必另存标记 —— 重放走的就是当前引擎、当前规则，抽数次序自然一致。
+    const engine = new ReplayEngine(record);
     expect(fingerprint(engine.finalState)).toBe(fingerprint(a.state));
-    // 反向：漏掉标记（按老录像处理）就不是同一条轨迹了 —— 动作日志与局面一旦错位，
-    // 重放会中途撞上「当前不能掷骰」这类拒绝。这说明这个标记不是可有可无的装饰。
-    expect(() => new ReplayEngine(record)).toThrow();
   });
 });

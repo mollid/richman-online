@@ -26,8 +26,8 @@ import { MONDAY } from './helpers/golden_run.js';
  * 神明现身驻留棋盘（GOD 现身机制，W2）。
  *
  * 原版（`docs/gameplay/GAP调研记录_2026-09-24.md` §3）：日切随机现身、驻留固定格、
- * 经过即附身、对偶不共现、同屏最多 3-4 尊。这些用例逐条钉住，外加回放铁律那条
- * 「机制关闭时零抽数」。全部经由 `applyAction` 驱动，不直接调内部钩子。
+ * 经过即附身、对偶不共现、同屏最多 3-4 尊。这些用例逐条钉住，外加抽数纪律那条
+ * 「`spawnGods` 关闭时零抽数」。全部经由 `applyAction` 驱动，不直接调内部钩子。
  */
 
 const PLAYERS: PlayerDef[] = [
@@ -42,46 +42,80 @@ function game(seed: number, spawnGods: boolean): GameState {
   return pinIndexOne(g);
 }
 
-/** 推进到下一次日切（全员各行动一次） */
+/**
+ * 推进到下一次日切（全员各行动一次）。
+ *
+ * 连跑很多天时会被 bot 不管的相位绊住（小游戏 / 手牌额满 / 拍卖），所以这里一并喂掉：
+ * 拍卖一律让过（除最高价者外全体让过就收锤），小游戏只翻第一张可翻的牌。
+ */
 function toNextDay(state: GameState): GameState {
   let s = state;
   const day = s.calendar.elapsedDays;
-  for (let i = 0; i < 40 && s.calendar.elapsedDays === day && s.phase !== 'game_over'; i++) {
-    s = applyAction(s, s.phase === 'awaiting_roll' ? { type: 'ROLL_DICE' } : { type: 'END_TURN' });
+  for (let i = 0; i < 80 && s.calendar.elapsedDays === day && s.phase !== 'game_over'; i++) {
+    if (s.phase === 'awaiting_auction') {
+      s = applyAction(s, { type: 'AUCTION_PASS' });
+    } else if (s.phase === 'awaiting_discard') {
+      const cardId = s.players[s.currentPlayerIndex]!.cards[0];
+      if (!cardId) break;
+      s = applyAction(s, { type: 'DISCARD_CARD', cardId });
+    } else if (s.phase === 'awaiting_pick') {
+      const mg = s.minigame;
+      const open =
+        mg?.kind === 'memory'
+          ? mg.matched.map((matched, idx) => (matched || mg.revealed.includes(idx) ? -1 : idx)).filter((idx) => idx >= 0)
+          : [0];
+      s = applyAction(s, { type: 'MINIGAME_PICK', hole: open[0] ?? 0 });
+    } else if (s.phase === 'awaiting_roll') {
+      s = applyAction(s, { type: 'ROLL_DICE' });
+    } else {
+      s = applyAction(s, { type: 'END_TURN' });
+    }
   }
   expect(s.calendar.elapsedDays).toBeGreaterThan(day); // 别把「没推进」当成通过
   return s;
 }
 
-describe('回放铁律：机制开关', () => {
-  it('机制关闭（spawnGods:false）时，日切一整个来回都不消耗 RNG 抽数', () => {
-    const start = game(20260105, false);
-    expect(start.boardGods).toBeNull();
-    const drawsBefore = start.rngState;
-    const moved = toNextDay(start);
-    // rngState 是「已被取走多少随机数」的唯一记录：它若变化，老录像就无法逐帧复现
-    expect(moved.rngState).not.toBe(drawsBefore); // 掷骰本身当然会抽（下面断言的是现身钩子不抽）
-    expect(moved.boardGods).toBeNull();
+describe('抽数纪律：spawnGods 开关', () => {
+  it('关掉开关 ⇒ 这条随机源整个不参与：推进十二个日切场上也不会有神', () => {
+    // 两个版本都要跑到各自收束或满 12 天：中途 game_over 时不能再硬推（会撞上「当前不能掷骰」）
+    const runDays = (state: GameState, days: number) => {
+      let s = state;
+      const everSeen: string[] = [];
+      for (let i = 0; i < days && s.phase !== 'game_over'; i++) {
+        s = toNextDay(s);
+        for (const god of s.boardGods) everSeen.push(god.godId);
+      }
+      return { state: s, everSeen };
+    };
+    const off = runDays(game(20260105, false), 12);
+    expect(off.everSeen).toEqual([]); // 关掉 ⇒ 一个都没出现过
+    const on = runDays(game(20260105, true), 12);
+    expect(on.everSeen.length).toBeGreaterThan(0); // 开着 ⇒ 出现过（可能被附身走，所以数的是「出现过」）
+    // 同一 seed 下两者的 rngState 必然分叉 ⇒ 这条机制确实在吃抽数，测试隔离它是有必要的
+    expect(off.state.rngState).not.toBe(on.state.rngState);
   });
 
-  it('机制开启时，日切才会把神明放上棋盘（同一 seed 下可复现）', () => {
+  it('开启时，日切才会把神明放上棋盘（同一 seed 下可复现）', () => {
     const seen = new Set<string>();
     for (const seed of [11, 23, 47, 61, 88, 101]) {
       const a = toNextDay(game(seed, true));
       const b = toNextDay(game(seed, true));
       expect(JSON.stringify(a.boardGods)).toBe(JSON.stringify(b.boardGods)); // 确定性
-      for (const g of a.boardGods ?? []) seen.add(g.godId);
+      for (const g of a.boardGods) seen.add(g.godId);
     }
     expect(seen.size).toBeGreaterThan(0);
   });
 
-  it('老存档（缺 boardGods 键）经 normalizeGameState 后按关闭处理，日切不抽数', async () => {
+  it('缺字段的旧存档经 normalizeGameState 补齐为当前规则的默认值（开启但场上没有神明）', async () => {
     const { normalizeGameState } = await import('../src/index.js');
     const legacy = structuredClone(game(11, true)) as unknown as Record<string, unknown>;
     delete legacy.boardGods;
+    delete legacy.spawnGods;
     delete legacy.godPairBanUntil;
     const restored = normalizeGameState(legacy as unknown as GameState);
-    expect(restored.boardGods).toBeNull();
+    expect(restored.boardGods).toEqual([]);
+    expect(restored.spawnGods).toBe(true);
+    expect(restored.godPairBanUntil).toEqual({});
   });
 });
 
@@ -140,8 +174,8 @@ describe('现身规则（概率 / 上限 / 对偶 / 格位）', () => {
     // 4 尊互不为对偶，占满同屏上限
     ;['big-wealth', 'big-fortune', 'big-poverty', 'big-misfortune'].forEach((godId, i) => putGodOnBoard(g, godId, far[i]!.id, 9));
     const next = toNextDay(g);
-    expect((next.boardGods ?? []).length).toBeLessThanOrEqual(GOD_MAX_ON_BOARD);
-    expect((next.boardGods ?? []).some((god) => god.bornDay === next.calendar.elapsedDays)).toBe(false);
+    expect(next.boardGods.length).toBeLessThanOrEqual(GOD_MAX_ON_BOARD);
+    expect(next.boardGods.some((god) => god.bornDay === next.calendar.elapsedDays)).toBe(false);
   });
 
   it('死神不参与随机现身（把其余神明逐个排除后仍轮不到它）', () => {
@@ -272,7 +306,7 @@ describe('驻留神明的清退联动', () => {
     const g = game(3, true);
     putGodOnBoard(g, 'big-misfortune', spawnCellCandidates(g)[0]!.id, 1);
     const next = toNextDay(g);
-    expect(next.boardGods ?? []).not.toContainEqual(expect.objectContaining({ godId: 'big-misfortune' }));
+    expect(next.boardGods).not.toContainEqual(expect.objectContaining({ godId: 'big-misfortune' }));
     // 期间它可能被别的玩家撞上附身 —— 那种离场不写对偶冷却，所以只在「确实清退」时断言
     const attached = next.players.some((p) => p.god?.godId === 'big-misfortune');
     if (!attached) {

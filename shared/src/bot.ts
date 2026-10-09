@@ -1,4 +1,4 @@
-import { actionRefusal, availableActions } from './engine.js';
+import { actionRefusal, availableActions, nextBidAmount } from './engine.js';
 import { landPrice, landUpgradeCost } from './economy.js';
 import { CARDS, SHOP_CARD_IDS } from './cards.js';
 import { ITEMS, SHOP_ITEM_IDS } from './items.js';
@@ -12,6 +12,19 @@ const BUILD_PREFERENCE: FacilityType[] = ['lab', 'mall', 'hotel', 'gas', 'park']
 
 /** AI 炒股时保留的存款安全垫（股票只能用存款买入，help[07]） */
 const STOCK_RESERVE_DEPOSIT = 5000;
+
+/**
+ * AI 参与拍卖的必得价：公定地价 ×（1 + 每级建筑 20%）。
+ *
+ * 拍卖标的常带着房子（倒闭清算保留等级），所以光比地价会低估；但 AI 不打算为了赌气
+ * 付到市价以上 —— 原版没有给出任何「理性上限」，这条纯粹是为了让拍卖一定收得了口。
+ */
+function auctionValueCeiling(state: GameState, cellId: number): number {
+  const cell = state.board[cellId];
+  if (!cell) return 0;
+  const grade = state.players.flatMap((p) => p.properties).find((prop) => prop.cellId === cellId)?.grade ?? 1;
+  return Math.floor(landPrice(state, cell) * (1 + 0.2 * Math.max(0, grade - 1)));
+}
 
 
 
@@ -31,12 +44,18 @@ export function botDecide(state: GameState, botId: string, rng: () => number): P
   if (state.phase === 'awaiting_auction') {
     const a = state.auction;
     if (!a || a.bidders[a.turnIndex] !== botId) return null;
-    const min = a.highestBidderId ? a.highestBid + 1 : a.minBid;
-    // 保守加价：保留 ¥2000 安全垫，且不与自己抬价
-    if (a.highestBidderId !== botId && me.cash >= min + 2000) {
+    const min = nextBidAmount(a);
+    // 已经是最高出价者：等着别人加价，自己不动钱也不弃权（弃权对领先者无意义）
+    if (a.highestBidderId === botId) return { type: 'AUCTION_PASS' };
+    // 只在「这块地连同上面的房子值多少」以内跟价，并保留 ¥2000 安全垫。
+    // 旧实现没有价值上限：只要现金够就永远跟最低加价，两个 bot 对峙时拍卖收不了口
+    // （实测 200 回合窗口烧完 2400 个动作仍停在 awaiting_auction）。
+    if (min <= auctionValueCeiling(state, a.cellId) && me.cash >= min + 2000) {
       return { type: 'AUCTION_BID', amount: min };
     }
-    return { type: 'AUCTION_PASS' };
+    // 出不起、或已超过心理价位 ⇒ 直接弃权退场，而不是每轮都回来让过一次：
+    // PASS 会保留资格，于是这场拍卖每次轮到它都要空转一次「放弃」。
+    return { type: 'AUCTION_GIVE_UP' };
   }
 
   if (state.players[state.currentPlayerIndex]?.id !== botId) return null;

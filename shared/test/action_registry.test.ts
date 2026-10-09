@@ -59,6 +59,13 @@ function obligations(
   // 卡片 / 道具的目标格与目标玩家由 UI 现场收集，这里只验「门控列出的这张卡确实被引擎接受」
   for (const cardId of acts.usableCards) push({ type: 'USE_CARD', cardId }, false);
   for (const itemId of acts.usableItems) push({ type: 'USE_ITEM', itemId }, false);
+  // ECON-13：拍卖的三个动作 —— 竞买人不是 currentPlayer，actor 由注册表自己取（W3 新增 GIVE UP）
+  if (acts.auction) {
+    const bid: PlayerAction = { type: 'AUCTION_BID', amount: acts.auctionMinBid };
+    if (actionRefusal(state, bid) === null) push(bid);
+    if (acts.canAuctionPass) push({ type: 'AUCTION_PASS' });
+    if (acts.canAuctionGiveUp) push({ type: 'AUCTION_GIVE_UP' });
+  }
   return out;
 }
 
@@ -92,6 +99,12 @@ function assertNoHiddenCapability(state: GameState, label: string): void {
     [acts.canBuyShares, { type: 'BUY_SHARES', cellId: cell.id, quantity: 1 }],
     [acts.canFinancing, { type: 'SPECIAL_FINANCING', amount: 1 }],
   ];
+  if (acts.auction) {
+    pairs.push(
+      [acts.canAuctionPass, { type: 'AUCTION_PASS' }],
+      [acts.canAuctionGiveUp, { type: 'AUCTION_GIVE_UP' }],
+    );
+  }
   for (const [flag, action] of pairs) {
     expect(flag, `${label}：${action.type} 的门控与引擎判断不一致`).toBe(actionRefusal(state, action) === null);
   }

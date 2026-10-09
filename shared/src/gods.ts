@@ -32,12 +32,10 @@ export interface GodDef {
   /** 期满对偶转化目标 godId；不填表示期满自动离开 */
   transformsTo?: string;
   /**
-   * 神明的**候选居格**（围绕神庙散布的固定格号）。
+   * 原版的「每位神明有习惯出没的格」（围绕神庙 TILE 15 左右散布的固定格号）。
    *
-   * W2 之后它不再是「神明实际在哪」—— 实际在场的神明记在 `GameState.boardGods`
-   * （日切随机现身、经过即附身）。这里只保留原版「每位神明有习惯出没的格」这层含义，
-   * 并且仅在**现身机制关闭**（老存档 / 老录像）时继续作为 CARD-23 请神卡的取神依据。
-   * 新代码不要拿它当棋盘上的神明位置读。
+   * W2 之后神明改为日切随机现身、驻留 `GameState.boardGods`，**引擎不再读这个字段** ——
+   * 它只是原版设定的留档，以及测试里摆放神明的锚点。新代码不要拿它当棋盘上的神明位置。
    */
   cellId?: number;
 }
@@ -218,14 +216,9 @@ export function currentMonthIndex(state: GameState): number {
 }
 
 /**
- * 请神卡（CARD-23）：取「最靠近自己」的一位神明（help/文档 CARD-23），纯计算零抽数；
- * 并列时取 `GODS` 定义序靠前者。
- *
- * 神明驻留棋盘（W2）之后，「最近的神明」指的是**此刻在场的那几尊**，不再是定义表里的
- * 假格位。返回 null 表示棋盘上没有可请的神 —— 请神卡因此应当不可用。
- *
- * 老存档 / 老录像（`boardGods === null`，机制关闭）走的仍是旧的纯定义表计算：
- * 那时请神卡总能请到一尊，改成新规则会让老局面里这张卡突然作废。
+ * 请神卡（CARD-23）：取「此刻在场、且离自己最近」的一尊神明（help/文档 CARD-23），
+ * 纯计算零抽数；并列时取 `GODS` 定义序靠前者。返回 null 表示棋盘上没有神可请
+ * —— 请神卡因此不可用（`godSummonRefusal` 与 `apply` 共用这一条判断）。
  */
 export function nearestGodFor(ctx: GodEffectCtx, p: Player): GodDef | null {
   const { state } = ctx;
@@ -233,18 +226,6 @@ export function nearestGodFor(ctx: GodEffectCtx, p: Player): GodDef | null {
     const d = Math.abs(cellId - p.position);
     return Math.min(d, BOARD_SIZE - d);
   };
-  if (!state.boardGods) {
-    let legacy = GODS[0]!;
-    let legacyDist = Infinity;
-    for (const def of GODS) {
-      const d = dist(def.cellId ?? 5);
-      if (d < legacyDist) {
-        legacyDist = d;
-        legacy = def;
-      }
-    }
-    return legacy;
-  }
   let best: GodDef | null = null;
   let bestDist = Infinity;
   for (const god of state.boardGods) {

@@ -175,14 +175,21 @@ export type AuctionTrigger =
   | 'event'    // 事件引发（EVT-03）
   | 'bank';    // 银行拍卖土地
 
-/** 拍卖会状态机（ECON-13）：有现金者可参与，价高者得 */
+/**
+ * 拍卖会状态机（ECON-13）：有现金者可参与，价高者得。
+ *
+ * 轮询语义按原版（`docs/gameplay/GAP调研记录_2026-09-24.md` §1，官方 Wiki「拍賣」条目）：
+ * **PASS 只是本轮让过、下一轮仍可加价；GIVE UP 才是退出本场拍卖**。所以这里同时记
+ * 「在场竞买人」（`bidders`，弃权者移出）与「自上次出价以来让过的人」
+ * （`passedSinceBid`）—— 只有一计的话，要么弃权者被反复轮到，要么让过一轮就再也回不来。
+ */
 export interface AuctionState {
   /** 被拍卖的土地格 id */
   cellId: number;
   /** 所得归属玩家 id；null = 归银行（倒闭清算 / 银行拍卖） */
   sellerId: string | null;
   trigger: AuctionTrigger;
-  /** 竞买人 id 列表（有现金者，按座位顺序；拍卖卡使用者不参与） */
+  /** 仍在场的竞买人 id（按座位顺序；弃权者已移出，无现金者从不开拍） */
   bidders: string[];
   /** 当前轮到第几位竞买人 */
   turnIndex: number;
@@ -191,8 +198,13 @@ export interface AuctionState {
   /** 当前最高价；0 表示尚无人出价 */
   highestBid: number;
   highestBidderId: string | null;
-  /** 本轮连续放弃次数：达到竞买人数即收锤 */
-  passes: number;
+  /**
+   * 自上次出价以来「本轮让过（PASS / GIVE UP）」的竞买人 id。
+   * 除最高价者外，在场竞买人全都让过即收锤；尚无人出价时全体让过即流拍。
+   */
+  passedSinceBid: string[];
+  /** 已弃权退出本场拍卖的竞买人 id（只为界面显示与复盘，判定一律看 `bidders`） */
+  withdrawn: string[];
   /** 收锤后：'resume' 回到当前玩家的决策阶段；'advance' 继续推进回合 */
   afterComplete: 'resume' | 'advance';
 }
@@ -347,9 +359,10 @@ export type Phase =
  * 之所以新开一个字段而不是给 `Phase` 加值：420 个测试与全部 UI 门控都在断言 `Phase`，
  * 把「移动中」「落格中」塞进那条枚举会牵动全局。
  *
- * **禁止用 `TurnStage` 参与任何规则判定** —— 老录像里没有这个字段，靠
- * `normalizeGameState` 补默认值；一旦有规则读它，补的值就会改变老录像的行为，
- * 破坏「同 seed 逐帧复现」。它只用于观测，以及供 AI / 托管判断回合位置。
+ * **禁止用 `TurnStage` 参与任何规则判定** —— 它是回合流程的**表现用**读数（动画、日志、
+ * 调试面板），规则一旦读它，同一条规则就分裂成「按相位」与「按子阶段」两套口径，而这两套
+ * 没有理由保持一致；外部状态缺这个键时（由 `normalizeGameState` 反推）也只是显示少一格，
+ * 不该让局面随之改变。它只用于观测，以及供 AI / 托管判断回合位置。
  */
 export type TurnStage = 'start' | 'roll' | 'move' | 'tile_resolve' | 'end';
 
@@ -497,13 +510,16 @@ export interface GameState {
 
   /**
    * 神明现身机制（GOD-01..12 / W2）：驻留在棋盘上的神明，最多 `GOD_MAX_ON_BOARD` 尊。
-   *
-   * `null` = **机制关闭**（老存档与老录像没有这个键，由 `normalizeGameState` 补成 null），
-   * 空数组 = 机制已开启、此刻无人驻留。两者必须区分：回放铁律要求
-   * 「字段缺失 ⇒ 机制未启用 ⇒ 在任何抽数之前短路」—— 若老录像也开启该机制，
-   * 日切就多消耗 RNG 抽数，同 seed 的老录像再也复现不出原轨迹。
+   * 空数组就是「此刻无人驻留」，开关本身在 `spawnGods`。
    */
-  boardGods: BoardGod[] | null;
+  boardGods: BoardGod[];
+  /**
+   * 神明是否随机现身驻留（GOD 现身机制，W2）。新开的局默认开启。
+   *
+   * 关掉它的唯一用途是**测试隔离**：这条机制会在日切消耗 RNG 抽数，进而改变后续掷骰序列，
+   * 所以断言固定骰子序列与逐日金额的测试文件都把它关掉（同 `pinIndexOne` 冻结物价指数）。
+   */
+  spawnGods: boolean;
   /** 对偶神的再现身冷却：`godPairKey(...)` → 该 `elapsedDays` 之前不得再现身 */
   godPairBanUntil: Record<string, number>;
   /** ECON-12：手牌额满时待玩家选择舍弃的卡片 id；null 表示无 */
@@ -589,8 +605,14 @@ export type PlayerAction =
   | { type: 'BUY_LOTTERY_TICKET'; number: number }
   /** ECON-13：拍卖出价 */
   | { type: 'AUCTION_BID'; amount: number }
-  /** ECON-13：拍卖放弃本轮出价 */
+  /** ECON-13：拍卖本轮让过（下一轮仍可加价，原版的 PASS） */
   | { type: 'AUCTION_PASS' }
+  /**
+   * ECON-13：拍卖弃权 —— 退出本场拍卖，此后不再被轮到（原版的 GIVE UP）。
+   * 与 PASS 是两条不同规则：合成一个按钮就会出现「想让过却被踢出局」，
+   * 而拆开后才有可证明的收口 —— 弃权者移出 `bidders`，轮询人数单调递减。
+   */
+  | { type: 'AUCTION_GIVE_UP' }
   /** NPC-01..04：在监狱门外保释四大恶人（收益归保释人） */
   | { type: 'BAIL_PRISONER'; npcKind: VillainKind }
   /** TILE-11 魔法屋（NPC-06）：女巫施法，指定受罚者 */
@@ -690,6 +712,16 @@ export interface AvailableActions {
   lotteryTicketCost: number;
   /** ECON-13：进行中的拍卖会（无则 null，UI 据此渲染竞价面板） */
   auction: AuctionState | null;
+  /**
+   * ECON-13：下一次出价的最低金额（起拍价或「当前价 + 最小加价」）。
+   * 由与引擎校验同一个的 `nextBidAmount` 得出 —— 面板自己算加价就会跟校验漂移。
+   * 无拍卖进行时为 0。
+   */
+  auctionMinBid: number;
+  /** ECON-13：本轮让过（PASS）—— 下一轮仍可加价 */
+  canAuctionPass: boolean;
+  /** ECON-13：弃权退出本场拍卖（GIVE UP）；当前最高价者不可弃权 */
+  canAuctionGiveUp: boolean;
   /** NPC-01..04：站立于监狱门外时可保释的在押恶人种类 */
   bailableVillains: VillainKind[];
   /** NPC-01..04：保释金（现金，已按物价指数缩放） */

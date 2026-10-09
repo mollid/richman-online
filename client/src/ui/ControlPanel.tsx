@@ -64,8 +64,8 @@ export function ControlPanel({
   const maxDice = Math.max(1, current?.diceCount ?? 1);
   const effectiveDice = diceChoice !== null && diceChoice >= 1 && diceChoice <= maxDice ? diceChoice : maxDice;
   const shownDice: (number | null)[] = game.dice ?? Array.from({ length: maxDice }, () => null);
-  // 场上驻留的神明（W2）：机制关闭的老录像里 boardGods 为 null，这里自然就是空列表
-  const godBoard = (game.boardGods ?? []).map((god) => ({
+  // 场上驻留的神明（W2）：日切随机现身、经过即附身，先让玩家看得见场上有谁
+  const godBoard = game.boardGods.map((god) => ({
     name: godDef(god.godId)?.name ?? god.godId,
     cellName: game.board[god.cellId]?.name ?? `${god.cellId} 格`,
     ttlDays: god.ttlDays,

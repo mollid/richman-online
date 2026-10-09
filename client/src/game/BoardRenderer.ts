@@ -484,7 +484,7 @@ export class BoardRenderer {
 
     // 神明现身驻留（W2）：日切随机现身、经过即附身，所以玩家必须看得见哪一格站着哪一尊。
     // 画得比 NPC 标记高一点，避免同格时两个图标叠在一起。
-    for (const god of game.boardGods ?? []) {
+    for (const god of game.boardGods) {
       const pos = this.cellPositions[god.cellId];
       if (!pos) continue;
       const mark = GOD_MARKS[god.godId] ?? { icon: '✨', color: 0xb0bec5 };
