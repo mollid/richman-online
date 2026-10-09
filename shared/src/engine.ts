@@ -48,7 +48,7 @@ import {
   renderFateText,
   type FateCardDef,
 } from './fate.js';
-import { buyTrade, cancelTrade, postTrade, refreshTrades, tradableAssets } from './trade.js';
+import { buyTrade, buyTradeRefusal, cancelTrade, cancelTradeRefusal, postTrade, postTradeRefusal, refreshTrades, tradableAssets } from './trade.js';
 import {
   BAIL_FEE,
   CURSES,
@@ -82,6 +82,10 @@ import {
   majorityHolderId,
 } from './companies.js';
 import type {
+  ActionOf,
+  ActionRefusal,
+  ActionSpec,
+  ActionSpecMap,
   AuctionState,
   AuctionTrigger,
   AvailableActions,
@@ -845,7 +849,7 @@ function loanDueHook(state: GameState): void {
   for (const p of state.players) {
     if (p.bankrupt || !p.loan) continue;
     if (state.calendar.elapsedDays < p.loan.dueDayIndex) continue;
-    const principal = p.loan.principal;
+    const principal = p.loan!.principal;
     p.loan = null;
     log(state, `【贷款到期】${p.name} 的贷款 ¥${principal} 到期，强制归还`);
     pay(state, p, principal, null, { reason: 'loan' });
@@ -1294,13 +1298,9 @@ export function unluckyMultiplier(p: Player): number {
  * （倒霉事按 2 倍放大）、当下一笔「索命」损失，死神本体附身 13 天（期满自动消失）。
  */
 function surrender(state: GameState, revengeTargetId: string): void {
+  assertLegal(state, { type: 'SURRENDER', revengeTargetId });
   const p = currentPlayer(state);
-  if (state.phase === 'lobby' || state.phase === 'game_over') throw new Error('当前不能认输');
-  if (p.bankrupt) throw new Error('已倒闭的玩家无需认输');
-  const avenger = state.players.find((q) => q.id === revengeTargetId);
-  if (!avenger) throw new Error('复仇者不存在');
-  if (avenger.id === p.id) throw new Error('复仇者不能是认输者本人');
-  if (avenger.bankrupt) throw new Error('复仇者已倒闭');
+  const avenger = state.players.find((q) => q.id === revengeTargetId)!;
   log(state, `${p.name} 认输投降，把死神引向${avenger.name}`);
 
   // 认输者自身不走死神流程，干净退出（地产/股票随破产清算处理）
@@ -1724,8 +1724,7 @@ function idleActions(state: GameState): AvailableActions {
 
 
 function startGame(state: GameState): void {
-  if (state.phase !== 'lobby') throw new Error('游戏已经开始');
-  if (state.players.length < 2) throw new Error('至少需要 2 名玩家才能开始');
+  assertLegal(state, { type: 'START_GAME' });
   state.phase = 'awaiting_roll';
   state.turn = 1;
   // 冻结物价指数分母（此后不再随加入/破产变化）
@@ -1787,19 +1786,15 @@ function drawDice(state: GameState, diceCount: number): number[] {
 }
 
 function rollDice(state: GameState, action: Extract<PlayerAction, { type: 'ROLL_DICE' }>): void {
-  if (state.phase !== 'awaiting_roll') throw new Error('当前不能掷骰');
+  assertLegal(state, action);
   const p = currentPlayer(state);
   state.turnStage = 'start';
   if (consumeTurnDelay(state, p)) return;
 
   state.turnStage = 'roll';
-  // 骰子个数（CORE-03）：步行 1 颗、机车 2 颗、汽车 3 颗；玩家可自选本次使用几颗（默认用满）
-  const maxDice = Math.max(1, Math.min(3, p.diceCount));
-  const requested = action.diceCount ?? maxDice;
-  if (!Number.isInteger(requested) || requested < 1 || requested > maxDice) {
-    throw new Error(`骰子数必须是 1-${maxDice} 的整数`);
-  }
-  const diceCount = requested;
+  // 骰子个数（CORE-03）：步行 1 颗、机车 2 颗、汽车 3 颗；玩家可自选本次使用几颗（默认用满）。
+  // 骰子数合法性（1..maxDice 的整数）已由 checkRollDice 校验。
+  const diceCount = action.diceCount ?? Math.max(1, Math.min(3, p.diceCount));
   const rolls = drawDice(state, diceCount);
   state.dice = rolls;
   const rawSteps = rolls.reduce((a, b) => a + b, 0);
@@ -1928,17 +1923,12 @@ function rollDice(state: GameState, action: Extract<PlayerAction, { type: 'ROLL_
 }
 
 function buyLand(state: GameState): void {
-  if (state.phase !== 'awaiting_action') throw new Error('当前不能购买地产');
+  assertLegal(state, { type: 'BUY_LAND' });
   const p = currentPlayer(state);
-  if (p.sleepwalkTurns > 0) throw new Error('梦游中无法买地');
   const c = cellAt(state, p.position);
-  if ((c.type !== 'property' && c.type !== 'commercial') || c.price === undefined) throw new Error('此格不可购买');
-  if (cellOwner(state, c.id)) throw new Error('该地产已有主人');
-  if (godBlocksInvestment(p)) throw new Error('衰神附身，买地流拍');
   const freeBuy = godFreeLandPurchase(p);
   // 用户规则：住宅按公定地价；商业用地按「自身标价 ×1.5」计费（比原价贵）
   const price = freeBuy ? 0 : landPurchasePrice(state, c);
-  if (p.cash < price) throw new Error('现金不足');
   p.cash -= price;
   p.properties.push({ cellId: c.id, grade: 1 });
   if (freeBuy) {
@@ -1953,26 +1943,14 @@ function buyLand(state: GameState): void {
 }
 
 function upgradeLand(state: GameState): void {
-  if (state.phase !== 'awaiting_action') throw new Error('当前不能升级地产');
+  assertLegal(state, { type: 'UPGRADE_LAND' });
   const p = currentPlayer(state);
   const c = cellAt(state, p.position);
-  if ((c.type !== 'property' && c.type !== 'commercial') || c.price === undefined) throw new Error('此格不可升级');
-  const owned = cellOwner(state, c.id);
-  if (!owned || owned.player.id !== p.id) throw new Error('只能升级自己的地产');
-  const prop = owned.property;
-  if (c.type === 'commercial') {
-    if (!prop.facility) throw new Error('请先建设施，再行升级');
-    if (!facilityUpgradeable(prop)) throw new Error('该设施无法升级（EST-08/EST-11）');
-  } else if (prop.chain) {
-    throw new Error('连锁店不能再加盖（EST-04）');
-  }
-  if (prop.grade >= MAX_GRADE) throw new Error('地产已满级');
-  if (godBlocksInvestment(p)) throw new Error('衰神附身，投资失败');
+  const prop = cellOwner(state, c.id)!.property;
   // 行进显灵·投资加倍（GOD-04/05 大/小福神）：一次加盖两层，费用按实际层数计
   const target = Math.min(MAX_GRADE, prop.grade + (godDoublesBuild(p) ? 2 : 1));
   let cost = 0;
   for (let g = prop.grade; g < target; g++) cost += landUpgradeCost(state, c, g);
-  if (p.cash < cost) throw new Error('现金不足');
   p.cash -= cost;
   const levels = target - prop.grade;
   prop.grade = target as 1 | 2 | 3 | 4 | 5;
@@ -1987,18 +1965,12 @@ function upgradeLand(state: GameState): void {
 
 /** EST-07 建设：在自有商业用地上选择并建成一种设施（同一次停留可继续升级） */
 function buildFacility(state: GameState, action: Extract<PlayerAction, { type: 'BUILD_FACILITY' }>): void {
-  if (state.phase !== 'awaiting_action') throw new Error('当前不能建设');
+  assertLegal(state, action);
   const p = currentPlayer(state);
   const c = cellAt(state, p.position);
-  if (c.type !== 'commercial' || c.price === undefined) throw new Error('此格不是商业用地');
-  const owned = cellOwner(state, c.id);
-  if (!owned || owned.player.id !== p.id) throw new Error('只能在自己的商业用地上建设');
-  if (owned.property.facility) throw new Error('该用地已建有设施，可用改建卡变更项目');
+  const owned = cellOwner(state, c.id)!;
   const def = FACILITIES[action.facility];
-  if (!def) throw new Error('未知设施项目');
-  if (godBlocksInvestment(p)) throw new Error('衰神附身，投资失败');
   const cost = facilityBuildCost(state, c, action.facility);
-  if (p.cash < cost) throw new Error('现金不足');
   p.cash -= cost;
   owned.property.facility = action.facility;
   if (godDoublesBuild(p) && def.upgradeable) {
@@ -2012,36 +1984,29 @@ function buildFacility(state: GameState, action: Extract<PlayerAction, { type: '
 
 /** EST-09/10 研究所立项：按所等级解锁项目，到期后由 researchTickHook 交付道具 */
 function startResearch(state: GameState, action: Extract<PlayerAction, { type: 'START_RESEARCH' }>): void {
-  if (state.phase !== 'awaiting_action') throw new Error('当前不能立项研发');
+  assertLegal(state, action);
   const p = currentPlayer(state);
-  if (p.research) throw new Error('已有研发项目在进行中');
   const c = cellAt(state, p.position);
-  if (c.type !== 'commercial') throw new Error('此格不是商业用地');
-  const owned = cellOwner(state, c.id);
-  if (!owned || owned.player.id !== p.id) throw new Error('只能在自己的研究所立项');
-  if (owned.property.facility !== 'lab') throw new Error('此处不是研究所');
-  const def = researchDef(action.itemId);
-  if (!def) throw new Error('未知研发项目');
-  if (def.level > owned.property.grade) throw new Error(`研究所等级不足（需 Lv${def.level}）`);
+  const def = researchDef(action.itemId)!;
   p.research = { itemId: def.itemId, remainDays: def.days };
   log(state, `${p.name} 在「${c.name}」立项研发「${ITEMS[def.itemId]?.name ?? def.itemId}」，预计 ${def.days} 天完成`);
 }
 
 /** 小游戏猜位置统一入口（三仙归洞 / 七彩气球 / 企鹅挖宝：猜 0-2；记忆翻牌：牌下标） */
 function minigamePick(state: GameState, action: Extract<PlayerAction, { type: 'MINIGAME_PICK' }>): void {
-  if (state.phase !== 'awaiting_pick' || !state.minigame) throw new Error('当前没有进行中的小游戏');
-  if (state.minigame.kind === 'memory') {
+  assertLegal(state, action);
+  const mg = state.minigame!
+  if (mg.kind === 'memory') {
     memoryFlip(state, action.hole);
     return;
   }
   const p = currentPlayer(state);
   const hole = action.hole;
-  if (hole !== 0 && hole !== 1 && hole !== 2) throw new Error('杯号必须是 0-2');
-  if (state.minigame.kind === 'balloon') {
+  if (mg.kind === 'balloon') {
     balloonPick(state, p, hole);
     return;
   }
-  if (state.minigame.kind === 'penguin') {
+  if (mg.kind === 'penguin') {
     penguinPick(state, p, hole);
     return;
   }
@@ -2049,21 +2014,21 @@ function minigamePick(state: GameState, action: Extract<PlayerAction, { type: 'M
   state.rngState = draw.nextState;
   const ball = Math.floor(draw.value * 3);
   const hit = hole === ball;
-  state.minigame.hits.push(hit);
-  const roundNo = state.minigame.round + 1;
+  mg.hits.push(hit);
+  const roundNo = mg.round + 1;
   if (hit) {
     log(state, `${p.name} 第 ${roundNo} 轮猜中了！`);
   } else {
     log(state, `${p.name} 第 ${roundNo} 轮猜错，球在 ${ball + 1} 号杯`);
   }
 
-  if (state.minigame.round < 2) {
-    state.minigame.round = (state.minigame.round + 1) as 0 | 1 | 2;
+  if (mg.round < 2) {
+    mg.round = (mg.round + 1) as 0 | 1 | 2;
     return;
   }
 
   // 3 轮结束，结算奖励
-  const hits = state.minigame.hits.filter(Boolean).length;
+  const hits = mg.hits.filter(Boolean).length;
   const payoutTable = [-200, 100, 500, 1200];
   const payout = scaled(state, payoutTable[hits]!);
   if (payout >= 0) {
@@ -2158,11 +2123,8 @@ function penguinPick(state: GameState, p: Player, hole: number): void {
 
 /** 记忆翻牌：hole 为 0-7 的牌下标 */
 function memoryFlip(state: GameState, index: number): void {
+  // 下标范围 / 已配对 / 已翻开 / 次数用尽这四条规则只在 `checkMinigamePick` 写一次
   const mg = state.minigame!;
-  if (!Number.isInteger(index) || index < 0 || index > 7) throw new Error('牌下标必须是 0-7');
-  if (mg.matched[index]) throw new Error('这张牌已配对消除');
-  if (mg.revealed.includes(index)) throw new Error('这张牌已经翻开');
-  if (mg.flips >= 8) throw new Error('翻牌次数已用完');
   const p = currentPlayer(state);
 
   mg.revealed.push(index);
@@ -2203,7 +2165,7 @@ function memoryFlip(state: GameState, index: number): void {
 }
 
 function endTurn(state: GameState): void {
-  if (state.phase !== 'awaiting_action') throw new Error('当前不能结束回合');
+  assertLegal(state, { type: 'END_TURN' });
   const p = currentPlayer(state);
   log(state, `${p.name} 选择不操作，结束回合`);
   advanceTurn(state);
@@ -2211,12 +2173,9 @@ function endTurn(state: GameState): void {
 
 /** ECON-08：乐透行自选号码投注（现金 1000，不随物价指数缩放） */
 function buyLotteryTicket(state: GameState, action: Extract<PlayerAction, { type: 'BUY_LOTTERY_TICKET' }>): void {
-  if (state.phase !== 'awaiting_action') throw new Error('当前不能投注乐透');
+  assertLegal(state, action);
   const p = currentPlayer(state);
   const c = cellAt(state, p.position);
-  if (c.type !== 'lottery') throw new Error('不在乐透行，不能投注');
-  if (!isValidLotteryNumber(action.number)) throw new Error('号码必须是 0-99 的整数');
-  if (p.cash < LOTTERY_TICKET_COST) throw new Error('现金不足');
   p.cash -= LOTTERY_TICKET_COST;
   state.lotteryPool += LOTTERY_TICKET_COST;
   state.lotteryTickets.push({ playerId: p.id, number: action.number });
@@ -2282,14 +2241,10 @@ function bailableVillains(state: GameState): VillainKind[] {
 
 /** NPC-01..04：在监狱门外保释一名在押恶人（收益归保释人） */
 function bailPrisoner(state: GameState, action: Extract<PlayerAction, { type: 'BAIL_PRISONER' }>): void {
-  if (state.phase !== 'awaiting_action') throw new Error('当前不能保释');
+  assertLegal(state, action);
   const p = currentPlayer(state);
-  if (cellAt(state, p.position).type !== 'jail') throw new Error('不在监狱门外，不能保释');
-  const npc = state.npcs.find((n) => n.kind === action.npcKind);
-  if (!npc) throw new Error('没有这名恶人');
-  if (!npc.jailed) throw new Error('这名恶人不在押');
+  const npc = state.npcs.find((n) => n.kind === action.npcKind)!;
   const fee = bailFee(state);
-  if (p.cash < fee) throw new Error('现金不足以支付保释金');
   p.cash -= fee;
   npc.jailed = false;
   npc.ownerId = p.id;
@@ -2317,15 +2272,10 @@ function dischargeablePatients(state: GameState): string[] {
 
 /** TILE-09：在医院门外替指定病人办理提前出院 */
 function dischargePatient(state: GameState, action: Extract<PlayerAction, { type: 'DISCHARGE_PATIENT' }>): void {
-  if (state.phase !== 'awaiting_action') throw new Error('当前不能办理出院');
+  assertLegal(state, action);
   const p = currentPlayer(state);
-  if (cellAt(state, p.position).type !== 'hospital') throw new Error('不在医院门外，不能办理出院');
-  const target = state.players.find((q) => q.id === action.targetPlayerId);
-  if (!target) throw new Error('病人不存在');
-  if (target.id === p.id) throw new Error('不能为自己办理出院');
-  if (target.custody?.kind !== 'hospital') throw new Error('该角色当前并未住院');
+  const target = state.players.find((q) => q.id === action.targetPlayerId)!;
   const fee = dischargeFee(state);
-  if (p.cash < fee) throw new Error('现金不足以支付出院费');
   p.cash -= fee;
   target.custody = null;
   target.skipTurns = 0;
@@ -2335,14 +2285,10 @@ function dischargePatient(state: GameState, action: Extract<PlayerAction, { type
 
 /** TILE-11：女巫施法，对指定候选降下诅咒 */
 function castMagic(state: GameState, action: Extract<PlayerAction, { type: 'CAST_MAGIC' }>): void {
-  const offer = state.magic;
-  if (!offer) throw new Error('当前没有可施法的机会');
-  if (state.phase !== 'awaiting_action') throw new Error('当前不能施法');
+  assertLegal(state, action);
+  const offer = state.magic!;
   const p = currentPlayer(state);
-  const target = state.players.find((q) => q.id === action.targetPlayerId);
-  if (!target) throw new Error('受罚对象不存在');
-  if (target.id === p.id) throw new Error('不能诅咒自己');
-  if (!offer.candidateIds.includes(target.id)) throw new Error('该对象不满足施法条件');
+  const target = state.players.find((q) => q.id === action.targetPlayerId)!;
   const curseDef = CURSES[offer.curse];
   state.magic = null;
   log(state, `${p.name} 对 ${target.name} 施法，诅咒「${curseDef.name}」降临`);
@@ -2462,12 +2408,9 @@ function nextBidAmount(a: AuctionState): number {
 }
 
 function auctionBid(state: GameState, action: Extract<PlayerAction, { type: 'AUCTION_BID' }>): void {
-  if (state.phase !== 'awaiting_auction' || !state.auction) throw new Error('当前没有进行中的拍卖');
-  const a = state.auction;
+  assertLegal(state, action);
+  const a = state.auction!;
   const bidder = currentBidder(state);
-  const min = nextBidAmount(a);
-  if (!Number.isInteger(action.amount) || action.amount < min) throw new Error(`出价不得低于 ¥${min}`);
-  if (action.amount > bidder.cash) throw new Error('出价不能超过自己的现金');
   a.highestBid = action.amount;
   a.highestBidderId = bidder.id;
   a.passes = 0;
@@ -2477,8 +2420,8 @@ function auctionBid(state: GameState, action: Extract<PlayerAction, { type: 'AUC
 }
 
 function auctionPass(state: GameState): void {
-  if (state.phase !== 'awaiting_auction' || !state.auction) throw new Error('当前没有进行中的拍卖');
-  const a = state.auction;
+  assertLegal(state, { type: 'AUCTION_PASS' });
+  const a = state.auction!;
   const bidder = currentBidder(state);
   a.passes += 1;
   log(state, `【拍卖】${bidder.name} 放弃出价`);
@@ -2519,24 +2462,19 @@ function settleAuction(state: GameState): void {
 }
 
 /** 校验并返回本回合银行访问上下文 */
-function requireBank(state: GameState): { p: Player; bank: BankAccess } {
-  if (state.phase !== 'awaiting_action') throw new Error('当前不能进行银行操作');
-  const bank = state.bankAccess;
-  if (!bank) throw new Error('不在银行，不能进行银行操作');
-  if (gameDate(state).isHoliday) throw new Error('例假日银行休市');
-  return { p: currentPlayer(state), bank };
-}
-
-function assertAmount(amount: number): void {
-  if (!Number.isInteger(amount) || amount <= 0) throw new Error('金额必须为正整数');
+/**
+ * 银行类动作的取数。
+ * 「轮到当前玩家 + 拥有银行权限 + 非例假日」三条规则只在 `bankRefusal` 里写一次（由各 check 调用），
+ * 这里只负责取值 —— 走到这里时 assertLegal 已经放行。
+ */
+function bankContext(state: GameState): { p: Player; bank: BankAccess } {
+  return { p: currentPlayer(state), bank: state.bankAccess! };
 }
 
 /** 存款：现金 → 存款 */
 function depositMoney(state: GameState, amount: number): void {
-  const { p, bank } = requireBank(state);
-  if (!bank.canDeposit) throw new Error('此处不能存款');
-  assertAmount(amount);
-  if (p.cash < amount) throw new Error('现金不足');
+  assertLegal(state, { type: 'DEPOSIT', amount });
+  const { p } = bankContext(state);
   p.cash -= amount;
   p.deposit += amount;
   log(state, `${p.name} 存入 ¥${amount}（存款余额 ¥${p.deposit}）`);
@@ -2544,10 +2482,8 @@ function depositMoney(state: GameState, amount: number): void {
 
 /** 取款：存款 → 现金 */
 function withdrawMoney(state: GameState, amount: number): void {
-  const { p, bank } = requireBank(state);
-  if (!bank.canDeposit) throw new Error('此处不能取款');
-  assertAmount(amount);
-  if (p.deposit < amount) throw new Error('存款不足');
+  assertLegal(state, { type: 'WITHDRAW', amount });
+  const { p } = bankContext(state);
   p.deposit -= amount;
   p.cash += amount;
   log(state, `${p.name} 取出 ¥${amount}（存款余额 ¥${p.deposit}）`);
@@ -2555,12 +2491,8 @@ function withdrawMoney(state: GameState, amount: number): void {
 
 /** 贷款：无利息，3 个月后到期强制全额归还 */
 function takeLoan(state: GameState, amount: number): void {
-  const { p, bank } = requireBank(state);
-  if (!bank.canLoan) throw new Error('此处不能贷款');
-  if (state.loanBanDays > 0) throw new Error(`银行挤兑中，${state.loanBanDays} 天内停止放款（EVT-01 事件 22）`);
-  if (p.loan) throw new Error('已有未还清的贷款');
-  assertAmount(amount);
-  if (amount > MAX_LOAN) throw new Error(`单笔贷款上限 ¥${MAX_LOAN}`);
+  assertLegal(state, { type: 'TAKE_LOAN', amount });
+  const { p } = bankContext(state);
   const today = gameDate(state);
   const dueSerial = toSerial(addMonths({ year: today.year, month: today.month, day: today.day }, LOAN_TERM_MONTHS));
   const dueDayIndex = dueSerial - toSerial(state.calendar.start);
@@ -2571,20 +2503,17 @@ function takeLoan(state: GameState, amount: number): void {
 
 /** 还贷：可部分或全额提前归还（现金支付） */
 function repayLoan(state: GameState, amount: number): void {
-  const { p, bank } = requireBank(state);
-  if (!bank.canLoan) throw new Error('此处不能还贷');
-  if (!p.loan) throw new Error('当前没有贷款');
-  assertAmount(amount);
-  const principal = p.loan.principal;
+  assertLegal(state, { type: 'REPAY_LOAN', amount });
+  const { p } = bankContext(state);
+  const principal = p.loan!.principal;
   const paid = Math.min(amount, principal);
-  if (p.cash < paid) throw new Error('现金不足');
   p.cash -= paid;
   const remaining = principal - paid;
   if (remaining <= 0) {
     p.loan = null;
     log(state, `${p.name} 提前还清贷款 ¥${principal}`);
   } else {
-    p.loan.principal = remaining;
+    p.loan!.principal = remaining;
     log(state, `${p.name} 归还贷款 ¥${paid}（剩余 ¥${remaining}）`);
   }
 }
@@ -2653,18 +2582,11 @@ const LANDING_KIT: Omit<CellLandingCtx, 'state' | 'self' | 'cell' | 'moved'> = {
  * 阶段校验 → 注入效果上下文 → 委托 `CardDef.apply` → 消耗一张手牌。
  */
 function useCard(state: GameState, action: Extract<PlayerAction, { type: 'USE_CARD' }>): void {
+  assertLegal(state, action);
   const p = currentPlayer(state);
-  const card = CARDS[action.cardId];
-  if (!card) throw new Error('未知卡片');
-  if (!p.cards.includes(card.id)) throw new Error('没有这张卡片');
-  if (card.auto) throw new Error('该卡片为自动触发，不能主动使用');
-  if (!card.available) throw new Error('该卡片尚未开放');
-  if (state.phase !== 'awaiting_roll' && state.phase !== 'awaiting_action') throw new Error('当前不能使用卡片');
-  if (card.phase === 'pre_roll' && state.phase !== 'awaiting_roll') throw new Error('该卡片只能在掷骰前使用');
-  if (card.phase === 'post_roll' && state.phase !== 'awaiting_action') throw new Error('该卡片只能在掷骰后使用');
-  if (!card.apply) throw new Error('未知卡片效果');
+  const card = CARDS[action.cardId]!;
 
-  card.apply({
+  card.apply!({
     ...EFFECT_KIT,
     state,
     self: p,
@@ -2693,13 +2615,9 @@ function useCard(state: GameState, action: Extract<PlayerAction, { type: 'USE_CA
 
 /** 购买卡片（CARD-*）：点券结算，手牌上限 15（波 2：货币由现金改为点券） */
 function buyCard(state: GameState, action: Extract<PlayerAction, { type: 'BUY_CARD' }>): void {
-  if (state.phase !== 'awaiting_action') throw new Error('当前不能购买卡片');
+  assertLegal(state, action);
   const p = currentPlayer(state);
-  if (!isShopCell(cellAt(state, p.position))) throw new Error('不在商店，不能购买卡片');
-  const card = CARDS[action.cardId];
-  if (!card || !SHOP_CARD_IDS.includes(card.id)) throw new Error('商店不出售这张卡片');
-  if (p.cards.length >= MAX_HAND_CARDS) throw new Error(`手牌已满（上限 ${MAX_HAND_CARDS}），请先舍弃卡片`);
-  if (p.points < card.cost) throw new Error('点券不足');
+  const card = CARDS[action.cardId]!;
   p.points -= card.cost;
   p.cards.push(card.id);
   log(state, `${p.name} 以 ${card.cost} 点券购入「${card.name}」`);
@@ -2708,29 +2626,19 @@ function buyCard(state: GameState, action: Extract<PlayerAction, { type: 'BUY_CA
 /** 舍弃手牌（满手时的腾位手段；仅在自己回合内可用） */
 function discardCard(state: GameState, action: Extract<PlayerAction, { type: 'DISCARD_CARD' }>): void {
   // ECON-12：额满待舍弃阶段也允许 DISCARD_CARD，选定后新卡立即入栏
-  if (
-    state.phase !== 'awaiting_roll' &&
-    state.phase !== 'awaiting_action' &&
-    state.phase !== 'awaiting_discard'
-  ) {
-    throw new Error('当前不能舍弃卡片');
-  }
+  assertLegal(state, action);
   const p = currentPlayer(state);
-  if (!consumeCard(p, action.cardId)) throw new Error('没有这张卡片');
+  consumeCard(p, action.cardId);
   log(state, `${p.name} 舍弃了卡片「${CARDS[action.cardId]?.name ?? action.cardId}」`);
   if (state.phase === 'awaiting_discard') resolvePendingCard(state);
 }
 
 /** 购买道具（ITEM-01..08）：点券结算，每种道具上限 9（MAX_ITEM_COUNT） */
 function buyItem(state: GameState, action: Extract<PlayerAction, { type: 'BUY_ITEM' }>): void {
-  if (state.phase !== 'awaiting_action') throw new Error('当前不能购买道具');
+  assertLegal(state, action);
   const p = currentPlayer(state);
-  if (!isShopCell(cellAt(state, p.position))) throw new Error('不在商店，不能购买道具');
-  const item = ITEMS[action.itemId];
-  if (!item || !SHOP_ITEM_IDS.includes(item.id)) throw new Error('商店不出售这种道具');
-  if ((p.items[item.id] ?? 0) >= MAX_ITEM_COUNT) throw new Error(`该道具已达上限（${MAX_ITEM_COUNT} 个）`);
+  const item = ITEMS[action.itemId]!;
   const cost = item.cost ?? 0;
-  if (p.points < cost) throw new Error('点券不足');
   p.points -= cost;
   p.items[item.id] = (p.items[item.id] ?? 0) + 1;
   log(state, `${p.name} 以 ${cost} 点券购入「${item.name}」`);
@@ -2742,11 +2650,9 @@ function buyItem(state: GameState, action: Extract<PlayerAction, { type: 'BUY_IT
  * 点券四大产出渠道之一（用户规则：宝箱 / 点券格 / 小游戏 / 变卖卡片道具）。
  */
 function sellCard(state: GameState, action: Extract<PlayerAction, { type: 'SELL_CARD' }>): void {
-  if (state.phase !== 'awaiting_action') throw new Error('当前不能变卖卡片');
+  assertLegal(state, action);
   const p = currentPlayer(state);
-  if (!isShopCell(cellAt(state, p.position))) throw new Error('不在商店，不能变卖卡片');
-  const card = CARDS[action.cardId];
-  if (!card || !p.cards.includes(card.id)) throw new Error('没有这张卡片');
+  const card = CARDS[action.cardId]!;
   consumeCard(p, card.id);
   const refund = Math.floor(card.cost / 2);
   p.points += refund;
@@ -2755,11 +2661,9 @@ function sellCard(state: GameState, action: Extract<PlayerAction, { type: 'SELL_
 
 /** TILE-12 商店买/卖：把道具变卖给商店回收点券（半价；非卖品回收 0） */
 function sellItem(state: GameState, action: Extract<PlayerAction, { type: 'SELL_ITEM' }>): void {
-  if (state.phase !== 'awaiting_action') throw new Error('当前不能变卖道具');
+  assertLegal(state, action);
   const p = currentPlayer(state);
-  if (!isShopCell(cellAt(state, p.position))) throw new Error('不在商店，不能变卖道具');
-  const item = ITEMS[action.itemId];
-  if (!item || (p.items[item.id] ?? 0) <= 0) throw new Error('没有这个道具');
+  const item = ITEMS[action.itemId]!;
   const left = (p.items[item.id] ?? 0) - 1;
   if (left > 0) p.items[item.id] = left;
   else delete p.items[item.id];
@@ -2773,16 +2677,11 @@ function sellItem(state: GameState, action: Extract<PlayerAction, { type: 'SELL_
  * 持有与阶段校验 → 注入效果上下文 → 委托 `ItemDef.apply` → 消耗一个道具。
  */
 function useItem(state: GameState, action: Extract<PlayerAction, { type: 'USE_ITEM' }>): void {
+  assertLegal(state, action);
   const p = currentPlayer(state);
-  const item = ITEMS[action.itemId];
-  if (!item) throw new Error('未知道具');
-  if ((p.items[item.id] ?? 0) <= 0) throw new Error('没有这个道具');
-  if (state.phase !== 'awaiting_roll' && state.phase !== 'awaiting_action') throw new Error('当前不能使用道具');
-  if (item.phase === 'pre_roll' && state.phase !== 'awaiting_roll') throw new Error('该道具只能在掷骰前使用');
-  if (item.phase === 'post_roll' && state.phase !== 'awaiting_action') throw new Error('该道具只能在掷骰后使用');
-  if (!item.apply) throw new Error('未知道具效果');
+  const item = ITEMS[action.itemId]!;
 
-  item.apply({
+  item.apply!({
     ...EFFECT_KIT,
     state,
     self: p,
@@ -2817,23 +2716,10 @@ function isShopCell(c: BoardCell): boolean {
  * - 零 RNG 消耗，不扰动确定性回放。
  */
 function buyStock(state: GameState, action: Extract<PlayerAction, { type: 'BUY_STOCK' }>): void {
-  if (!canTradeStockNow(state)) throw new Error('当前不能交易股票');
+  assertLegal(state, action);
   const p = currentPlayer(state);
-  if (p.bankrupt) throw new Error('已倒闭的玩家不能交易股票');
-  const stock = stockById(state, action.stockId);
-  if (!stock) throw new Error('未知股票');
-  if (state.stockHaltAllDays > 0) throw new Error(`全市场停牌中（剩余 ${state.stockHaltAllDays} 天）`);
-  if (gameDate(state).isHoliday) throw new Error('例假日休市，无法买卖股票');
-  if (isStockSuspended(state, stock.id)) throw new Error(`${stock.name} 暂停交易中`);
-  if (!Number.isInteger(action.quantity) || action.quantity <= 0) throw new Error('数量必须为正整数');
+  const stock = stockById(state, action.stockId)!;
   const total = stock.price * action.quantity;
-  // 股票**只能用存款买入**（help[07]：买股票的收支由银行自动转、扣帐，走存款账户）；
-  // 现金不能用于炒股——现金只够买地与升级建筑。
-  if (p.deposit < total) {
-    throw new Error(
-      `存款不足：买入 ${stock.name} ×${action.quantity} 需 ¥${total.toLocaleString('zh-CN')}，可用存款 ¥${p.deposit.toLocaleString('zh-CN')}（现金不能用于炒股）`,
-    );
-  }
   p.deposit -= total;
   p.stocks[stock.id] = (p.stocks[stock.id] ?? 0) + action.quantity;
   // ECON-10：记录建仓成本（累计投入），UI 用于展示浮动盈亏
@@ -2844,17 +2730,10 @@ function buyStock(state: GameState, action: Extract<PlayerAction, { type: 'BUY_S
 
 /** ECON-09 卖出股票（help[14]「隨時可買賣」；与buyStock 同规则，不绑定格型） */
 function sellStock(state: GameState, action: Extract<PlayerAction, { type: 'SELL_STOCK' }>): void {
-  if (!canTradeStockNow(state)) throw new Error('当前不能交易股票');
+  assertLegal(state, action);
   const p = currentPlayer(state);
-  if (p.bankrupt) throw new Error('已倒闭的玩家不能交易股票');
-  const stock = stockById(state, action.stockId);
-  if (!stock) throw new Error('未知股票');
-  if (state.stockHaltAllDays > 0) throw new Error(`全市场停牌中（剩余 ${state.stockHaltAllDays} 天）`);
-  if (gameDate(state).isHoliday) throw new Error('例假日休市，无法买卖股票');
-  if (isStockSuspended(state, stock.id)) throw new Error(`${stock.name} 暂停交易中`);
-  if (!Number.isInteger(action.quantity) || action.quantity <= 0) throw new Error('数量必须为正整数');
+  const stock = stockById(state, action.stockId)!;
   const holding = p.stocks[stock.id] ?? 0;
-  if (action.quantity > holding) throw new Error('持股不足');
   const total = stock.price * action.quantity;
   // ECON-10：按持股比例结转建仓成本
   const costBefore = p.stockCost?.[stock.id] ?? 0;
@@ -2877,16 +2756,11 @@ function sellStock(state: GameState, action: Extract<PlayerAction, { type: 'SELL
  * 认购后重新判定经营权（CORP-02：最大持股 + 同票先到先得），董事长换人时触发融资清算。
  */
 function buyShares(state: GameState, action: Extract<PlayerAction, { type: 'BUY_SHARES' }>): void {
-  if (state.phase !== 'awaiting_action') throw new Error('当前不能认购股份');
+  assertLegal(state, action);
   const p = currentPlayer(state);
   const c = cellAt(state, p.position);
-  if (c.type !== 'company' || c.id !== action.cellId) throw new Error('不在该公司格，不能认购股份');
-  const company = companyAtCell(state, c.id);
-  if (!company) throw new Error('该公司不存在');
-  if (!Number.isInteger(action.quantity) || action.quantity <= 0) throw new Error('股数必须为正整数');
-  if (action.quantity > MAX_SHARES_PER_BUY) throw new Error(`单次认购上限 ${MAX_SHARES_PER_BUY} 张`);
+  const company = companyAtCell(state, c.id)!;
   const cost = company.sharePrice * action.quantity;
-  if (p.cash < cost) throw new Error('现金不足');
   p.cash -= cost;
   company.shares[p.id] = (company.shares[p.id] ?? 0) + action.quantity;
   if (company.firstHeldDayIndex[p.id] === undefined) company.firstHeldDayIndex[p.id] = state.calendar.elapsedDays;
@@ -2927,15 +2801,8 @@ function financingCap(state: GameState, self: Player): number {
 
 /** CORP-09：企业银行董事长特别融资（周转期间存款不计息） */
 function specialFinancing(state: GameState, action: Extract<PlayerAction, { type: 'SPECIAL_FINANCING' }>): void {
-  if (state.phase !== 'awaiting_action') throw new Error('当前不能特别融资');
+  assertLegal(state, action);
   const p = currentPlayer(state);
-  const c = cellAt(state, p.position);
-  if (c.type !== 'company' || c.companyKind !== 'bank') throw new Error('不在企业银行，不能特别融资');
-  const company = companyAtCell(state, c.id);
-  if (!company || company.chairmanId !== p.id) throw new Error('只有董事长可以特别融资');
-  if (!Number.isInteger(action.amount) || action.amount <= 0) throw new Error('金额必须为正整数');
-  const cap = financingCap(state, p);
-  if (p.financing + action.amount > cap) throw new Error(`特别融资上限 ¥${cap}`);
   p.financing += action.amount;
   p.cash += action.amount;
   log(state, `${p.name} 以${COMPANIES.bank.name}董事长身份特别融资 ¥${action.amount}（累计 ¥${p.financing}；周转期间存款不计息）`);
@@ -2943,20 +2810,12 @@ function specialFinancing(state: GameState, action: Extract<PlayerAction, { type
 
 /** CORP-13：房地产公司任选一处自有地产加盖一层，按该地地价收取施工费 */
 function buildEstate(state: GameState, action: Extract<PlayerAction, { type: 'BUILD_ESTATE' }>): void {
-  if (state.phase !== 'awaiting_action') throw new Error('当前不能加盖');
+  assertLegal(state, action);
   const p = currentPlayer(state);
   const c = cellAt(state, p.position);
-  if (c.type !== 'company' || c.companyKind !== 'estate') throw new Error('不在房地产公司，不能加盖');
-  const prop = p.properties.find((q) => q.cellId === action.cellId);
-  if (!prop) throw new Error('只能加盖自己的地产');
-  if (prop.grade >= MAX_GRADE) throw new Error('该地产已满级');
-  const target = state.board[action.cellId];
-  if (!target || (target.type !== 'property' && target.type !== 'commercial') || target.price === undefined) {
-    throw new Error('该格不可加盖');
-  }
-  if (target.type === 'commercial' && !prop.facility) throw new Error('商业用地需先建设施');
-  const cost = scaled(state, Math.round(target.price * ESTATE_BUILD_RATIO));
-  if (p.cash < cost) throw new Error('现金不足');
+  const prop = p.properties.find((q) => q.cellId === action.cellId)!;
+  const target = state.board[action.cellId]!;
+  const cost = scaled(state, Math.round(target.price! * ESTATE_BUILD_RATIO));
   p.cash -= cost;
   prop.grade = (prop.grade + 1) as PlayerProperty['grade'];
   const company = companyAtCell(state, c.id);
@@ -2978,117 +2837,474 @@ export function forceGameOver(state: GameState, winnerId: string): GameState {
   return next;
 }
 
-/** 唯一入口：应用玩家动作并返回新状态（纯函数，不修改传入状态） */
-export function applyAction(state: GameState, action: PlayerAction): GameState {
-  const next = clone(state);
-  switch (action.type) {
-    case 'START_GAME':
-      startGame(next);
-      break;
-    case 'ROLL_DICE':
-      rollDice(next, action);
-      break;
-    case 'BUY_LAND':
-      buyLand(next);
-      break;
-    case 'UPGRADE_LAND':
-      upgradeLand(next);
-      break;
-    case 'BUILD_FACILITY':
-      buildFacility(next, action);
-      break;
-    case 'START_RESEARCH':
-      startResearch(next, action);
-      break;
-    case 'END_TURN':
-      endTurn(next);
-      break;
-    case 'USE_CARD':
-      useCard(next, action);
-      break;
-    case 'BUY_CARD':
-      buyCard(next, action);
-      break;
-    case 'DISCARD_CARD':
-      discardCard(next, action);
-      break;
-    case 'USE_ITEM':
-      useItem(next, action);
-      break;
-    case 'BUY_ITEM':
-      buyItem(next, action);
-      break;
-    case 'SELL_CARD':
-      sellCard(next, action);
-      break;
-    case 'SELL_ITEM':
-      sellItem(next, action);
-      break;
-    case 'BUY_STOCK':
-      buyStock(next, action);
-      break;
-    case 'SELL_STOCK':
-      sellStock(next, action);
-      break;
-    case 'MINIGAME_PICK':
-      minigamePick(next, action);
-      break;
-    case 'DEPOSIT':
-      depositMoney(next, action.amount);
-      break;
-    case 'WITHDRAW':
-      withdrawMoney(next, action.amount);
-      break;
-    case 'TAKE_LOAN':
-      takeLoan(next, action.amount);
-      break;
-    case 'REPAY_LOAN':
-      repayLoan(next, action.amount);
-      break;
-    case 'BUY_SHARES':
-      buyShares(next, action);
-      break;
-    case 'BUILD_ESTATE':
-      buildEstate(next, action);
-      break;
-    case 'SPECIAL_FINANCING':
-      specialFinancing(next, action);
-      break;
-    case 'BUY_LOTTERY_TICKET':
-      buyLotteryTicket(next, action);
-      break;
-    case 'AUCTION_BID':
-      auctionBid(next, action);
-      break;
-    case 'AUCTION_PASS':
-      auctionPass(next);
-      break;
-    case 'BAIL_PRISONER':
-      bailPrisoner(next, action);
-      break;
-    case 'CAST_MAGIC':
-      castMagic(next, action);
-      break;
-    case 'DISCHARGE_PATIENT':
-      dischargePatient(next, action);
-      break;
-    case 'SURRENDER':
-      surrender(next, action.revengeTargetId);
-      break;
-    case 'POST_TRADE':
-      postTrade(next, action, currentPlayer(next), (t) => log(next, t));
-      break;
-    case 'BUY_TRADE':
-      buyTrade(next, action, currentPlayer(next), (t) => log(next, t));
-      break;
-    case 'CANCEL_TRADE':
-      cancelTrade(next, action, currentPlayer(next), (t) => log(next, t));
-      break;
-    default: {
-      const exhaustive: never = action;
-      throw new Error(`未知动作: ${JSON.stringify(exhaustive)}`);
-    }
+/* ==========================================================================
+ * 动作注册表（R3）：34 个玩家动作的「校验 + 执行」成对登记
+ *
+ * 此前门控（`availableActions`，决定按钮可否点）与引擎校验（各动作函数开头的
+ * `if (…) throw`）是**同一套规则的两套并行实现**：加一个动作要改两处，两处一漂移
+ * 就出现「按钮能点、引擎报错」—— golden 基线记录在案的那批被吞错误正是这个 bug 类。
+ *
+ * 现在每个动作只有一个 `check`：`availableActions` 由它派生布尔位，`apply` 在入口
+ * 调用它并抛错，所以绕过 UI 直接塞动作给引擎照样会被拒。想改规则只有一处可改。
+ *
+ * 拒绝文案与重构前逐字一致（日志与客户端提示都依赖它），迁移期间由
+ * `.scratch/diffcheck.sh` 的新旧引擎差分与 424 个单测共同守住。
+ * ========================================================================== */
+
+/** 该动作的实际操作者：拍卖中是轮到的竞买人（未必是当前玩家），大厅阶段可能尚无玩家 */
+function actorForAction(state: GameState, action: PlayerAction): Player | null {
+  if (action.type === 'START_GAME') return null;
+  if (action.type === 'AUCTION_BID' || action.type === 'AUCTION_PASS') {
+    const a = state.auction;
+    if (!a) return null;
+    return state.players.find((q) => q.id === a.bidders[a.turnIndex]) ?? null;
   }
+  return currentPlayerOrNull(state);
+}
+
+/** 门控的唯一派生入口：返回 null 表示这个动作此刻合法可执行 */
+export function actionRefusal(state: GameState, action: PlayerAction): ActionRefusal {
+  const spec = ACTION_SPECS[action.type] as ActionSpec;
+  return spec.check(state, actorForAction(state, action), action);
+}
+
+/** 引擎侧拒绝：每个 apply 入口先跑自己的 check，外部无法塞进非法动作 */
+function assertLegal(state: GameState, action: PlayerAction): void {
+  const refusal = actionRefusal(state, action);
+  if (refusal) throw new Error(refusal);
+}
+
+function checkStartGame(state: GameState, _p: Player | null, _action: ActionOf<'START_GAME'>): ActionRefusal {
+  if (state.phase !== 'lobby') return '游戏已经开始';
+  if (state.players.length < 2) return '至少需要 2 名玩家才能开始';
+  return null;
+}
+
+function checkRollDice(state: GameState, p: Player | null, action: ActionOf<'ROLL_DICE'>): ActionRefusal {
+  if (state.phase !== 'awaiting_roll') return '当前不能掷骰';
+  if (!p) return '当前玩家不存在';
+  const maxDice = Math.max(1, Math.min(3, p.diceCount));
+  const requested = action.diceCount ?? maxDice;
+  if (!Number.isInteger(requested) || requested < 1 || requested > maxDice) return `骰子数必须是 1-${maxDice} 的整数`;
+  return null;
+}
+
+function checkEndTurn(state: GameState, _p: Player | null, _action: ActionOf<'END_TURN'>): ActionRefusal {
+  if (state.phase !== 'awaiting_action') return '当前不能结束回合';
+  return null;
+}
+
+function checkBuyLand(state: GameState, p: Player | null, _action: ActionOf<'BUY_LAND'>): ActionRefusal {
+  if (state.phase !== 'awaiting_action') return '当前不能购买地产';
+  if (!p) return '当前玩家不存在';
+  if (p.sleepwalkTurns > 0) return '梦游中无法买地';
+  const c = cellAt(state, p.position);
+  if ((c.type !== 'property' && c.type !== 'commercial') || c.price === undefined) return '此格不可购买';
+  if (cellOwner(state, c.id)) return '该地产已有主人';
+  if (godBlocksInvestment(p)) return '衰神附身，买地流拍';
+  // 用户规则：住宅按公定地价；商业用地按「自身标价 ×1.5」计费（比原价贵）
+  const price = godFreeLandPurchase(p) ? 0 : landPurchasePrice(state, c);
+  if (p.cash < price) return '现金不足';
+  return null;
+}
+
+function checkUpgradeLand(state: GameState, p: Player | null, _action: ActionOf<'UPGRADE_LAND'>): ActionRefusal {
+  if (state.phase !== 'awaiting_action') return '当前不能升级地产';
+  if (!p) return '当前玩家不存在';
+  const c = cellAt(state, p.position);
+  if ((c.type !== 'property' && c.type !== 'commercial') || c.price === undefined) return '此格不可升级';
+  const owned = cellOwner(state, c.id);
+  if (!owned || owned.player.id !== p.id) return '只能升级自己的地产';
+  const prop = owned.property;
+  if (c.type === 'commercial') {
+    if (!prop.facility) return '请先建设施，再行升级';
+    if (!facilityUpgradeable(prop)) return '该设施无法升级（EST-08/EST-11）';
+  } else if (prop.chain) {
+    return '连锁店不能再加盖（EST-04）';
+  }
+  if (prop.grade >= MAX_GRADE) return '地产已满级';
+  if (godBlocksInvestment(p)) return '衰神附身，投资失败';
+  // 行进显灵·投资加倍（GOD-04/05 大/小福神）：一次加盖两层，费用按实际层数计
+  const target = Math.min(MAX_GRADE, prop.grade + (godDoublesBuild(p) ? 2 : 1));
+  let cost = 0;
+  for (let g = prop.grade; g < target; g++) cost += landUpgradeCost(state, c, g);
+  if (p.cash < cost) return '现金不足';
+  return null;
+}
+
+function checkBuildFacility(state: GameState, p: Player | null, action: ActionOf<'BUILD_FACILITY'>): ActionRefusal {
+  if (state.phase !== 'awaiting_action') return '当前不能建设';
+  if (!p) return '当前玩家不存在';
+  const c = cellAt(state, p.position);
+  if (c.type !== 'commercial' || c.price === undefined) return '此格不是商业用地';
+  const owned = cellOwner(state, c.id);
+  if (!owned || owned.player.id !== p.id) return '只能在自己的商业用地上建设';
+  if (owned.property.facility) return '该用地已建有设施，可用改建卡变更项目';
+  const def = FACILITIES[action.facility];
+  if (!def) return '未知设施项目';
+  if (godBlocksInvestment(p)) return '衰神附身，投资失败';
+  if (p.cash < facilityBuildCost(state, c, action.facility)) return '现金不足';
+  return null;
+}
+
+function checkStartResearch(state: GameState, p: Player | null, action: ActionOf<'START_RESEARCH'>): ActionRefusal {
+  if (state.phase !== 'awaiting_action') return '当前不能立项研发';
+  if (!p) return '当前玩家不存在';
+  if (p.research) return '已有研发项目在进行中';
+  const c = cellAt(state, p.position);
+  if (c.type !== 'commercial') return '此格不是商业用地';
+  const owned = cellOwner(state, c.id);
+  if (!owned || owned.player.id !== p.id) return '只能在自己的研究所立项';
+  if (owned.property.facility !== 'lab') return '此处不是研究所';
+  const def = researchDef(action.itemId);
+  if (!def) return '未知研发项目';
+  if (def.level > owned.property.grade) return `研究所等级不足（需 Lv${def.level}）`;
+  return null;
+}
+
+function checkUseCard(state: GameState, p: Player | null, action: ActionOf<'USE_CARD'>): ActionRefusal {
+  if (!p) return '当前玩家不存在';
+  const card = CARDS[action.cardId];
+  if (!card) return '未知卡片';
+  if (!p.cards.includes(card.id)) return '没有这张卡片';
+  if (card.auto) return '该卡片为自动触发，不能主动使用';
+  if (!card.available) return '该卡片尚未开放';
+  if (state.phase !== 'awaiting_roll' && state.phase !== 'awaiting_action') return '当前不能使用卡片';
+  if (card.phase === 'pre_roll' && state.phase !== 'awaiting_roll') return '该卡片只能在掷骰前使用';
+  if (card.phase === 'post_roll' && state.phase !== 'awaiting_action') return '该卡片只能在掷骰后使用';
+  if (!card.apply) return '未知卡片效果';
+  return null;
+}
+
+function checkDiscardCard(state: GameState, p: Player | null, action: ActionOf<'DISCARD_CARD'>): ActionRefusal {
+  // ECON-12：额满待舍弃阶段也允许 DISCARD_CARD，选定后新卡立即入栏
+  if (state.phase !== 'awaiting_roll' && state.phase !== 'awaiting_action' && state.phase !== 'awaiting_discard') {
+    return '当前不能舍弃卡片';
+  }
+  if (!p) return '当前玩家不存在';
+  if (!p.cards.includes(action.cardId)) return '没有这张卡片';
+  return null;
+}
+
+function checkBuyCard(state: GameState, p: Player | null, action: ActionOf<'BUY_CARD'>): ActionRefusal {
+  if (state.phase !== 'awaiting_action') return '当前不能购买卡片';
+  if (!p) return '当前玩家不存在';
+  if (!isShopCell(cellAt(state, p.position))) return '不在商店，不能购买卡片';
+  const card = CARDS[action.cardId];
+  if (!card || !SHOP_CARD_IDS.includes(card.id)) return '商店不出售这张卡片';
+  if (p.cards.length >= MAX_HAND_CARDS) return `手牌已满（上限 ${MAX_HAND_CARDS}），请先舍弃卡片`;
+  if (p.points < card.cost) return '点券不足';
+  return null;
+}
+
+function checkSellCard(state: GameState, p: Player | null, action: ActionOf<'SELL_CARD'>): ActionRefusal {
+  if (state.phase !== 'awaiting_action') return '当前不能变卖卡片';
+  if (!p) return '当前玩家不存在';
+  if (!isShopCell(cellAt(state, p.position))) return '不在商店，不能变卖卡片';
+  const card = CARDS[action.cardId];
+  if (!card || !p.cards.includes(card.id)) return '没有这张卡片';
+  return null;
+}
+
+function checkUseItem(state: GameState, p: Player | null, action: ActionOf<'USE_ITEM'>): ActionRefusal {
+  if (!p) return '当前玩家不存在';
+  const item = ITEMS[action.itemId];
+  if (!item) return '未知道具';
+  if ((p.items[item.id] ?? 0) <= 0) return '没有这个道具';
+  if (state.phase !== 'awaiting_roll' && state.phase !== 'awaiting_action') return '当前不能使用道具';
+  if (item.phase === 'pre_roll' && state.phase !== 'awaiting_roll') return '该道具只能在掷骰前使用';
+  if (item.phase === 'post_roll' && state.phase !== 'awaiting_action') return '该道具只能在掷骰后使用';
+  if (!item.apply) return '未知道具效果';
+  return null;
+}
+
+function checkBuyItem(state: GameState, p: Player | null, action: ActionOf<'BUY_ITEM'>): ActionRefusal {
+  if (state.phase !== 'awaiting_action') return '当前不能购买道具';
+  if (!p) return '当前玩家不存在';
+  if (!isShopCell(cellAt(state, p.position))) return '不在商店，不能购买道具';
+  const item = ITEMS[action.itemId];
+  if (!item || !SHOP_ITEM_IDS.includes(item.id)) return '商店不出售这种道具';
+  if ((p.items[item.id] ?? 0) >= MAX_ITEM_COUNT) return `该道具已达上限（${MAX_ITEM_COUNT} 个）`;
+  if (p.points < (item.cost ?? 0)) return '点券不足';
+  return null;
+}
+
+function checkSellItem(state: GameState, p: Player | null, action: ActionOf<'SELL_ITEM'>): ActionRefusal {
+  if (state.phase !== 'awaiting_action') return '当前不能变卖道具';
+  if (!p) return '当前玩家不存在';
+  if (!isShopCell(cellAt(state, p.position))) return '不在商店，不能变卖道具';
+  const item = ITEMS[action.itemId];
+  if (!item || (p.items[item.id] ?? 0) <= 0) return '没有这个道具';
+  return null;
+}
+
+/** 银行类动作的共同前置（顺序与 `bankContext` 取值前的校验一致：相位 → 权限 → 例假日 → 玩家） */
+function bankRefusal(state: GameState, p: Player | null): ActionRefusal {
+  if (state.phase !== 'awaiting_action') return '当前不能进行银行操作';
+  const bank = state.bankAccess;
+  if (!bank) return '不在银行，不能进行银行操作';
+  if (gameDate(state).isHoliday) return '例假日银行休市';
+  if (!p) return '当前玩家不存在';
+  return null;
+}
+
+function checkDeposit(state: GameState, p: Player | null, action: ActionOf<'DEPOSIT'>): ActionRefusal {
+  const early = bankRefusal(state, p);
+  if (early) return early;
+  if (!state.bankAccess!.canDeposit) return '此处不能存款';
+  if (!Number.isInteger(action.amount) || action.amount <= 0) return '金额必须为正整数';
+  if (p!.cash < action.amount) return '现金不足';
+  return null;
+}
+
+function checkWithdraw(state: GameState, p: Player | null, action: ActionOf<'WITHDRAW'>): ActionRefusal {
+  const early = bankRefusal(state, p);
+  if (early) return early;
+  if (!state.bankAccess!.canDeposit) return '此处不能取款';
+  if (!Number.isInteger(action.amount) || action.amount <= 0) return '金额必须为正整数';
+  if (p!.deposit < action.amount) return '存款不足';
+  return null;
+}
+
+function checkTakeLoan(state: GameState, p: Player | null, action: ActionOf<'TAKE_LOAN'>): ActionRefusal {
+  const early = bankRefusal(state, p);
+  if (early) return early;
+  if (!state.bankAccess!.canLoan) return '此处不能贷款';
+  if (state.loanBanDays > 0) return `银行挤兑中，${state.loanBanDays} 天内停止放款（EVT-01 事件 22）`;
+  if (p!.loan) return '已有未还清的贷款';
+  if (!Number.isInteger(action.amount) || action.amount <= 0) return '金额必须为正整数';
+  if (action.amount > MAX_LOAN) return `单笔贷款上限 ¥${MAX_LOAN}`;
+  return null;
+}
+
+function checkRepayLoan(state: GameState, p: Player | null, action: ActionOf<'REPAY_LOAN'>): ActionRefusal {
+  const early = bankRefusal(state, p);
+  if (early) return early;
+  if (!state.bankAccess!.canLoan) return '此处不能还贷';
+  if (!p!.loan) return '当前没有贷款';
+  if (!Number.isInteger(action.amount) || action.amount <= 0) return '金额必须为正整数';
+  if (p!.cash < Math.min(action.amount, p!.loan!.principal)) return '现金不足';
+  return null;
+}
+
+/** 股票类动作的共同前置（买卖共用，顺序与引擎逐条一致） */
+function stockTradeRefusal(state: GameState, p: Player | null, stockId: string, quantity: number): ActionRefusal {
+  if (!canTradeStockNow(state)) return '当前不能交易股票';
+  if (!p) return '当前玩家不存在';
+  if (p.bankrupt) return '已倒闭的玩家不能交易股票';
+  const stock = stockById(state, stockId);
+  if (!stock) return '未知股票';
+  if (state.stockHaltAllDays > 0) return `全市场停牌中（剩余 ${state.stockHaltAllDays} 天）`;
+  if (gameDate(state).isHoliday) return '例假日休市，无法买卖股票';
+  if (isStockSuspended(state, stock.id)) return `${stock.name} 暂停交易中`;
+  if (!Number.isInteger(quantity) || quantity <= 0) return '数量必须为正整数';
+  return null;
+}
+
+function checkBuyStock(state: GameState, p: Player | null, action: ActionOf<'BUY_STOCK'>): ActionRefusal {
+  const early = stockTradeRefusal(state, p, action.stockId, action.quantity);
+  if (early) return early;
+  const stock = stockById(state, action.stockId)!;
+  const total = stock.price * action.quantity;
+  // 股票**只能用存款买入**（help[07]：买股票的收支由银行自动转、扣帐，走存款账户）；
+  // 现金不能用于炒股——现金只够买地与升级建筑。
+  if (p!.deposit < total) {
+    return `存款不足：买入 ${stock.name} ×${action.quantity} 需 ¥${total.toLocaleString('zh-CN')}，可用存款 ¥${p!.deposit.toLocaleString('zh-CN')}（现金不能用于炒股）`;
+  }
+  return null;
+}
+
+function checkSellStock(state: GameState, p: Player | null, action: ActionOf<'SELL_STOCK'>): ActionRefusal {
+  const early = stockTradeRefusal(state, p, action.stockId, action.quantity);
+  if (early) return early;
+  if (action.quantity > (p!.stocks[action.stockId] ?? 0)) return '持股不足';
+  return null;
+}
+
+function checkMinigamePick(state: GameState, _p: Player | null, action: ActionOf<'MINIGAME_PICK'>): ActionRefusal {
+  if (state.phase !== 'awaiting_pick' || !state.minigame) return '当前没有进行中的小游戏';
+  const mg = state.minigame;
+  if (mg.kind === 'memory') {
+    const index = action.hole;
+    if (!Number.isInteger(index) || index < 0 || index > 7) return '牌下标必须是 0-7';
+    if (mg.matched[index]) return '这张牌已配对消除';
+    if (mg.revealed.includes(index)) return '这张牌已经翻开';
+    if (mg.flips >= 8) return '翻牌次数已用完';
+    return null;
+  }
+  if (action.hole !== 0 && action.hole !== 1 && action.hole !== 2) return '杯号必须是 0-2';
+  return null;
+}
+
+function checkBuyShares(state: GameState, p: Player | null, action: ActionOf<'BUY_SHARES'>): ActionRefusal {
+  if (state.phase !== 'awaiting_action') return '当前不能认购股份';
+  if (!p) return '当前玩家不存在';
+  const c = cellAt(state, p.position);
+  if (c.type !== 'company' || c.id !== action.cellId) return '不在该公司格，不能认购股份';
+  const company = companyAtCell(state, c.id);
+  if (!company) return '该公司不存在';
+  if (!Number.isInteger(action.quantity) || action.quantity <= 0) return '股数必须为正整数';
+  if (action.quantity > MAX_SHARES_PER_BUY) return `单次认购上限 ${MAX_SHARES_PER_BUY} 张`;
+  if (p.cash < company.sharePrice * action.quantity) return '现金不足';
+  return null;
+}
+
+function checkSpecialFinancing(state: GameState, p: Player | null, action: ActionOf<'SPECIAL_FINANCING'>): ActionRefusal {
+  if (state.phase !== 'awaiting_action') return '当前不能特别融资';
+  if (!p) return '当前玩家不存在';
+  const c = cellAt(state, p.position);
+  if (c.type !== 'company' || c.companyKind !== 'bank') return '不在企业银行，不能特别融资';
+  const company = companyAtCell(state, c.id);
+  if (!company || company.chairmanId !== p.id) return '只有董事长可以特别融资';
+  if (!Number.isInteger(action.amount) || action.amount <= 0) return '金额必须为正整数';
+  if (p.financing + action.amount > financingCap(state, p)) return `特别融资上限 ¥${financingCap(state, p)}`;
+  return null;
+}
+
+function checkBuildEstate(state: GameState, p: Player | null, action: ActionOf<'BUILD_ESTATE'>): ActionRefusal {
+  if (state.phase !== 'awaiting_action') return '当前不能加盖';
+  if (!p) return '当前玩家不存在';
+  const c = cellAt(state, p.position);
+  if (c.type !== 'company' || c.companyKind !== 'estate') return '不在房地产公司，不能加盖';
+  const prop = p.properties.find((q) => q.cellId === action.cellId);
+  if (!prop) return '只能加盖自己的地产';
+  if (prop.grade >= MAX_GRADE) return '该地产已满级';
+  const target = state.board[action.cellId];
+  if (!target || (target.type !== 'property' && target.type !== 'commercial') || target.price === undefined) {
+    return '该格不可加盖';
+  }
+  if (target.type === 'commercial' && !prop.facility) return '商业用地需先建设施';
+  if (p.cash < scaled(state, Math.round(target.price * ESTATE_BUILD_RATIO))) return '现金不足';
+  return null;
+}
+
+function checkBuyLotteryTicket(state: GameState, p: Player | null, action: ActionOf<'BUY_LOTTERY_TICKET'>): ActionRefusal {
+  if (state.phase !== 'awaiting_action') return '当前不能投注乐透';
+  if (!p) return '当前玩家不存在';
+  if (cellAt(state, p.position).type !== 'lottery') return '不在乐透行，不能投注';
+  if (!isValidLotteryNumber(action.number)) return '号码必须是 0-99 的整数';
+  if (p.cash < LOTTERY_TICKET_COST) return '现金不足';
+  return null;
+}
+
+function checkAuctionBid(state: GameState, bidder: Player | null, action: ActionOf<'AUCTION_BID'>): ActionRefusal {
+  if (state.phase !== 'awaiting_auction' || !state.auction) return '当前没有进行中的拍卖';
+  if (!bidder) return '竞买人不存在';
+  const min = nextBidAmount(state.auction);
+  if (!Number.isInteger(action.amount) || action.amount < min) return `出价不得低于 ¥${min}`;
+  if (action.amount > bidder.cash) return '出价不能超过自己的现金';
+  return null;
+}
+
+function checkAuctionPass(state: GameState, bidder: Player | null, _action: ActionOf<'AUCTION_PASS'>): ActionRefusal {
+  if (state.phase !== 'awaiting_auction' || !state.auction) return '当前没有进行中的拍卖';
+  if (!bidder) return '竞买人不存在';
+  return null;
+}
+
+function checkBailPrisoner(state: GameState, p: Player | null, action: ActionOf<'BAIL_PRISONER'>): ActionRefusal {
+  if (state.phase !== 'awaiting_action') return '当前不能保释';
+  if (!p) return '当前玩家不存在';
+  if (cellAt(state, p.position).type !== 'jail') return '不在监狱门外，不能保释';
+  const npc = state.npcs.find((n) => n.kind === action.npcKind);
+  if (!npc) return '没有这名恶人';
+  if (!npc.jailed) return '这名恶人不在押';
+  if (p.cash < bailFee(state)) return '现金不足以支付保释金';
+  return null;
+}
+
+function checkDischargePatient(state: GameState, p: Player | null, action: ActionOf<'DISCHARGE_PATIENT'>): ActionRefusal {
+  if (state.phase !== 'awaiting_action') return '当前不能办理出院';
+  if (!p) return '当前玩家不存在';
+  if (cellAt(state, p.position).type !== 'hospital') return '不在医院门外，不能办理出院';
+  const target = state.players.find((q) => q.id === action.targetPlayerId);
+  if (!target) return '病人不存在';
+  if (target.id === p.id) return '不能为自己办理出院';
+  if (target.custody?.kind !== 'hospital') return '该角色当前并未住院';
+  if (p.cash < dischargeFee(state)) return '现金不足以支付出院费';
+  return null;
+}
+
+function checkCastMagic(state: GameState, p: Player | null, action: ActionOf<'CAST_MAGIC'>): ActionRefusal {
+  const offer = state.magic;
+  if (!offer) return '当前没有可施法的机会';
+  if (state.phase !== 'awaiting_action') return '当前不能施法';
+  if (!p) return '当前玩家不存在';
+  const target = state.players.find((q) => q.id === action.targetPlayerId);
+  if (!target) return '受罚对象不存在';
+  if (target.id === p.id) return '不能诅咒自己';
+  if (!offer.candidateIds.includes(target.id)) return '该对象不满足施法条件';
+  return null;
+}
+
+function checkSurrender(state: GameState, p: Player | null, action: ActionOf<'SURRENDER'>): ActionRefusal {
+  if (!p) return '当前玩家不存在';
+  if (state.phase === 'lobby' || state.phase === 'game_over') return '当前不能认输';
+  if (p.bankrupt) return '已倒闭的玩家无需认输';
+  const avenger = state.players.find((q) => q.id === action.revengeTargetId);
+  if (!avenger) return '复仇者不存在';
+  if (avenger.id === p.id) return '复仇者不能是认输者本人';
+  if (avenger.bankrupt) return '复仇者已倒闭';
+  return null;
+}
+
+function checkPostTrade(state: GameState, seller: Player | null, action: ActionOf<'POST_TRADE'>): ActionRefusal {
+  return postTradeRefusal(state, seller, action);
+}
+
+function checkBuyTrade(state: GameState, buyer: Player | null, action: ActionOf<'BUY_TRADE'>): ActionRefusal {
+  return buyTradeRefusal(state, buyer, action);
+}
+
+function checkCancelTrade(state: GameState, seller: Player | null, action: ActionOf<'CANCEL_TRADE'>): ActionRefusal {
+  return cancelTradeRefusal(state, seller, action);
+}
+
+/**
+ * 注册表本体：`ActionSpecMap` 是映射类型，少写一个动作就编译不过，
+ * `applyAction` 因此不再需要 `default: never` 的穷举兜底。
+ */
+const ACTION_SPECS: ActionSpecMap = {
+  START_GAME: { check: checkStartGame, apply: (s) => startGame(s) },
+  ROLL_DICE: { check: checkRollDice, apply: (s, a) => rollDice(s, a) },
+  BUY_LAND: { check: checkBuyLand, apply: (s) => buyLand(s) },
+  UPGRADE_LAND: { check: checkUpgradeLand, apply: (s) => upgradeLand(s) },
+  BUILD_FACILITY: { check: checkBuildFacility, apply: (s, a) => buildFacility(s, a) },
+  START_RESEARCH: { check: checkStartResearch, apply: (s, a) => startResearch(s, a) },
+  END_TURN: { check: checkEndTurn, apply: (s) => endTurn(s) },
+  USE_CARD: { check: checkUseCard, apply: (s, a) => useCard(s, a) },
+  BUY_CARD: { check: checkBuyCard, apply: (s, a) => buyCard(s, a) },
+  DISCARD_CARD: { check: checkDiscardCard, apply: (s, a) => discardCard(s, a) },
+  USE_ITEM: { check: checkUseItem, apply: (s, a) => useItem(s, a) },
+  BUY_ITEM: { check: checkBuyItem, apply: (s, a) => buyItem(s, a) },
+  SELL_CARD: { check: checkSellCard, apply: (s, a) => sellCard(s, a) },
+  SELL_ITEM: { check: checkSellItem, apply: (s, a) => sellItem(s, a) },
+  BUY_STOCK: { check: checkBuyStock, apply: (s, a) => buyStock(s, a) },
+  SELL_STOCK: { check: checkSellStock, apply: (s, a) => sellStock(s, a) },
+  MINIGAME_PICK: { check: checkMinigamePick, apply: (s, a) => minigamePick(s, a) },
+  DEPOSIT: { check: checkDeposit, apply: (s, a) => depositMoney(s, a.amount) },
+  WITHDRAW: { check: checkWithdraw, apply: (s, a) => withdrawMoney(s, a.amount) },
+  TAKE_LOAN: { check: checkTakeLoan, apply: (s, a) => takeLoan(s, a.amount) },
+  REPAY_LOAN: { check: checkRepayLoan, apply: (s, a) => repayLoan(s, a.amount) },
+  BUY_SHARES: { check: checkBuyShares, apply: (s, a) => buyShares(s, a) },
+  BUILD_ESTATE: { check: checkBuildEstate, apply: (s, a) => buildEstate(s, a) },
+  SPECIAL_FINANCING: { check: checkSpecialFinancing, apply: (s, a) => specialFinancing(s, a) },
+  BUY_LOTTERY_TICKET: { check: checkBuyLotteryTicket, apply: (s, a) => buyLotteryTicket(s, a) },
+  AUCTION_BID: { check: checkAuctionBid, apply: (s, a) => auctionBid(s, a) },
+  AUCTION_PASS: { check: checkAuctionPass, apply: (s) => auctionPass(s) },
+  BAIL_PRISONER: { check: checkBailPrisoner, apply: (s, a) => bailPrisoner(s, a) },
+  CAST_MAGIC: { check: checkCastMagic, apply: (s, a) => castMagic(s, a) },
+  DISCHARGE_PATIENT: { check: checkDischargePatient, apply: (s, a) => dischargePatient(s, a) },
+  SURRENDER: { check: checkSurrender, apply: (s, a) => surrender(s, a.revengeTargetId) },
+  POST_TRADE: { check: checkPostTrade, apply: (s, a) => postTrade(s, a, currentPlayer(s), (t) => log(s, t)) },
+  BUY_TRADE: { check: checkBuyTrade, apply: (s, a) => buyTrade(s, a, currentPlayer(s), (t) => log(s, t)) },
+  CANCEL_TRADE: { check: checkCancelTrade, apply: (s, a) => cancelTrade(s, a, currentPlayer(s), (t) => log(s, t)) },
+};
+
+/** 唯一入口：应用玩家动作并返回新状态（纯函数，不修改传入状态） */export function applyAction(state: GameState, action: PlayerAction): GameState {
+  const next = clone(state);
+  // 注册表按 type 分派；`ActionSpecMap` 是映射类型，缺一个动作就编译不过
+  (ACTION_SPECS[action.type] as ActionSpec).apply(next, action);
   return next;
 }
 

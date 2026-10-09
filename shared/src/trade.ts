@@ -14,6 +14,8 @@ import { ITEMS } from './items.js';
 import { MAX_ITEM_COUNT } from './board.js';
 import { landPurchasePrice } from './tiles.js';
 import type {
+  ActionOf,
+  ActionRefusal,
   GameState,
   Player,
   PlayerAction,
@@ -79,10 +81,10 @@ function stillOwns(state: GameState, listing: TradeListing, seller: Player): boo
   }
 }
 
-/** 清理失效挂牌 + 同标的重复挂牌（只留最早一条） */
-export function refreshTrades(state: GameState): void {
+/** 当前**有效**的挂牌（失效标的与同标的重复挂牌已被剔除），纯函数不改状态 */
+export function liveTrades(state: GameState): TradeListing[] {
   const seen = new Set<string>();
-  state.trades = state.trades.filter((t) => {
+  return state.trades.filter((t) => {
     if (t.closed) return false;
     const key = `${t.sellerId}:${t.kind}:${t.targetId}`;
     if (seen.has(key)) return false;
@@ -91,6 +93,11 @@ export function refreshTrades(state: GameState): void {
     if (!seller || seller.bankrupt) return false;
     return stillOwns(state, t, seller);
   });
+}
+
+/** 清理失效挂牌 + 同标的重复挂牌（只留最早一条） */
+export function refreshTrades(state: GameState): void {
+  state.trades = liveTrades(state);
 }
 
 /** 确定性挂牌 id（不用 RNG，保证回放一致） */
@@ -158,24 +165,21 @@ export function tradableAssets(
   return out;
 }
 
-/** 校验标的归卖方所有 */
-function assertOwned(seller: Player, kind: TradeKind, targetId: string): void {
+/** 校验标的归卖方所有；返回拒绝理由（纯函数，供门控与引擎共用） */
+function ownershipRefusal(seller: Player, kind: TradeKind, targetId: string): ActionRefusal {
   switch (kind) {
     case 'land': {
       const cellId = Number(targetId);
-      if (!Number.isInteger(cellId)) throw new Error('标的无效');
-      if (!seller.properties.some((q) => q.cellId === cellId)) throw new Error('你并不持有这块地产');
-      break;
+      if (!Number.isInteger(cellId)) return '标的无效';
+      if (!seller.properties.some((q) => q.cellId === cellId)) return '你并不持有这块地产';
+      return null;
     }
     case 'stock':
-      if ((seller.stocks[targetId] ?? 0) <= 0) throw new Error('你并不持有该股票');
-      break;
+      return (seller.stocks[targetId] ?? 0) <= 0 ? '你并不持有该股票' : null;
     case 'card':
-      if (!seller.cards.includes(targetId)) throw new Error('你并不持有这张卡片');
-      break;
+      return seller.cards.includes(targetId) ? null : '你并不持有这张卡片';
     case 'item':
-      if ((seller.items[targetId] ?? 0) <= 0) throw new Error('你并不持有这个道具');
-      break;
+      return (seller.items[targetId] ?? 0) <= 0 ? '你并不持有这个道具' : null;
     default: {
       const exhaustive: never = kind;
       throw new Error(`未知交易类型: ${JSON.stringify(exhaustive)}`);
@@ -183,20 +187,38 @@ function assertOwned(seller: Player, kind: TradeKind, targetId: string): void {
   }
 }
 
-/** 买方容量预检（先校验再动钱，避免中途失败留下半截状态） */
-function assertBuyerAccepts(buyer: Player, kind: TradeKind, targetId: string): void {
+/** 校验标的归卖方所有 */
+function assertOwned(seller: Player, kind: TradeKind, targetId: string): void {
+  const refusal = ownershipRefusal(seller, kind, targetId);
+  if (refusal) throw new Error(refusal);
+}
+
+/** 买方容量预检（纯函数）：先校验再动钱，避免中途失败留下半截状态 */
+function buyerCapacityRefusal(buyer: Player, kind: TradeKind, targetId: string): ActionRefusal {
   switch (kind) {
     case 'land':
-      if (buyer.properties.some((q) => q.cellId === Number(targetId))) {
-        throw new Error('你已经持有这块地产');
-      }
-      break;
+      if (buyer.properties.some((q) => q.cellId === Number(targetId))) return '你已经持有这块地产';
+      return null;
     case 'item':
-      if ((buyer.items[targetId] ?? 0) >= MAX_ITEM_COUNT) throw new Error('你的该类道具已达上限（9 个）');
-      break;
+      if ((buyer.items[targetId] ?? 0) >= MAX_ITEM_COUNT) return '你的该类道具已达上限（9 个）';
+      return null;
     default:
-      break;
+      return null;
   }
+}
+
+/** 买方容量预检 */
+function assertBuyerAccepts(buyer: Player, kind: TradeKind, targetId: string): void {
+  const refusal = buyerCapacityRefusal(buyer, kind, targetId);
+  if (refusal) throw new Error(refusal);
+}
+
+/** POST_TRADE 校验（纯函数）：门控与引擎的唯一共同来源 */
+export function postTradeRefusal(state: GameState, seller: Player | null, action: ActionOf<'POST_TRADE'>): ActionRefusal {
+  if (!seller) return '当前玩家不存在';
+  const price = Math.floor(action.price);
+  if (!Number.isFinite(price) || price < 0) return '价格必须是非负整数';
+  return ownershipRefusal(seller, action.kind, action.targetId);
 }
 
 /** UI-06：挂出标的公开求售 */
@@ -207,9 +229,9 @@ export function postTrade(
   logFn: (t: string) => void,
 ): void {
   refreshTrades(state);
+  const refusal = postTradeRefusal(state, current, action);
+  if (refusal) throw new Error(refusal);
   const price = Math.floor(action.price);
-  if (!Number.isFinite(price) || price < 0) throw new Error('价格必须是非负整数');
-  assertOwned(current, action.kind, action.targetId);
   const id = nextListingId(state);
   state.trades = [
     ...state.trades,
@@ -228,6 +250,20 @@ export function postTrade(
 }
 
 /** UI-06：买下他人挂牌 */
+/** BUY_TRADE 校验（纯函数）：挂牌必须仍在 `liveTrades` 视图里，与 refresh 后的状态一致 */
+export function buyTradeRefusal(state: GameState, buyer: Player | null, action: ActionOf<'BUY_TRADE'>): ActionRefusal {
+  if (!buyer) return '当前玩家不存在';
+  const listing = liveTrades(state).find((t) => t.id === action.listingId);
+  if (!listing) return '该挂牌不存在或已失效';
+  if (listing.sellerId === buyer.id) return '不能买自己的挂牌，请先撤下';
+  const seller = state.players.find((p) => p.id === listing.sellerId);
+  if (!seller || seller.bankrupt) return '卖方已倒闭，挂牌失效';
+  if (buyer.cash < listing.price) return '现金不足以买下该挂牌';
+  if (!stillOwns(state, listing, seller)) return '卖方已不再持有该标的';
+  return buyerCapacityRefusal(buyer, listing.kind, listing.targetId);
+}
+
+/** UI-06：买下他人挂牌 */
 export function buyTrade(
   state: GameState,
   action: Extract<PlayerAction, { type: 'BUY_TRADE' }>,
@@ -235,14 +271,10 @@ export function buyTrade(
   logFn: (t: string) => void,
 ): void {
   refreshTrades(state);
-  const listing = state.trades.find((t) => t.id === action.listingId);
-  if (!listing) throw new Error('该挂牌不存在或已失效');
-  if (listing.sellerId === current.id) throw new Error('不能买自己的挂牌，请先撤下');
-  const seller = state.players.find((p) => p.id === listing.sellerId);
-  if (!seller || seller.bankrupt) throw new Error('卖方已倒闭，挂牌失效');
-  if (current.cash < listing.price) throw new Error('现金不足以买下该挂牌');
-  if (!stillOwns(state, listing, seller)) throw new Error('卖方已不再持有该标的');
-  assertBuyerAccepts(current, listing.kind, listing.targetId);
+  const refusal = buyTradeRefusal(state, current, action);
+  if (refusal) throw new Error(refusal);
+  const listing = state.trades.find((t) => t.id === action.listingId)!;
+  const seller = state.players.find((p) => p.id === listing.sellerId)!;
 
   const price = listing.price;
   const label = describeTarget(state, listing.kind, listing.targetId);
@@ -292,6 +324,16 @@ export function buyTrade(
 }
 
 /** UI-06：撤下自己的挂牌 */
+/** CANCEL_TRADE 校验（纯函数） */
+export function cancelTradeRefusal(state: GameState, seller: Player | null, action: ActionOf<'CANCEL_TRADE'>): ActionRefusal {
+  if (!seller) return '当前玩家不存在';
+  const listing = liveTrades(state).find((t) => t.id === action.listingId);
+  if (!listing) return '该挂牌不存在或已失效';
+  if (listing.sellerId !== seller.id) return '只能撤下自己的挂牌';
+  return null;
+}
+
+/** UI-06：撤下自己的挂牌 */
 export function cancelTrade(
   state: GameState,
   action: Extract<PlayerAction, { type: 'CANCEL_TRADE' }>,
@@ -299,9 +341,9 @@ export function cancelTrade(
   logFn: (t: string) => void,
 ): void {
   refreshTrades(state);
-  const listing = state.trades.find((t) => t.id === action.listingId);
-  if (!listing) throw new Error('该挂牌不存在或已失效');
-  if (listing.sellerId !== current.id) throw new Error('只能撤下自己的挂牌');
+  const refusal = cancelTradeRefusal(state, current, action);
+  if (refusal) throw new Error(refusal);
+  const listing = state.trades.find((t) => t.id === action.listingId)!;
   state.trades = state.trades.filter((t) => t.id !== listing.id);
   logFn(`${current.name} 从公布栏撤下了 ${describeTarget(state, listing.kind, listing.targetId)}`);
 }

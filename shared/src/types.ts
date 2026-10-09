@@ -586,6 +586,38 @@ export type PlayerAction =
   /** UI-06 公布栏：撤下自己的挂牌 */
   | { type: 'CANCEL_TRADE'; listingId: string };
 
+/** 所有玩家动作的类型标签（共 34 个） */
+export type ActionType = PlayerAction['type'];
+
+/** 取某个动作的载荷类型 */
+export type ActionOf<T extends ActionType> = Extract<PlayerAction, { type: T }>;
+
+/**
+ * 动作校验结果：`null` = 允许执行；字符串 = 拒绝理由。
+ * 字符串的内容就是引擎 `throw new Error(...)` 的原文 —— 两者必须是同一份文本。
+ */
+export type ActionRefusal = string | null;
+
+/**
+ * 动作规格：**校验与执行成对同处**（重构波 R3 的核心结构改动）。
+ *
+ * 为什么：此前门控（`availableActions`，决定按钮可点）与引擎校验（各动作函数开头的
+ * `if (…) throw`）是**两套并行实现的同一套规则**。加一个动作要改两处，两处一漂移就
+ * 出现「按钮能点、引擎报错」—— golden 基线里记录在案的那批被吞错误正是这个 bug 类。
+ * 现在 `availableActions` 的每个布尔位都由 `check` 派生，结构上不可能再分叉；
+ * `apply` 自己在入口调用 `check` 并抛错，所以引擎侧仍然不可被绕过。
+ *
+ * `actor`：该动作的实际操作者。拍卖中是轮到的竞买人（未必是当前玩家），
+ * 大厅阶段可能尚无玩家（传 null），其余动作用当前玩家。
+ */
+export interface ActionSpec<A extends PlayerAction = PlayerAction> {
+  check(state: GameState, actor: Player | null, action: A): ActionRefusal;
+  apply(state: GameState, action: A): void;
+}
+
+/** 动作注册表类型：少注册一个动作就编译不过 */
+export type ActionSpecMap = { [A in PlayerAction as A['type']]: ActionSpec<A> };
+
 /** 可用动作集合（UI 按此渲染按钮） */
 export interface AvailableActions {
   canRoll: boolean;
