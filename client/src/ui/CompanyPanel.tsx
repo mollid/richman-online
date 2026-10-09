@@ -1,11 +1,14 @@
 import { useState } from 'react';
 import {
+  actionRefusal,
   availableActions,
   companyAtCell,
   COMPANIES,
   ESTATE_BUILD_RATIO,
+  lockedSharesOf,
   MAX_SHARES_PER_BUY,
   scaled,
+  sellableSharesOf,
   type GameState,
   type PlayerAction,
 } from '@richman/shared';
@@ -13,6 +16,7 @@ import {
 /**
  * 公司企业面板（CORP-01..13）：仅在停留公司格时显示。
  * 认购股份 + 房地产公司加盖（CORP-13）+ 企业银行董事长特别融资（CORP-09）。
+ * 转手（卖出）不在这里做：原始股要经股市面板，见 StockPanel 的公司分区。
  */
 export function CompanyPanel({
   game,
@@ -38,6 +42,10 @@ export function CompanyPanel({
 
   const chairman = company.chairmanId ? game.players.find((p) => p.id === company.chairmanId) : undefined;
   const myShares = company.shares[current.id] ?? 0;
+  const locked = lockedSharesOf(company, current.id);
+  const sellable = sellableSharesOf(company, current.id);
+  // 卖不卖得掉问注册表（休市/停牌与锁定期都在引擎那一侧），面板只复述原因
+  const sellBlocked = sellable > 0 ? actionRefusal(game, { type: 'SELL_SHARES', cellId: cell.id, quantity: 1 }) : null;
   const holdings = Object.entries(company.shares).filter(([, n]) => n > 0);
 
   const buy = () => {
@@ -78,7 +86,13 @@ export function CompanyPanel({
 
       <div className="company-row">
         <span className="company-label">我的持股</span>
-        <span>{myShares} 张</span>
+        <span>
+          {myShares} 张
+          {locked > 0 && <em className="company-locked">（其中 {locked} 张待解锁，下次行动后可在股市卖出）</em>}
+          {locked === 0 && sellable > 0 && (
+            <em className="company-locked">{sellBlocked ?? '可在股市面板按面值卖出，换回现金'}</em>
+          )}
+        </span>
       </div>
 
       {actions.canBuyShares && (
@@ -99,12 +113,20 @@ export function CompanyPanel({
           <button className="mini" onClick={() => setQuantity(Math.max(1, actions.shareQuantityLimit))}>
             满额
           </button>
-          <button disabled={!interactive || !actions.canBuyShares} onClick={buy}>
+          <button
+            disabled={!interactive || !actions.canBuyShares}
+            title={`以现金认购 ${Math.max(1, Math.floor(quantity))} 张，本次认购的要到下次行动才能在股市卖出`}
+            onClick={buy}
+          >
             认购 ¥{(def.sharePrice * Math.max(0, Math.floor(quantity))).toLocaleString('zh-CN')}
           </button>
         </div>
       )}
-      {!actions.canBuyShares && <div className="company-hint">（单次认购上限 {MAX_SHARES_PER_BUY} 张，现金不足或已非公司格）</div>}
+      {!actions.canBuyShares && (
+        <div className="company-hint">
+          （原始股只用<b>现金</b>按面值认购，单次上限 {MAX_SHARES_PER_BUY} 张；现金不够就先在股市卖掉手上的股票或原始股）
+        </div>
+      )}
 
       {cell.companyKind === 'estate' && (
         <div className="company-estate">

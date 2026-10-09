@@ -26,6 +26,9 @@ export function normalizeGameState(state: GameState): GameState {
     stock.candles ??= [];
   }
 
+  // 原始股锁定期（CORP-14）：缺键当作「没有待解锁的股份」，不凭空锁住玩家的持股
+  for (const company of state.companies ?? []) company.lockedShares ??= {};
+
   // 结束条件（W4）：缺键按「不限天数」补 —— 上限是一种限制，旧局面没有它就继续按原规则跑
   state.maxDays ??= null;
   if (state.endReason === undefined) state.endReason = null;

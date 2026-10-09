@@ -116,6 +116,11 @@ export interface CompanyState {
   chairmanId: string | null;
   /** 首次入股日（同票先到先得判定）：playerId -> elapsedDays */
   firstHeldDayIndex: Record<string, number>;
+  /**
+   * 本回合刚认购、还不能进股市转手的股数：playerId -> 股数（CORP-14）。
+   * 回合推进（`advanceTurn`）时整表清空 ⇒ 「下次行动后才能卖」；持股归零或破产时一并删除条目。
+   */
+  lockedShares: Record<string, number>;
 }
 
 /** 创建玩家时的定义 */
@@ -628,8 +633,13 @@ export type PlayerAction =
   | { type: 'WITHDRAW'; amount: number }
   | { type: 'TAKE_LOAN'; amount: number }
   | { type: 'REPAY_LOAN'; amount: number }
-  /** CORP-01：认购公司股份（单次 ≤1000 张） */
+  /** CORP-01：认购公司股份（单次 ≤1000 张；现金按面值结算，股市或踩格皆可申购） */
   | { type: 'BUY_SHARES'; cellId: number; quantity: number }
+  /**
+   * CORP-14：把手上的公司原始股卖回股市，换回现金（按面值、无涨跌）。
+   * 与认购相反的一条通道：认购是向公司申购（一级市场，不看盘口），转让要经股市（休市无对手盘）。
+   */
+  | { type: 'SELL_SHARES'; cellId: number; quantity: number }
   /** CORP-13：房地产公司任选一处加盖一层 */
   | { type: 'BUILD_ESTATE'; cellId: number }
   /** CORP-09：企业银行董事长特别融资 */
@@ -665,7 +675,7 @@ export type PlayerAction =
   /** UI-06 公布栏：撤下自己的挂牌 */
   | { type: 'CANCEL_TRADE'; listingId: string };
 
-/** 所有玩家动作的类型标签（共 34 个） */
+/** 所有玩家动作的类型标签（共 36 个，与 `ACTION_SPECS` 一一对应） */
 export type ActionType = PlayerAction['type'];
 
 /** 取某个动作的载荷类型 */
@@ -717,7 +727,10 @@ export interface AvailableActions {
   canRepayLoan: boolean;
   /** 今天为例假日（股市/银行休市） */
   isHoliday: boolean;
-  /** CORP-01：站立于公司格可认购股份 */
+  /**
+   * CORP-01：能否认购**脚下这家**公司的原始股（现金 + 面值）。
+   * 认购本身不限于站格：股市面板里的公司列表走同一个动作，逐家问 `actionRefusal`。
+   */
   canBuyShares: boolean;
   /** 当前公司股票面值（非公司格为 0） */
   sharePrice: number;

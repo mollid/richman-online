@@ -80,7 +80,10 @@ import {
   ESTATE_BUILD_RATIO,
   MAX_SHARES_PER_BUY,
   companyAtCell,
+  lockedSharesOf,
   majorityHolderId,
+  maxCashShares,
+  sellableSharesOf,
 } from './companies.js';
 import type {
   ActionOf,
@@ -235,6 +238,7 @@ export function createGame(players: PlayerDef[], seed = Date.now() % 2147483647,
       shares: {},
       chairmanId: null,
       firstHeldDayIndex: {},
+      lockedShares: {},
     })),
     // EVT-01：游标初值由种子派生（原版「游标从当前值起轮询」，不消耗 RNG 抽数）
     newsCursor: (seed >>> 0) % NEWS_EVENT_COUNT,
@@ -452,6 +456,7 @@ function bankruptPlayer(state: GameState, p: Player): void {
     if (company.shares[p.id] === undefined) continue;
     delete company.shares[p.id];
     delete company.firstHeldDayIndex[p.id];
+    delete company.lockedShares[p.id];
     if (company.chairmanId === p.id) company.chairmanId = majorityHolderId(company, state.players);
   }
   // 定时炸弹失去载体
@@ -1340,6 +1345,8 @@ function advanceTurn(state: GameState): void {
   state.bankAccess = null;
   state.magic = null;
   state.pendingCard = null;
+  // CORP-14：上一回合认购的原始股到此解锁（只有当前玩家会持有锁定，所以整表清空即可）
+  for (const company of state.companies) company.lockedShares = {};
   // UI-06：回合推进时刷新公布栏（标的被消耗/转手的挂牌自动失效）
   refreshTrades(state);
   if (state.currentPlayerIndex < before) {
@@ -1690,8 +1697,7 @@ export function availableActions(state: GameState): AvailableActions {
     // CORP-01/09/13：公司格上的经营数据（额度与面值是给 UI 显示的数，不是门控）
     const company = state.phase === 'awaiting_action' && c.type === 'company' ? companyAtCell(state, c.id) : undefined;
     const sharePrice = company?.sharePrice ?? 0;
-    const shareQuantityLimit =
-      company && sharePrice > 0 ? Math.min(MAX_SHARES_PER_BUY, Math.floor(p.cash / sharePrice)) : 0;
+    const shareQuantityLimit = maxCashShares(sharePrice, p.cash);
     const financingRemaining =
       company && c.companyKind === 'bank' && company.chairmanId === p.id
         ? Math.max(0, financingCap(state, p) - p.financing)
@@ -2935,19 +2941,54 @@ function sellStock(state: GameState, action: Extract<PlayerAction, { type: 'SELL
 }
 
 /**
- * CORP-01：认购公司股份。单次 ≤1000 张，按股面值现金结算。
+ * CORP-01 / CORP-14：认购公司原始股。单次 ≤1000 张，按**面值**以现金结算。
+ *
+ * 踩到公司格与股市面板走的是同一个动作 —— 一级市场向公司申购，与公司直接收付现金，
+ * 因此不随物价指数变化、也没有盘口冲击。新认购的部分记入 `lockedShares`，
+ * 本回合结束（即下次行动）才允许在股市转手。
  * 认购后重新判定经营权（CORP-02：最大持股 + 同票先到先得），董事长换人时触发融资清算。
  */
 function buyShares(state: GameState, action: Extract<PlayerAction, { type: 'BUY_SHARES' }>): void {
   assertLegal(state, action);
   const p = currentPlayer(state);
-  const c = cellAt(state, p.position);
-  const company = companyAtCell(state, c.id)!;
+  const company = companyAtCell(state, action.cellId)!;
   const cost = company.sharePrice * action.quantity;
   p.cash -= cost;
   company.shares[p.id] = (company.shares[p.id] ?? 0) + action.quantity;
+  company.lockedShares[p.id] = lockedSharesOf(company, p.id) + action.quantity;
   if (company.firstHeldDayIndex[p.id] === undefined) company.firstHeldDayIndex[p.id] = state.calendar.elapsedDays;
-  log(state, `${p.name} 以 ¥${cost} 认购${COMPANIES[company.kind].name} ${action.quantity} 张（持股 ${company.shares[p.id]}）`);
+  const locked = lockedSharesOf(company, p.id);
+  log(
+    state,
+    `${p.name} 以现金 ¥${cost.toLocaleString('zh-CN')} 认购${COMPANIES[company.kind].name} ${action.quantity} 张` +
+      `（持股 ${company.shares[p.id]}，其中 ${locked} 张要到下次行动才能转手）`,
+  );
+  recomputeCompanyChairman(state, company);
+}
+
+/**
+ * CORP-14：把公司原始股卖回股市，按**面值**收现金（无涨跌、无冲击成本：公司股本不因玩家倒手而变价）。
+ * 只能卖已解锁的部分；卖到归零即退出股东名册，再进场时「先到先得」重新起算。
+ */
+function sellShares(state: GameState, action: Extract<PlayerAction, { type: 'SELL_SHARES' }>): void {
+  assertLegal(state, action);
+  const p = currentPlayer(state);
+  const company = companyAtCell(state, action.cellId)!;
+  const holding = company.shares[p.id] ?? 0;
+  const total = company.sharePrice * action.quantity;
+  const left = holding - action.quantity;
+  if (left === 0) {
+    delete company.shares[p.id];
+    delete company.firstHeldDayIndex[p.id];
+    delete company.lockedShares[p.id];
+  } else {
+    company.shares[p.id] = left;
+  }
+  p.cash += total; // 收入进现金（三货币规则：与公司股票相关的收付都走现金）
+  log(
+    state,
+    `${p.name} 按面值卖出 ${COMPANIES[company.kind].name} 原始股 ×${action.quantity}，得现金 ¥${total.toLocaleString('zh-CN')}（持股 ${left}）`,
+  );
   recomputeCompanyChairman(state, company);
 }
 
@@ -3028,7 +3069,7 @@ export function forceGameOver(state: GameState, winnerId: string): GameState {
 const NO_ACTOR_MESSAGE = '当前玩家不存在';
 
 /* ==========================================================================
- * 动作注册表（R3）：34 个玩家动作的「校验 + 执行」成对登记
+ * 动作注册表（R3）：36 个玩家动作的「校验 + 执行」成对登记
  *
  * 此前门控（`availableActions`，决定按钮可否点）与引擎校验（各动作函数开头的
  * `if (…) throw`）是**同一套规则的两套并行实现**：加一个动作要改两处，两处一漂移
@@ -3328,16 +3369,48 @@ function checkMinigamePick(state: GameState, _p: Player | null, action: ActionOf
   return null;
 }
 
+/**
+ * CORP-01 / CORP-14：认购校验。
+ *
+ * - **现金**按面值支付，没有现金就买不成（原始股与公司直接收付，不走存款）；
+ * - 一级市场申购**不看盘口**：例假日休市、全市场停牌都挡不住认购，也不必站在公司格上
+ *   —— 股市面板里的公司列表用的就是这条动作；
+ * - 单次上限 1000 张（CORP-01）。
+ */
 function checkBuyShares(state: GameState, p: Player | null, action: ActionOf<'BUY_SHARES'>): ActionRefusal {
-  if (state.phase !== 'awaiting_action') return '当前不能认购股份';
+  if (!canTradeStockNow(state)) return '当前不能认购股份';
   if (!p) return NO_ACTOR_MESSAGE;
-  const c = cellAt(state, p.position);
-  if (c.type !== 'company' || c.id !== action.cellId) return '不在该公司格，不能认购股份';
-  const company = companyAtCell(state, c.id);
-  if (!company) return '该公司不存在';
+  if (p.bankrupt) return '已倒闭的玩家不能认购股份';
+  const company = companyAtCell(state, action.cellId);
+  if (!company) return '该公司不存在，不能认购股份';
   if (!Number.isInteger(action.quantity) || action.quantity <= 0) return '股数必须为正整数';
   if (action.quantity > MAX_SHARES_PER_BUY) return `单次认购上限 ${MAX_SHARES_PER_BUY} 张`;
-  if (p.cash < company.sharePrice * action.quantity) return '现金不足';
+  const need = company.sharePrice * action.quantity;
+  if (p.cash < need) {
+    return `现金不足：认购 ${COMPANIES[company.kind].name} ×${action.quantity} 需 ¥${need.toLocaleString('zh-CN')}，可用现金 ¥${p.cash.toLocaleString('zh-CN')}`;
+  }
+  return null;
+}
+
+/**
+ * CORP-14：卖出原始股的校验。与认购相反，这是**二级市场转手**，要有对手盘才行
+ * ⇒ 受例假日休市与全市场停牌约束；且只能卖已过锁定期（下次行动）的那部分。
+ */
+function checkSellShares(state: GameState, p: Player | null, action: ActionOf<'SELL_SHARES'>): ActionRefusal {
+  if (!canTradeStockNow(state)) return '当前不能卖出原始股';
+  if (!p) return NO_ACTOR_MESSAGE;
+  if (p.bankrupt) return '已倒闭的玩家不能卖出原始股';
+  const company = companyAtCell(state, action.cellId);
+  if (!company) return '该公司不存在，不能卖出原始股';
+  if (!Number.isInteger(action.quantity) || action.quantity <= 0) return '股数必须为正整数';
+  if (state.stockHaltAllDays > 0) return `全市场停牌中（剩余 ${state.stockHaltAllDays} 天）`;
+  if (gameDate(state).isHoliday) return '例假日休市，无法卖出原始股';
+  const locked = lockedSharesOf(company, p.id);
+  if (action.quantity > sellableSharesOf(company, p.id)) {
+    return locked > 0
+      ? `持股不足：手上 ${company.shares[p.id] ?? 0} 张里有 ${locked} 张是本回合认购，要到下次行动才能转手`
+      : '持股不足';
+  }
   return null;
 }
 
@@ -3493,6 +3566,7 @@ const ACTION_SPECS: ActionSpecMap = {
   TAKE_LOAN: { check: checkTakeLoan, apply: (s, a) => takeLoan(s, a.amount) },
   REPAY_LOAN: { check: checkRepayLoan, apply: (s, a) => repayLoan(s, a.amount) },
   BUY_SHARES: { check: checkBuyShares, apply: (s, a) => buyShares(s, a) },
+  SELL_SHARES: { check: checkSellShares, apply: (s, a) => sellShares(s, a) },
   BUILD_ESTATE: { check: checkBuildEstate, apply: (s, a) => buildEstate(s, a) },
   SPECIAL_FINANCING: { check: checkSpecialFinancing, apply: (s, a) => specialFinancing(s, a) },
   BUY_LOTTERY_TICKET: { check: checkBuyLotteryTicket, apply: (s, a) => buyLotteryTicket(s, a) },

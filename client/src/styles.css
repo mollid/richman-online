@@ -606,6 +606,48 @@ button.mini {
   color: #78909c;
 }
 
+/* 公司原始股分区（CORP-14）：面值 + 现金，与上市股两档并行 */
+.stock-section-title {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 2px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 12px;
+  color: #b0bec5;
+}
+
+.stock-section-note {
+  font-size: 10px;
+  color: #607d8b;
+  text-align: right;
+}
+
+.stock-tile {
+  margin-left: 4px;
+  font-size: 10px;
+  color: #546e7a;
+}
+
+.stock-table tr.locked {
+  background: rgba(245, 183, 76, 0.07);
+}
+
+.stock-lock {
+  margin-left: 4px;
+  font-size: 10px;
+  color: #f5b74c;
+}
+
+.company-locked {
+  margin-left: 4px;
+  font-style: normal;
+  font-size: 10px;
+  color: #78909c;
+}
+
 /* 日 K 线与成交量（自定扩展）：纯 SVG，配色沿用面板的深底灰格 */
 .stock-chart {
   display: flex;

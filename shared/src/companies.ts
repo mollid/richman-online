@@ -23,6 +23,14 @@ import type { BoardCell, CompanyKind, CompanyState, GameState, Player } from './
  * 3. **持股最多**者取得经营权（董事长），享**免付费**特权；他人反超则自动移交；
  * 4. 持股相同 → 经营权归**先入股者**；
  * 5. 每月 15 号按持股比例分配盈余；亏损由股东按比例承担。
+ *
+ * 与股市的关系（CORP-14，自定扩展）：公司原始股与 6 支上市股是**两档市场**——
+ * - **定价**：原始股按**面值**，不涨跌、无 K 线、无冲击成本；上市股按日随机游走；
+ * - **货币**：原始股**现金**结算（认购扣现金、卖出回现金）；上市股只能动用**存款**；
+ * - **渠道**：认购走一级市场（踩到公司格当场申购，不看盘口，休市照样能买）；
+ *   转手走二级市场（股市面板随时挂单，但**例假日休市 / 全市场停牌期间没有对手盘**）；
+ * - **锁定**：任何一笔认购都要到**下次行动**才能卖（`lockedShares`，回合推进即解锁），
+ *   免得同一回合里「认购 → 夺经营权 → 原价卖回」把特权白嫖一遍。
  */
 
 /** 单次认购股份上限（CORP-01） */
@@ -93,6 +101,28 @@ export function companyAtCell(state: GameState, cellId: number): CompanyState | 
   return state.companies.find((c) => c.cellId === cellId);
 }
 
+/**
+ * CORP-14：本回合刚认购、还不能进股市转手的股数。
+ * 锁定表在回合推进时整表清空（见 `advanceTurn`），所以「下次行动」就是它的解锁时刻。
+ */
+export function lockedSharesOf(company: CompanyState, playerId: string): number {
+  return company.lockedShares?.[playerId] ?? 0;
+}
+
+/** CORP-14：可在股市卖出的股数 = 持股 − 锁定 */
+export function sellableSharesOf(company: CompanyState, playerId: string): number {
+  return Math.max(0, (company.shares[playerId] ?? 0) - lockedSharesOf(company, playerId));
+}
+
+/**
+ * CORP-01：按可用现金最多能认购几张（同时受单次上限约束）。
+ * 面值定价、无冲击成本，所以「成本 ÷ 单价」就是真实上限 —— 面板的「满额」与引擎校验共用此处。
+ */
+export function maxCashShares(price: number, cash: number): number {
+  if (price <= 0) return 0;
+  return Math.min(MAX_SHARES_PER_BUY, Math.floor(cash / price));
+}
+
 /** 建造级数总和（CORP-11：房屋 + 连锁店 + 建设的级数；连锁店按其等级计） */
 export function buildingLevels(p: Player): number {
   return p.properties.reduce((sum, q) => sum + q.grade, 0);
@@ -132,8 +162,7 @@ export function companyFee(state: GameState, kind: CompanyKind, payer: Player, r
 /**
  * 经营权判定（CORP-02）：持股最多者；持股相同取**先入股**者；
  * 再相同则按玩家座次先后。破产玩家不参与计算。无持股则经营权空缺（null）。
- */
-export function majorityHolderId(company: CompanyState, players: Player[]): string | null {
+ */export function majorityHolderId(company: CompanyState, players: Player[]): string | null {
   const order = new Map(players.map((p, i) => [p.id, i]));
   let best: string | null = null;
   let bestShares = 0;

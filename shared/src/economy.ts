@@ -28,13 +28,19 @@ export function propertyValue(state: GameState, prop: PlayerProperty): number {
   return base + upgrades;
 }
 
-/** 玩家总资产：现金 + 存款 + 股票现值 + 不动产现值 − 贷款本金 */
+/**
+ * 玩家总资产：现金 + 存款 + 股票现值 + 公司原始股面值 + 不动产现值 − 贷款本金。
+ *
+ * 公司股按**面值**计（CORP-14 起它随时能按面值卖回股市，是实打实的流动资产），
+ * 早先漏算这一项会让「把钱换成原始股」凭空压低物价指数、也让你在 W4 的总资产结算里吃亏。
+ */
 export function totalAssets(state: GameState, p: Player): number {
   let sum = p.cash + p.deposit;
   for (const [stockId, qty] of Object.entries(p.stocks)) {
     const stock = state.stockMarket.stocks.find((s) => s.id === stockId);
     if (stock) sum += stock.price * qty;
   }
+  for (const company of state.companies) sum += (company.shares[p.id] ?? 0) * company.sharePrice;
   for (const prop of p.properties) sum += propertyValue(state, prop);
   if (p.loan) sum -= p.loan.principal;
   return sum;

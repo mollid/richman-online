@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  actionRefusal,
   AIRLINE_FEE_PER_DAY,
   applyAction,
   availableActions,
@@ -12,19 +13,25 @@ import {
   createGame,
   ESTATE_BUILD_RATIO,
   INSURANCE_FEE_PER_DAY,
+  lockedSharesOf,
   majorityHolderId,
+  maxCashShares,
   MAX_SHARES_PER_BUY,
   nextRandom,
   OIL_FEE,
   POWER_FEE_PER_LEVEL,
+  priceIndex,
   RESTAURANT_FEE_PER_DAY,
+  ReplayEngine,
   rollDie,
   scaled,
+  sellableSharesOf,
   stockExecPrice,
+  totalAssets,
   WATER_FEE_PER_LAND,
   WHEEL_KINDS,
 } from '../src/index.js';
-import type { DateSerial, GameState, PlayerDef } from '../src/index.js';
+import type { DateSerial, GameState, PlayerAction, PlayerDef } from '../src/index.js';
 import { pinIndexOne } from './helpers/state.js';
 
 const PLAYERS: PlayerDef[] = [
@@ -80,6 +87,8 @@ function landOnCompany(cellId: number, mutate?: (g: GameState) => void): GameSta
   s.rngState = seedForSum(7);
   s.players[s.currentPlayerIndex]!.position = cellId - 7;
   mutate?.(s);
+  // 搭场景时授予的持股现在会计入总资产（CORP-14），指数因此漂移 ⇒ 先冻结回 1，费用断言才能写死数字
+  pinIndexOne(s);
   return applyAction(s, { type: 'ROLL_DICE' });
 }
 
@@ -472,5 +481,178 @@ describe('ECON-10 股票持仓成本指标', () => {
     const stock = g.stockMarket.stocks[0]!;
     const acted = applyAction(g, { type: 'BUY_STOCK', stockId: stock.id, quantity: 1 });
     expect(acted.players[0]!.stocks[stock.id]).toBe(1);
+  });
+});
+
+/**
+ * CORP-14（自定扩展，玩法文档 §3.4 / §5.1）：地图上的 11 家公司同时挂在股市里。
+ *
+ * 钉四件事：① 原始股按**面值**、只用**现金**买卖，与「存款炒股」两档不串；
+ * ② 本回合认购的要到**下次行动**才能转手（回合推进即解锁）；
+ * ③ 休市与全市场停牌挡得住转手，挡不住向公司申购（一级市场不看盘口）；
+ * ④ 持股计入**总资产** —— 把钱换成原始股不该凭空把物价指数压低。
+ */
+describe('CORP-14 原始股与股市互通', () => {
+  /** 不动棋子只推进回合（掷骰会引 RNG 与落格，这里只关心锁定期） */
+  function passTurn(state: GameState): GameState {
+    const s = structuredClone(state);
+    s.phase = 'awaiting_action';
+    return applyAction(s, { type: 'END_TURN' });
+  }
+
+  /** 两人局要连过两手才轮回到 p1 */
+  function backToFirstPlayer(state: GameState): GameState {
+    let s = state;
+    let guard = 0;
+    while (s.currentPlayerIndex !== 0 && guard++ < 4) s = passTurn(s);
+    return s;
+  }
+
+  const computer = (g: GameState) => companyAtCell(g, 43)!;
+
+  it('不在公司格也能申购：股市面板就是公司的挂牌处', () => {
+    let g = newGame();
+    expect(g.phase).toBe('awaiting_roll'); // 掷骰前就能下单（不绑定格型与阶段）
+    expect(g.players[0]!.position).toBe(0); // 脚下是起点，确定不是公司格
+    const before = g.players[0]!.cash;
+    g = applyAction(g, { type: 'BUY_SHARES', cellId: 43, quantity: 10 });
+    expect(g.players[0]!.cash).toBe(before - 400 * 10);
+    const comp = computer(g);
+    expect(comp.shares.p1).toBe(10);
+    expect(comp.chairmanId).toBe('p1');
+    expect(lockedSharesOf(comp, 'p1')).toBe(10);
+  });
+
+  it('原始股只认现金：存款再多也买不成，上市股那边才动存款', () => {
+    const g = newGame();
+    g.players[0]!.cash = 0;
+    g.players[0]!.deposit = 500000;
+    expect(() => applyAction(g, { type: 'BUY_SHARES', cellId: 43, quantity: 1 })).toThrow(/现金不足/);
+    // 同一笔钱换成现金才能买的原始股，但存款照样能炒股（两档货币各走各的）
+    expect(actionRefusal(g, { type: 'BUY_STOCK', stockId: 'tech', quantity: 1 })).toBeNull();
+  });
+
+  it('本回合认购的锁到下次行动；解锁后按面值卖回，收现金、退出股东名册', () => {
+    let g = newGame();
+    g = applyAction(g, { type: 'BUY_SHARES', cellId: 43, quantity: 30 });
+    expect(() => applyAction(g, { type: 'SELL_SHARES', cellId: 43, quantity: 10 })).toThrow(/下次行动/);
+    g = backToFirstPlayer(passTurn(g));
+    expect(g.currentPlayerIndex).toBe(0);
+    expect(lockedSharesOf(computer(g), 'p1')).toBe(0);
+    const cash = g.players[0]!.cash;
+    g = applyAction(g, { type: 'SELL_SHARES', cellId: 43, quantity: 30 });
+    expect(g.players[0]!.cash).toBe(cash + 400 * 30);
+    const comp = computer(g);
+    expect(comp.shares.p1).toBeUndefined();
+    expect(comp.firstHeldDayIndex.p1).toBeUndefined(); // 卖光即退出名册，再进场「先到先得」重新起算
+    expect(comp.chairmanId).toBeNull();
+  });
+
+  it('锁定期只锁新买的：可卖数与「满额」都和引擎同一个口径', () => {
+    let g = backToFirstPlayer(passTurn(applyAction(newGame(), { type: 'BUY_SHARES', cellId: 43, quantity: 20 })));
+    g = applyAction(g, { type: 'BUY_SHARES', cellId: 43, quantity: 10 }); // 30 张里 10 张在锁定
+    const comp = computer(g);
+    expect(comp.shares.p1).toBe(30);
+    expect(lockedSharesOf(comp, 'p1')).toBe(10);
+    expect(sellableSharesOf(comp, 'p1')).toBe(20);
+    expect(() => applyAction(g, { type: 'SELL_SHARES', cellId: 43, quantity: 21 })).toThrow(/持股不足/);
+    expect(actionRefusal(g, { type: 'SELL_SHARES', cellId: 43, quantity: 20 })).toBeNull();
+    const cap = maxCashShares(400, g.players[0]!.cash);
+    expect(actionRefusal(g, { type: 'BUY_SHARES', cellId: 43, quantity: cap })).toBeNull();
+    expect(actionRefusal(g, { type: 'BUY_SHARES', cellId: 43, quantity: cap + 1 })).toMatch(/现金不足/);
+  });
+
+  it('例假日与全市场停牌：挡得住转手，挡不住申购', () => {
+    // 2026-01-10 是周六；两人都过一手落到 01-11（周日），锁已解但仍在休市
+    let g = applyAction(createGame(PLAYERS, 9105, { startDate: { year: 2026, month: 1, day: 10 } }), {
+      type: 'START_GAME',
+    });
+    g = applyAction(g, { type: 'BUY_SHARES', cellId: 43, quantity: 10 });
+    expect(computer(g).shares.p1).toBe(10); // 一级市场不看盘口，休市照买
+    g = backToFirstPlayer(passTurn(g));
+    expect(lockedSharesOf(computer(g), 'p1')).toBe(0);
+    expect(() => applyAction(g, { type: 'SELL_SHARES', cellId: 43, quantity: 1 })).toThrow(/例假日休市/);
+    const halted = structuredClone(g);
+    halted.stockHaltAllDays = 3;
+    expect(() => applyAction(halted, { type: 'SELL_SHARES', cellId: 43, quantity: 1 })).toThrow(/全市场停牌/);
+    expect(actionRefusal(halted, { type: 'BUY_SHARES', cellId: 43, quantity: 1 })).toBeNull();
+  });
+
+  it('踩到公司格认购同样上锁，且别家也能经股市申购', () => {
+    let g = landOnCompany(43, (s) => {
+      s.players[0]!.cash = 30000;
+    });
+    expect(availableActions(g).canBuyShares).toBe(true);
+    g = applyAction(g, { type: 'BUY_SHARES', cellId: 43, quantity: 10 });
+    expect(lockedSharesOf(computer(g), 'p1')).toBe(10);
+    // 同一个动作、同一条规则：脚下是电脑公司，也能申购别家（股市渠道）
+    expect(actionRefusal(g, { type: 'BUY_SHARES', cellId: 51, quantity: 10 })).toBeNull();
+  });
+
+  it('持股计入总资产：现金换成原始股前后一分不差，物价指数不漂移', () => {
+    let g = newGame();
+    const idx0 = priceIndex(g);
+    const assets0 = totalAssets(g, g.players[0]!);
+    g = applyAction(g, { type: 'BUY_SHARES', cellId: 43, quantity: 20 });
+    expect(totalAssets(g, g.players[0]!)).toBe(assets0); // 8000 现金 → 8000 持股
+    expect(priceIndex(g)).toBe(idx0);
+    // 卖回也守恒（先清掉锁定期，本用例只关心记账）
+    const unlocked = structuredClone(g);
+    computer(unlocked).lockedShares = {};
+    const sold = applyAction(unlocked, { type: 'SELL_SHARES', cellId: 43, quantity: 20 });
+    expect(totalAssets(sold, sold.players[0]!)).toBe(assets0);
+  });
+
+  it('分红不分渠道：股市申购、尚在锁定期的持股照样分盈余', () => {
+    let g = applyAction(createGame(PLAYERS, 9107, { startDate: { year: 2026, month: 1, day: 14 } }), {
+      type: 'START_GAME',
+    });
+    for (const p of g.players) p.diceCount = 2; // advanceOneDay 用的是两骰之和 3
+    g = applyAction(g, { type: 'BUY_SHARES', cellId: 43, quantity: 10 });
+    computer(g).surplus = 1000;
+    const cash = g.players[0]!.cash;
+    g = advanceOneDay(g); // 推到 15 号分红日
+    expect(g.players[0]!.cash).toBe(cash + 1000);
+    expect(g.log.some((l) => l.text.includes('【电脑公司】'))).toBe(true);
+  });
+
+  it('认购与卖出（含锁定期）都能被回放复现', () => {
+    // 只用动作能表达的东西建局：夹具里的 `diceCount = 2` 之类改动不在动作日志里，回放拿不到
+    const seed = 9109;
+    let s = applyAction(createGame(PLAYERS, seed, { startDate: { ...MONDAY } }), { type: 'START_GAME' });
+    const actions: Array<{ turn: number; action: PlayerAction }> = [{ turn: 0, action: { type: 'START_GAME' } }];
+    const push = (state: GameState, action: PlayerAction) => {
+      actions.push({ turn: state.turn, action });
+      return applyAction(state, action);
+    };
+    s = push(s, { type: 'BUY_SHARES', cellId: 43, quantity: 30 }); // 认购即锁定（¥12,000 / 手上 ¥15,000）
+    const sell: PlayerAction = { type: 'SELL_SHARES', cellId: 43, quantity: 10 };
+    let soldOnce = false;
+    for (let i = 0; i < 14 && s.phase !== 'game_over'; i++) {
+      // 锁定期一过就卖掉一半：卖出这条通道也必须进动作日志
+      if (!soldOnce && actionRefusal(s, sell) === null) {
+        s = push(s, sell);
+        soldOnce = true;
+        continue;
+      }
+      s = push(s, s.phase === 'awaiting_roll' ? { type: 'ROLL_DICE' } : { type: 'END_TURN' });
+    }
+    expect(soldOnce, '回合绕回 p1 后锁定期应已解除').toBe(true);
+    expect(companyAtCell(s, 43)!.shares.p1).toBe(20); // 实况里确实卖掉过 10 张
+    const record = {
+      seed,
+      startDate: { ...MONDAY },
+      players: PLAYERS.map((p) => ({ player_name: p.name, color: p.color, player_key: p.id })),
+      actions,
+    };
+    const replayed = new ReplayEngine(record).finalState;
+    expect(replayed.turn).toBe(s.turn);
+    for (const company of s.companies) {
+      const twin = replayed.companies.find((c) => c.kind === company.kind)!;
+      expect(twin.shares, company.kind).toEqual(company.shares);
+      expect(twin.lockedShares, company.kind).toEqual(company.lockedShares);
+      expect(twin.chairmanId, company.kind).toBe(company.chairmanId);
+    }
+    expect(replayed.players[0]!.cash).toBe(s.players[0]!.cash);
   });
 });
