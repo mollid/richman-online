@@ -221,7 +221,7 @@ export function landOnCompany(ctx: CellLandingCtx, p: Player, c: BoardCell): Lan
 }
 
 /** 公司强制服务（CORP-03/04/06）：出国旅游 / 饭店休息 / 强制投保 */
-export function applyCompanyService(ctx: CellLandingCtx, p: Player, kind: CompanyKind, roll: number): void {
+function applyCompanyService(ctx: CellLandingCtx, p: Player, kind: CompanyKind, roll: number): void {
   const { state } = ctx;
   const days = Math.max(1, Math.min(3, roll));
   switch (kind) {
@@ -246,7 +246,7 @@ export function applyCompanyService(ctx: CellLandingCtx, p: Player, kind: Compan
 }
 
 /** CORP-12：百货公司董事长进入时获赠一张卡片或一项道具 */
-export function grantDepartmentGift(ctx: CellLandingCtx, p: Player, companyName: string): void {
+function grantDepartmentGift(ctx: CellLandingCtx, p: Player, companyName: string): void {
   const { state } = ctx;
   const kindDraw = nextRandom(state.rngState);
   state.rngState = kindDraw.nextState;

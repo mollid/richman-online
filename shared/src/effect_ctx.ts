@@ -170,11 +170,11 @@ export interface NewsEffectCtx extends EngineCtx {
 }
 
 /**
- * 神明行为上下文：神明的附身一次性结算、行进显灵（抵租 / 侵占 / 加盖 / 拆屋）、
- * 日切计时与对偶转化都读 `p.god` 并需要写日志、扣款、抽卡，故与效果族共用同一份注入。
- * 神明的**数据**（`GODS` / `GodDef`）留在 `gods.ts`，此处只补它的**行为**依赖。
+ * 神明行为上下文：附身一次性结算、行进显灵（抵租 / 侵占 / 加盖 / 拆屋）、日切计时与对偶转化
+ * 都要写日志、扣款、抽卡，与效果族共用同一份注入。结构与 `EngineCtx` 相同，
+ * 单独命名只为在 `gods.ts` 的签名里读得出意图。
  */
-export interface GodEffectCtx extends EngineCtx {}
+export type GodEffectCtx = EngineCtx;
 
 /**
  * 落格结算的走向（R2 的落格 handler 协议）：

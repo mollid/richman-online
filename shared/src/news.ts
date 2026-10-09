@@ -154,9 +154,9 @@ export function renderNewsText(def: NewsEventDef, params: Partial<Record<'street
 }
 
 /** EVT-01 事件 16/17：豪雨/交通阻塞强制停留天数 */
-export const TRAFFIC_HALT_DAYS = 1;
+const TRAFFIC_HALT_DAYS = 1;
 /** EVT-01 事件 24/25：股市全面崩盘/上涨的幅度（%） */
-export const STOCK_NEWS_PCT = 10;
+const STOCK_NEWS_PCT = 10;
 
 /** 事件 0–3：在押 / 住院者的开释与延期（四条新闻共用一体，按 `def.effect` 分流） */
 function custodyEvent(ctx: NewsEffectCtx): string {

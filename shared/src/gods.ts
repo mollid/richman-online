@@ -232,7 +232,7 @@ export function attachGod(ctx: GodEffectCtx, p: Player, def: GodDef): void {
 }
 
 /** 附身效果（一次性结算） */
-export function applyGodPossession(ctx: GodEffectCtx, p: Player, def: GodDef): void {
+function applyGodPossession(ctx: GodEffectCtx, p: Player, def: GodDef): void {
   const { state } = ctx;
   switch (def.id) {
     case 'big-wealth': {
