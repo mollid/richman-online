@@ -4,6 +4,15 @@
 #   server  ws://localhost:2567     （Colyseus 对战 + REST）
 #   db      postgres:16
 #   redis   redis:7
+#
+# 局域网访问（同一 WiFi 的朋友进来玩）：
+#   地址 http://<本机局域网 IP>:8080 —— 客户端按 window.location.hostname 连 ws://:2567，
+#   所以两个端口都要放出来（联机对局走 WebSocket，不经 nginx）。已实测可进。
+#   实测本机 Docker Desktop（WSL2 后端）本来就把发布端口绑在 0.0.0.0 上，卡住的是 Windows 防火墙：
+#   这块网卡被归类成「公用网络」，入站默认丢包，且 Docker 自己不会建规则。放行一条就通（管理员，一次性）：
+#     netsh advfirewall firewall add rule name="Richman Online LAN" dir=in action=allow protocol=tcp localport=8080,2567 remoteip=<你的网段>/24 profile=any
+#   还不通就查路由器有没有开「AP 隔离 / 客户端隔离」—— 开了的话同 WiFi 设备之间本来就互相不通。
+#   端口只写 '0.0.0.0:8080:80' 这种形式，是为了在别的机器（Linux 引擎）上也明确不落到 127.0.0.1。
 
 services:
   db:
@@ -13,7 +22,8 @@ services:
       POSTGRES_PASSWORD: richman
       POSTGRES_DB: richman
     ports:
-      - '5432:5432'
+      # 库和缓存只给本机调试用：显式锁在 127.0.0.1，别跟着上面的端口一起漏进局域网
+      - '127.0.0.1:5432:5432'
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -26,7 +36,7 @@ services:
   redis:
     image: redis:7-alpine
     ports:
-      - '6379:6379'
+      - '127.0.0.1:6379:6379'
     healthcheck:
       test: ['CMD', 'redis-cli', 'ping']
       interval: 5s
@@ -44,7 +54,9 @@ services:
       REDIS_URL: redis://redis:6379/0
       RICHMAN_TEST_MODE: '1' # 测试钩子开关：允许 e2e 直接触发终局验证战绩链路
     ports:
-      - '2567:2567'
+      # 写不写 0.0.0.0 本机都一样（Desktop 本来就绑全网卡），留下来是给 Linux 引擎那侧兜底：
+      # 那边一旦配了 host_binding_ipv4=127.0.0.1，不写死就会只监听回环
+      - '0.0.0.0:2567:2567'
     depends_on:
       db:
         condition: service_healthy
@@ -68,7 +80,7 @@ services:
       context: .
       dockerfile: client/Dockerfile
     ports:
-      - '8080:80'
+      - '0.0.0.0:8080:80'
     depends_on:
       server:
         condition: service_healthy
