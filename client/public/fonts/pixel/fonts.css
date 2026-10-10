@@ -1,0 +1,45 @@
+/* 本文件由 design/hud-ac/tools/build-fonts.py 生成，不要手改。
+ * 两款像素字体，均为 SIL Open Font License 1.1，可商用可自托管：
+ *   Fusion Pixel 12px  缝合像素 12px 比例版 —— 主力，笔画纯黑实心
+ *   QiuYe Round 16     秋叶圆体 16        —— 备选，圆润、笔画带 1px 灰边
+ *
+ * 像素字体的使用前提（否则会糊）：
+ *   1. font-size 必须是设计字号的**整数倍**（缝合 12/24/36px；秋叶 16/32px），不要用 13px 这种；
+ *   2. 关抗锯齿：-webkit-font-smoothing: none; font-smooth: never;
+ *   3. line-height 也取整数像素；
+ *   4. 如果用 canvas 绘制，贴图要 scaleMode: NEAREST / image-rendering: pixelated。
+ *
+ * 为什么主力选缝合版而不是方舟：方舟像素 12px 简中缺「骰窗券即筑毁旋姿旅斜」——
+ * 对一个《大富翁》来说缺「骰」是致命的。缝合版补上了这些，还顺带带繁体。
+ *
+ * 秋叶圆体为什么只是备选：它 16px 是设计字号，但字体虽带内嵌 16px 1-bit 位图
+ * （bloc/bdat 表），实测 **Chrome on Windows 并不使用内嵌位图、走矢量轮廓** ——
+ * 1:1 截图的像素裁决是「笔画中间 1 像素 + 两侧灰边」，比缝合像素的实心纯黑要虚。
+ * 它的优势是字形更圆润、覆盖到 GB2312 全集 + 常用繁体，适合当「圆体像素」口味。
+ */
+
+@font-face {
+  font-family: 'Fusion Pixel 12px';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(./fusion-pixel-12px-zh_hans.woff2) format("woff2");
+  /* zh_hans 构建同时覆盖简繁与拉丁，不必再切分片 */
+}
+
+@font-face {
+  font-family: 'QiuYe Round 16';
+  font-style: normal;
+  font-weight: 400;
+  font-display: block;
+  src: url(./qiuye-round-16.woff2) format("woff2");
+  /* 16px 是唯一原生字号，32px 是整数倍放大；其余字号点阵会被重采样糊掉。
+   * 它带内嵌 16px 1-bit 位图，但 Chrome/Windows 不读（见文件头注释），故 16px 下边缘发虚。 */
+}
+
+/* 授权：Fusion Pixel 12px —— SIL OFL 1.1，原文见同目录 OFL.txt。
+ * 上游整合了三个开源像素字体的字形，各自授权见 fusion-pixel-font 仓库 LICENSES/：
+ *   ark-pixel (方舟像素) · cubic-11 · galmuri  —— 均为 OFL 1.1。
+ * 授权：QiuYe Round 16 —— SIL OFL 1.1，原文见 ../licenses/OFL-qiuye-round.txt。
+ * 上游 github.com/yzdnn/qiuyeyuanti-16，血统是日本 KHドット秋葉原16 (Sharp X68000)。
+ */

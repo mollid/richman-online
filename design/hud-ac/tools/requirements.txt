@@ -1,0 +1,8 @@
+# 字体构建脚本的依赖（不是应用的运行时依赖）
+#
+#   pip install -r design/hud-ac/tools/requirements.txt
+#   python design/hud-ac/tools/build-fonts.py
+#
+# brotli 是 --flavor=woff2 的必需项，缺了会报 "No module named 'brotli'"。
+fonttools[woff]>=4.50
+brotli>=1.1

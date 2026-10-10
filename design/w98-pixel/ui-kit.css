@@ -1,0 +1,485 @@
+/* ==========================================================================
+   W98-Pixel UI Kit — Components
+   依赖 tokens.css。所有取值必须来自 --w98-* 变量，不得写死色号。
+   命名：BEM 风格，统一 .w98- 前缀，状态用 .is-*
+   ========================================================================== */
+
+/* ---------- 0. 基元 ---------- */
+
+/* 像素贴图容器：禁止插值，缩放后仍是硬边 */
+.w98-icon {
+  width: var(--w98-icon-size);
+  height: var(--w98-icon-size);
+  display: grid;
+  place-content: center;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  filter: drop-shadow(var(--w98-shadow-sprite));
+  flex-shrink: 0;
+}
+
+/* 展示型标题：描边字，用于「玩家資料」「小地圖」「NEWS」这类区块标题 */
+.w98-heading {
+  font-family: var(--w98-font-pix);
+  font-size: var(--w98-fs-title);
+  font-weight: 700;
+  letter-spacing: 2px;
+  color: var(--w98-chrome-blue-dk);
+  text-shadow: var(--w98-text-outline);
+}
+
+/* ---------- 1. 桌面壳：窗口 + 标题栏 ---------- */
+
+.w98-app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--w98-face);
+  border: var(--w98-line-thin);
+  box-shadow: var(--w98-bevel-out);
+  font-family: var(--w98-font-ui);
+  color: var(--w98-text);
+}
+
+.w98-titlebar {
+  display: flex;
+  align-items: center;
+  gap: var(--w98-space-2);
+  height: var(--w98-titlebar-h);
+  padding: 0 var(--w98-space-1) 0 var(--w98-space-2);
+  background: var(--w98-grad-titlebar);
+  border-bottom: var(--w98-line-thin);
+  color: var(--w98-text-invert);
+  user-select: none;
+}
+
+.w98-titlebar__icon {
+  width: 18px;
+  height: 18px;
+  image-rendering: pixelated;
+}
+
+.w98-titlebar__text {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--w98-fs-caption);
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-shadow: var(--w98-text-hard-shadow);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.w98-titlebar__controls {
+  display: flex;
+  gap: var(--w98-space-1);
+}
+
+.w98-caption-btn {
+  width: 20px;
+  height: 18px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  background: var(--w98-face);
+  border: var(--w98-line-thin);
+  box-shadow: var(--w98-bevel-out-thin);
+  font: 700 11px/1 var(--w98-font-num);
+  color: var(--w98-ink);
+  cursor: pointer;
+}
+
+.w98-caption-btn:active { box-shadow: var(--w98-bevel-in); }
+
+/* ---------- 2. 顶部工具栏 ---------- */
+
+.w98-toolbar {
+  display: flex;
+  align-items: stretch;
+  gap: var(--w98-space-1);
+  height: var(--w98-toolbar-h);
+  padding: var(--w98-space-2);
+  background: var(--w98-face);
+  border-bottom: var(--w98-line-thin);
+  box-shadow: var(--w98-bevel-out);
+}
+
+.w98-toolbar__sep {
+  width: var(--w98-space-2);
+  border-left: var(--w98-stroke-thin) solid var(--w98-face-dark);
+  border-right: var(--w98-stroke-thin) solid var(--w98-face-light);
+}
+
+.w98-toolbtn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--w98-space-1);
+  min-width: 68px;
+  padding: var(--w98-space-1) var(--w98-space-2);
+  background: transparent;
+  border: var(--w98-stroke-thin) solid transparent;
+  border-radius: var(--w98-radius-chip);
+  font-family: var(--w98-font-ui);
+  font-size: var(--w98-fs-tool);
+  font-weight: 700;
+  color: var(--w98-chrome-blue-dk);
+  cursor: pointer;
+  transition: background var(--w98-dur-fast) var(--w98-ease-out),
+              transform var(--w98-dur-fast) var(--w98-ease-out);
+}
+
+.w98-toolbtn:hover:not(:disabled) {
+  background: var(--w98-face-light);
+  border-color: var(--w98-face-dark);
+}
+
+.w98-toolbtn:active:not(:disabled) { transform: translateY(2px); }
+
+.w98-toolbtn.is-active {
+  background: var(--w98-accent);
+  border-color: var(--w98-ink);
+  box-shadow: var(--w98-bevel-out-thin);
+}
+
+.w98-toolbtn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.w98-toolbtn .w98-icon { width: 34px; height: 34px; }
+
+/* ---------- 3. 羊皮纸信息面板 ---------- */
+
+.w98-parchment {
+  background: var(--w98-grad-parch);
+  border: var(--w98-line-parch);
+  border-radius: var(--w98-radius-card);
+  box-shadow: var(--w98-shadow-sprite), inset 0 0 0 1px var(--w98-parch-light);
+  padding: var(--w98-space-3);
+}
+
+.w98-parchment__title {
+  display: inline-block;
+  margin: calc(-1 * var(--w98-space-4)) calc(-1 * var(--w98-space-1)) var(--w98-space-3);
+  padding: var(--w98-space-1) var(--w98-space-3);
+  background: var(--w98-parch-light);
+  border: var(--w98-line-parch);
+  border-radius: var(--w98-radius-chip);
+  font-size: var(--w98-fs-label);
+  font-weight: 700;
+  color: var(--w98-chrome-blue-dk);
+}
+
+/* 右侧竖排标签页 */
+.w98-tabs-v {
+  display: flex;
+  flex-direction: column;
+  gap: var(--w98-space-2);
+  width: var(--w98-tab-v-w);
+}
+
+.w98-tab-v {
+  writing-mode: vertical-rl;
+  text-orientation: upright;
+  display: flex;
+  justify-content: center;
+  padding: var(--w98-space-3) var(--w98-space-1);
+  background: var(--w98-parch);
+  border: var(--w98-line-parch);
+  border-radius: var(--w98-radius-chip) 0 0 var(--w98-radius-chip);
+  font-size: var(--w98-fs-tool);
+  font-weight: 700;
+  color: var(--w98-text);
+  cursor: pointer;
+  transition: background var(--w98-dur-fast) var(--w98-ease-out);
+}
+
+.w98-tab-v:hover:not(.is-active) { background: var(--w98-parch-light); }
+
+.w98-tab-v.is-active {
+  background: var(--w98-accent);
+  border-color: var(--w98-ink);
+  box-shadow: var(--w98-bevel-out-thin);
+  transform: translateX(-4px);
+}
+
+/* 数值行：图标 + 标签 + 右对齐等宽数字 */
+.w98-stat {
+  display: grid;
+  grid-template-columns: 22px 1fr auto;
+  align-items: center;
+  gap: var(--w98-space-2);
+  padding: var(--w98-space-2) 0;
+}
+
+.w98-stat__label { font-size: var(--w98-fs-body); font-weight: 700; }
+
+.w98-stat__value {
+  font-family: var(--w98-font-num);
+  font-size: var(--w98-fs-value);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.w98-stat__value.is-negative { color: var(--w98-danger); }
+.w98-stat__value.is-positive { color: var(--w98-ok); }
+
+/* 头像框 */
+.w98-avatar {
+  width: var(--w98-avatar-size);
+  height: var(--w98-avatar-size);
+  background: var(--w98-chrome-blue);
+  border: var(--w98-line);
+  border-radius: var(--w98-radius-chip);
+  box-shadow: inset 0 0 0 2px var(--w98-parch-light);
+  image-rendering: pixelated;
+  object-fit: contain;
+}
+
+/* ---------- 4. 底部动作条 + 玻璃圆按钮 ---------- */
+
+.w98-actionbar {
+  display: flex;
+  align-items: center;
+  gap: var(--w98-space-4);
+  height: var(--w98-actionbar-h);
+  padding: 0 var(--w98-space-5);
+  background: var(--w98-grad-actionbar);
+  border-top: var(--w98-line);
+  border-radius: var(--w98-radius-card);
+  box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.35);
+}
+
+.w98-orb {
+  position: relative;
+  width: var(--w98-orb-size);
+  height: var(--w98-orb-size);
+  display: grid;
+  place-content: center;
+  gap: 2px;
+  padding: 0;
+  border: var(--w98-stroke-heavy) solid var(--w98-ink);
+  border-radius: var(--w98-radius-pill);
+  color: var(--w98-text-invert);
+  font-family: var(--w98-font-ui);
+  cursor: pointer;
+  /* 内层渐变负责玻璃高光：上半亮、下半压暗 */
+  background-image: var(--w98-grad-orb);
+  background-blend-mode: overlay;
+  box-shadow:
+    0 4px 0 var(--w98-ink),
+    inset 0 0 0 3px rgba(255, 255, 255, 0.55),
+    0 0 0 4px var(--w98-face-light);
+  transition: transform var(--w98-dur-fast) var(--w98-ease-out);
+}
+
+.w98-orb::after {
+  content: '';
+  position: absolute;
+  inset: 8% 12% auto;
+  height: 34%;
+  border-radius: var(--w98-radius-pill);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.8), rgba(255, 255, 255, 0));
+  pointer-events: none;
+}
+
+.w98-orb:hover:not(:disabled)  { transform: translateY(-2px); }
+.w98-orb:active:not(:disabled) { transform: translateY(3px); box-shadow: 0 1px 0 var(--w98-ink), inset 0 0 0 3px rgba(255,255,255,.4); }
+.w98-orb:disabled              { filter: grayscale(0.7) brightness(0.75); cursor: not-allowed; }
+
+.w98-orb--go   { background-color: var(--w98-ok); }
+.w98-orb--card { background-color: var(--w98-tile-orange); color: var(--w98-ink); }
+.w98-orb--aid  { background-color: var(--w98-danger); }
+
+/* 字号必须是 12 的整数倍：原来是 22px，像素点阵会被重采样成糊的 */
+.w98-orb__glyph { font: 700 var(--w98-fs-pix-md)/1 var(--w98-font-pix); -webkit-font-smoothing: none; }
+.w98-orb__label { font-size: var(--w98-fs-caption); font-weight: 700; letter-spacing: 1px; }
+
+/* ---------- 5. 悬浮窗（小地图等） ---------- */
+
+.w98-float {
+  position: absolute;
+  z-index: var(--w98-z-float);
+  width: 260px;
+  background: var(--w98-face);
+  border: var(--w98-line-thin);
+  box-shadow: var(--w98-bevel-out), var(--w98-shadow-float);
+}
+
+.w98-float__body {
+  padding: var(--w98-space-2);
+  background: var(--w98-sea-deep);
+  box-shadow: var(--w98-bevel-in);
+}
+
+/* ---------- 6. NEWS 绳圈徽章 ---------- */
+
+.w98-news {
+  position: relative;
+  z-index: var(--w98-z-badge);
+  display: grid;
+  place-items: center;
+  width: 168px;
+  height: 168px;
+  border-radius: var(--w98-radius-pill);
+  /* 绳圈：金色环 + 虚线内圈模拟麻花边 */
+  background:
+    radial-gradient(circle, var(--w98-parch-light) 0 58%, transparent 58%),
+    repeating-conic-gradient(var(--w98-accent) 0 8deg, var(--w98-accent-deep) 8deg 16deg);
+  border: var(--w98-stroke-heavy) solid var(--w98-ink);
+  box-shadow: var(--w98-shadow-float);
+}
+
+.w98-news__body {
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  min-width: 148px;
+  padding: var(--w98-space-2) var(--w98-space-3);
+  background: var(--w98-text-invert);
+  border: var(--w98-line);
+  border-radius: var(--w98-radius-chip);
+  font-size: var(--w98-fs-body);
+  font-weight: 700;
+  text-align: center;
+  color: var(--w98-text);
+}
+
+/* 对话尾巴 */
+.w98-news__body::before {
+  content: '';
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  margin-left: calc(-1 * var(--w98-space-2));
+  border: var(--w98-space-2) solid transparent;
+  border-bottom-color: var(--w98-ink);
+}
+
+/* ---------- 7. 棋盘地块片（DOM 版，仅用于 UI 预览与提示） ---------- */
+
+.w98-tile {
+  width: var(--w98-tile-w);
+  height: var(--w98-tile-h);
+  display: grid;
+  place-content: center;
+  gap: 2px;
+  text-align: center;
+  background: var(--w98-tile-gray);
+  border: var(--w98-line);
+  border-radius: var(--w98-radius-chip);
+  box-shadow: 0 4px 0 rgba(59, 42, 26, 0.4);
+  font-size: var(--w98-fs-caption);
+  font-weight: 700;
+  color: var(--w98-ink);
+}
+
+.w98-tile--orange { background: var(--w98-tile-orange); }
+.w98-tile--purple { background: var(--w98-tile-purple); color: var(--w98-text-invert); }
+.w98-tile--green  { background: var(--w98-tile-green); }
+.w98-tile--blue   { background: var(--w98-tile-blue); color: var(--w98-text-invert); }
+.w98-tile--gold   { background: var(--w98-tile-gold); }
+.w98-tile.is-selected { box-shadow: var(--w98-glow-select), 0 4px 0 rgba(59,42,26,.4); }
+
+/* ---------- 8. 表单控件（Win9x 语言） ---------- */
+
+.w98-btn {
+  padding: var(--w98-space-2) var(--w98-space-4);
+  background: var(--w98-face);
+  border: var(--w98-line-thin);
+  box-shadow: var(--w98-bevel-out);
+  border-radius: 0;
+  font-family: var(--w98-font-ui);
+  font-size: var(--w98-fs-body);
+  font-weight: 700;
+  color: var(--w98-text);
+  cursor: pointer;
+}
+
+.w98-btn:hover:not(:disabled)  { background: var(--w98-face-light); }
+.w98-btn:active:not(:disabled) { box-shadow: var(--w98-bevel-in); transform: translateY(1px); }
+.w98-btn:disabled              { color: var(--w98-face-dark); text-shadow: 1px 1px 0 var(--w98-face-light); cursor: not-allowed; }
+
+.w98-btn--primary { background: var(--w98-accent); }
+.w98-btn--danger  { background: var(--w98-danger); color: var(--w98-text-invert); }
+
+.w98-field {
+  padding: var(--w98-space-2);
+  background: var(--w98-face-light);
+  border: var(--w98-line-thin);
+  box-shadow: var(--w98-bevel-in);
+  border-radius: 0;
+  font-family: var(--w98-font-ui);
+  font-size: var(--w98-fs-body);
+  color: var(--w98-text);
+}
+
+.w98-field:focus { outline: none; box-shadow: var(--w98-bevel-in), var(--w98-glow-select); }
+
+/* ---------- 9. 棋盘舞台底色（水面） ---------- */
+
+.w98-stage {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  background:
+    repeating-linear-gradient(0deg, rgba(255,255,255,.06) 0 2px, transparent 2px 8px),
+    radial-gradient(circle at 30% 20%, var(--w98-sea) 0%, var(--w98-sea-deep) 70%);
+  box-shadow: var(--w98-bevel-in);
+  overflow: hidden;
+}
+
+/* ---------- 10. 像素字（点阵） ---------- */
+
+/*
+ * 用像素中文字体的唯一正确姿势。三件事必须同时成立，少一样点阵就会被重采样成糊的：
+ *   1. font-size 取 --w98-fs-pix-* 档位（12 的整数倍）—— 其它字号会破坏像素网格；
+ *   2. 关掉抗锯齿 —— 系统把边缘柔化之后就不再是像素了；
+ *   3. letter-spacing 归零 —— 像素字的字距已经算进点阵里，再撑开会出现半像素缝。
+ * 另外记得 line-height 也要取整数像素，别用 1.5 这种相对值。
+ */
+.w98-pix {
+  font-family: var(--w98-font-pix);
+  font-size: var(--w98-fs-pix-sm);
+  line-height: 16px;
+  letter-spacing: 0;
+  font-variant-ligatures: none;
+  -webkit-font-smoothing: none;   /* Chrome / Safari / Edge */
+  -moz-osx-font-smoothing: unset; /* Firefox(macOS) 关掉灰度平滑 */
+  font-smooth: never;             /* 非标准，写了不亏 */
+}
+
+.w98-pix--md { font-size: var(--w98-fs-pix-md); line-height: 28px; }
+.w98-pix--lg { font-size: var(--w98-fs-pix-lg); line-height: 44px; }
+
+/*
+ * 备选口味：秋叶圆体 16。
+ *
+ * 和缝合像素的差别只在笔画质感 —— 缝合像素是实心纯黑，秋叶圆体是圆润的笔画、边缘带 1px
+ * 灰过渡（因为它走矢量轮廓，内嵌点阵 Chrome on Windows 不读）。想换口味时用这个类即可。
+ *
+ * ⚠️ 字号档位换了：秋叶圆体的设计字号是 **16px**，所以只能用 16/32 这两档
+ *    （--w98-fs-qy-*），不能沿用缝合像素的 12/24/36 —— 那是 16 的非整数倍，一定糊。
+ */
+.w98-pix-qiuye {
+  font-family: var(--w98-font-qy);
+  font-size: var(--w98-fs-qy-sm);
+  line-height: 22px;
+  letter-spacing: 0;
+  font-variant-ligatures: none;
+  -webkit-font-smoothing: none;
+  -moz-osx-font-smoothing: unset;
+  font-smooth: never;
+}
+
+.w98-pix-qiuye--md { font-size: var(--w98-fs-qy-md); line-height: 40px; }
+
+/* ---------- 11. 无障碍：尊重降低动效 ---------- */
+
+@media (prefers-reduced-motion: reduce) {
+  .w98-orb, .w98-toolbtn, .w98-tab-v, .w98-btn { transition: none; }
+  .w98-orb:active:not(:disabled), .w98-toolbtn:active:not(:disabled) { transform: none; }
+}

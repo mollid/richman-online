@@ -69,9 +69,26 @@ export function BankPanel({
             {q}
           </button>
         ))}
-        <button className="mini" onClick={() => setAmount(Math.max(1, maxDeposit || maxWithdraw || 1))}>
-          全部
-        </button>
+        {/* 原来只有一个「全部」，取的是 maxDeposit || maxWithdraw —— 你想「取光」时
+            它可能填的却是存款上限。存款与取款的上限是两个数，就分开两个按钮，各带各的数。 */}
+        {maxDeposit > 0 && (
+          <button
+            className="mini"
+            title={`把现金全部存进来（¥${maxDeposit.toLocaleString('zh-CN')}）`}
+            onClick={() => setAmount(maxDeposit)}
+          >
+            存满
+          </button>
+        )}
+        {maxWithdraw > 0 && (
+          <button
+            className="mini"
+            title={`把存款全部取出来（¥${maxWithdraw.toLocaleString('zh-CN')}）`}
+            onClick={() => setAmount(maxWithdraw)}
+          >
+            取光
+          </button>
+        )}
       </div>
 
       <div className="bank-action-row">

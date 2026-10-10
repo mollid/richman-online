@@ -90,7 +90,9 @@ export function StockPanel({
 
   return (
     <div className="panel stock-panel">
-      <div className="panel-title">股市 · 第 {game.round} 回合</div>
+      {/* 口径与 HUD 顶栏一致：turn 才是「回合」，round 是转完一圈。原来这里把 round 写成回合，
+          于是顶栏「第 15 回合」和面板「第 8 回合」同屏打架。 */}
+      <div className="panel-title">股市 · 第 {game.turn} 回合</div>
 
       {/* 市场状态条 */}
       <div className="stock-market-bar">

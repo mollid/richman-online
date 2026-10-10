@@ -1,0 +1,632 @@
+/* 大富翁 Online · 动物森林 HUD 原型
+ * 组件与令牌全部来自 ../game-ui-kit/kits/ac.css（本文件不重定义任何 --ac-* 与 .ac-*）。
+ * 本文件只写屏幕骨架、 dock、浮层与棋盘示意 —— 一律 hud- 前缀。
+ *
+ * 层级刻度（避免任意大数）：10 舞台内 / 20 舞台浮层 / 30 dock / 40 弹层 / 50 吐司 */
+
+html, body { height: 100%; }
+body {
+  background: radial-gradient(120% 80% at 50% -10%, #bfe9ff 0%, var(--ac-cream2, #f4ead2) 55%, #e8d9b0 100%);
+  color: var(--ac-text);
+  font-family: var(--ac-ui);
+  overflow: hidden;
+}
+.hud-num { font-variant-numeric: tabular-nums; }
+
+/* ---------- 一屏骨架 ---------- */
+.hud-shell {
+  display: grid;
+  height: 100dvh;
+  padding: 10px;
+  gap: 10px;
+  grid-template-columns: minmax(0, 1fr) clamp(320px, 26vw, 392px);
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  grid-template-areas:
+    "top    top"
+    "status status"
+    "board  side"
+    "dock   dock";
+}
+.hud-top { grid-area: top; }
+.hud-status { grid-area: status; }
+.hud-board { grid-area: board; min-height: 0; }
+.hud-side { grid-area: side; min-height: 0; }
+.hud-dock { grid-area: dock; }
+
+@media (max-width: 1120px) {
+  body { overflow: auto; }
+  .hud-shell {
+    height: auto;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "top" "status" "board" "side" "dock";
+  }
+  .hud-side .ac-panel { max-height: none; }
+  /* 既有缺陷（本轮量出来的，与相机条无关）：
+     堆叠后 shell 的行高是 auto，而 .d25-host 是 flex:1 + min-height:0、.d25-stage 是 height:100%。
+     百分比高度对不定高父级无解 → 整个舞台塌成图例那一条 30px，2.5D 棋盘只剩 6px 边框、canvas 实测 0px。
+     给它一个确定高度，顺带按宽度保底，窄屏不会再把棋盘挤出列宽。 */
+  .hud-board .d25-host { flex: none; }
+  .hud-board .d25-stage { height: min(74vh, 88vw); }
+}
+
+
+/* ---------- 顶栏 ---------- */
+.hud-top.ac-hud {
+  padding: 8px 14px;
+  gap: 12px;
+  flex-wrap: nowrap;
+  z-index: 30;
+}
+.hud-top .ac-hud__ava { font-size: 26px; }
+.hud-top .ac-hud__who b { font-size: 17px; }
+/* 顶栏这一行要能缩下去。.ac-hud__who 是 flex 子项，默认 min-width:auto 会把里面 nowrap 的日期
+   当成不可压缩的最小内容宽（实测自然 540px / 盒只有 357），整行顶到 1483/1420 —— 最右的工具按钮被裁。
+   早先写在 small 上的省略号也一直没生效：省略号要求块容器，而 small 是 inline。
+   分工：.hud-stamp（回合/圈/岛历）保量不裁；.hud-when（M/D 周X）是冗余尾巴（状态条的 🗓️ chip 重述了一遍），
+   挤不动就吃省略号。联机长名字与 1280px 一档同样靠这一档兜住，不再折行。
+   （961~1120px 那一段还会裁按钮，但根因不同：钱包 chip + 页签 + 工具位这些 flex:none 的固定组
+   本身就不让宽，与这一行无关 —— 见实施说明 §9.8。） */
+.hud-top .ac-hud__who { min-width: 0; }
+.hud-top .ac-hud__who small { font-size: 11.5px; opacity: .8; white-space: nowrap; display: flex; align-items: baseline; min-width: 0; }
+.hud-top .ac-hud__who .hud-stamp { flex: none; }
+.hud-top .ac-hud__who .hud-when { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.hud-coin { display: flex; align-items: center; gap: 12px; flex: none; }
+.hud-coin .ac-currency { font-size: 14.5px; }
+.hud-coin .ac-currency--low { animation: hud-warn 1.1s ease-in-out infinite; }
+@keyframes hud-warn { 0%, 100% { opacity: 1; } 50% { opacity: .5; } }
+.hud-topbtns { display: flex; gap: 5px; flex: none; }
+.hud-topbtns .ac-btn { font-size: 12.5px; padding: 7px 13px 8px; }
+/* 原型标从状态条挪到顶栏右侧：状态条那条位置要留给行情带 */
+.hud-proto {
+  flex: none; align-self: center; white-space: nowrap;
+  font-size: 10px; font-weight: 800; color: #9a2c22;
+  background: #ffdfd8; border: 2px dashed #d0453a; border-radius: 10px; padding: 3px 8px;
+}
+
+/* ---------- 细状态条（一行；中间行情带可横滚） ---------- */
+.hud-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: nowrap;
+  min-width: 0;
+  padding: 5px 10px;
+  border-radius: 14px;
+  background: rgba(255, 251, 239, .78);
+  border: 2px solid var(--ac-line);
+  font-size: 11.5px;
+  font-weight: 800;
+}
+.hud-status .hud-chip { font-size: 10.5px; padding: 3px 8px; flex: none; }
+.hud-status__sep { width: 2px; align-self: stretch; background: var(--ac-line); border-radius: 2px; flex: none; }
+/* 行情带是状态条里唯一「活」的信息，必须保底可见 —— 早前 min-width:0 让它在 1150px 下宽度归零，
+   六支股现价整条消失且没有任何提示。保底 200px ≈ 两支股，溢出靠横滚 + 右渐隐提示。 */
+.hud-status__mkt {
+  display: flex; gap: 6px; align-items: center;
+  flex: 1 1 34%; min-width: 200px;
+  overflow-x: auto; overflow-y: hidden;
+  scrollbar-width: none;
+  mask-image: linear-gradient(90deg, transparent 0, #000 10px, #000 calc(100% - 10px), transparent 100%);
+}
+.hud-status__mkt::-webkit-scrollbar { display: none; }
+
+/* ---------- 通用小件 ---------- */
+.hud-chip {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 3px 9px; border-radius: 999px;
+  background: var(--ac-cream2); border: 2px solid var(--ac-line);
+  font-size: 11px; font-weight: 800; color: var(--ac-text);
+  white-space: nowrap;
+}
+.hud-chip--god { background: #fff3d6; border-color: var(--ac-bell); }
+.hud-chip--npc { background: #ffe9ef; border-color: var(--ac-pink); }
+.hud-chip--warn { background: #ffdfd8; border-color: #d0453a; color: #9a2c22; }
+.hud-chip--money { background: #e7f8dc; border-color: var(--ac-green); color: #2e6d1f; }
+.hud-chip--off { opacity: .5; }
+.hud-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.hud-kv { display: flex; align-items: baseline; gap: 6px; font-size: 12px; }
+.hud-kv > span { color: var(--ac-dim); font-weight: 800; }
+.hud-kv > b { font-size: 15px; font-family: var(--ac-num); }
+.hud-foot { text-align: center; font-size: 11px; color: var(--ac-dim); font-weight: 800; }
+
+/* ---------- 面板内的 ac- 件适配 ----------
+ * ac.css 的 .ac-divider / .ac-empty 是按「绿色页面底」设计的（浅色字、白色虚线），
+ * 搬进奶油色 .ac-panel__bd 之后对比度掉到 1.05:1，等于看不见 —— 这里按面板底重定。 */
+.hud-shell .ac-panel__bd .ac-divider::before,
+.hud-shell .ac-panel__bd .ac-divider::after {
+  background: repeating-linear-gradient(90deg, var(--ac-line) 0 8px, transparent 8px 16px);
+}
+.hud-shell .ac-panel__bd .ac-divider__mark { color: var(--ac-brown); text-shadow: none; }
+.hud-shell .ac-panel__bd .ac-divider { margin: 10px 0 8px; }
+/* 面板标题永远单行：折行会把「播报 · 第 15→71 回合，共 200 条」顶成两行 */
+.hud-side .ac-panel__hd { font-size: 14px; padding: 10px 14px; letter-spacing: .02em;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* 棋盘（2.5D 舞台）：棋盘形态切换按钮已移除（产品只有 3D 棋盘一种形态），
+   原 .hud-bswitch 的定位 / 让位规则一并删掉，舞台右上角不再需要留空。 */
+.hud-board { display: flex; flex-direction: column; gap: 8px; position: relative; }
+.d25-host {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  place-items: center;
+}
+.d25-stage {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  border-radius: 24px;
+  border: 3px solid var(--ac-brown);
+  background: radial-gradient(115% 85% at 50% 0%, #cfefff 0%, #eaf6df 46%, #f7ebc9 100%);
+  box-shadow: 0 8px 22px rgba(122, 101, 71, .24), inset 0 0 0 5px rgba(255, 255, 255, .5);
+}
+.d25-bar {
+  position: absolute; left: 8px; top: 8px; z-index: 20;
+  display: flex; gap: 6px; flex-wrap: wrap; align-items: center;
+  max-width: calc(100% - 16px);
+}
+.d25-bar .ac-btn, .d25-cam { pointer-events: auto; }
+.d25-bar .ac-btn { background: rgba(255, 251, 239, .92); min-height: 30px; }
+/* 小地图：只在近景等距下出现。近景看不见全盘，方位感全靠它 —— 不是装饰件。
+   z-index 18：盖住两张画布（auto），但压在 .d25-bar / .d25-hint（20）之下。 */
+.d25-minimap {
+  position: absolute; right: 10px; bottom: 10px; z-index: 18;
+  width: 116px; height: 116px;
+  filter: drop-shadow(0 3px 8px rgba(122, 101, 71, .3));
+  pointer-events: none;
+}
+.d25-minimap[hidden] { display: none; }
+.d25-mininote {
+  position: absolute; right: 10px; bottom: 130px; z-index: 18;
+  font-size: 9.5px; font-weight: 800; color: var(--ac-dim);
+  background: rgba(255, 251, 239, .84); border: 2px solid var(--ac-line);
+  border-radius: 8px; padding: 2px 6px; pointer-events: none; white-space: nowrap;
+}
+.d25-mininote[hidden] { display: none; }
+
+.d25-hint {
+  position: absolute; left: 10px; bottom: 10px; z-index: 20; pointer-events: none;
+  font-size: 10.5px; font-weight: 800; color: var(--ac-dim);
+  background: rgba(255, 251, 239, .84); border: 2px solid var(--ac-line);
+  border-radius: 10px; padding: 3px 8px;
+}
+/* 图例：早前 8 枚 emoji chip 折两行、色值与 3D 不对应。改为单行色块，色值直接取自 world.js 的 GROUP_HEX。 */
+.d25-legend {
+  display: flex; gap: 4px 9px; flex-wrap: wrap; justify-content: center; flex: none;
+  font-size: 10.5px; font-weight: 800; color: var(--ac-dim);
+}
+.d25-legend > span { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.d25-sw {
+  width: 12px; height: 12px; border-radius: 4px; flex: none; background: var(--c);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .5), 0 0 0 2px rgba(122, 101, 71, .22);
+}
+.d25-sw--ring { background: transparent; box-shadow: inset 0 0 0 3px var(--c), 0 0 0 2px rgba(122, 101, 71, .3); }
+.d25-sw--dot { border-radius: 50%; background: radial-gradient(circle at 35% 30%, #fff, var(--c) 55%); }
+.d25-legend em { font-style: normal; color: var(--ac-brown); }
+
+/* 宽画面（≥3:2）时棋盘列会横向留一大片空 —— 棋盘是方的、高度已经顶满，横向注定填不满。
+   把图例从「棋盘下一条」改成「棋盘右侧竖排导轨」，既补上空档，图例本身也从半透明小字变成好读的一列。 */
+.hud-board--wide { flex-direction: row; align-items: stretch; }
+.hud-board--wide .d25-host { flex: 1 1 auto; min-width: 0; }
+.hud-board--wide .d25-legend {
+  flex: none; width: 158px; flex-direction: column; justify-content: center; align-items: flex-start;
+  gap: 9px; padding-right: 2px; font-size: 11px; flex-wrap: nowrap;
+}
+
+/* 跟随指针的格子浮层：只在 hover/选中时出现，不常驻占位 */
+.d25-tip {
+  position: fixed; z-index: 40; pointer-events: none; opacity: 0;
+  transform: translate(12px, -50%);
+  background: var(--ac-brown); color: #fff;
+  font-size: 11.5px; font-weight: 800; line-height: 1.45;
+  padding: 6px 9px; border-radius: 11px; max-width: 260px;
+  box-shadow: 0 6px 14px rgba(0, 0, 0, .26);
+  transition: opacity .12s ease-out;
+}
+.d25-tip b { color: var(--ac-bell); }
+
+/* ---------- 侧栏 ---------- */
+.hud-side { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+/* 面板固定占满整列（切页签时高度不跳），快照行钉在面板底 —— 比「内容撑高 + 页脚浮在渐变上」更像一块完整的窗 */
+.hud-side .ac-panel {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: rgba(255, 251, 239, .95);
+}
+.hud-panelfoot {
+  flex: none; border-top: 2px dashed var(--ac-line); padding: 7px 12px;
+  font-size: 10px; font-weight: 800; color: var(--ac-dim); text-align: center;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.hud-side .ac-tabs {
+  flex: none;
+  display: flex;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.hud-side .ac-tabs::-webkit-scrollbar { display: none; }
+.hud-side .ac-tabs__tab { flex: none; font-size: 11.5px; padding: 7px 8px; }
+.hud-side .ac-panel__bd {
+  overflow: auto; flex: 1 1 auto; min-height: 0;
+  display: flex; flex-direction: column; gap: 8px; padding: 10px;
+  overscroll-behavior: contain;
+}
+/* 岛民行：满宽 18px 粉条 + 三行文本 → 每行一张小卡、两行文本 + 6px 细条，一屏能多看一人 */
+.hud-side .ac-list { background: transparent; box-shadow: none; border-radius: 0;
+  display: flex; flex-direction: column; gap: 8px; overflow: visible; }
+.hud-side .ac-list__item {
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 3px 8px; padding: 8px 10px; border-radius: 14px; align-items: start;
+  background: var(--ac-cream); box-shadow: 0 3px 0 rgba(122, 101, 71, .16); border-bottom: none;
+}
+.hud-side .ac-list__ic { align-self: start; }
+.hud-side .ac-list__val { align-self: start; }
+.hud-you, .hud-cur {
+  font-size: 9.5px; border-radius: 7px; padding: 1px 5px; margin-left: 4px;
+  color: #fff; font-weight: 800;
+}
+.hud-you { background: var(--ac-green); }
+.hud-cur { background: var(--ac-orange); }
+.hud-badges { display: inline-flex; gap: 3px; flex-wrap: wrap; margin-left: 4px; vertical-align: 1px; }
+.hud-bg {
+  font-size: 9.5px; font-weight: 800; padding: 1px 5px; border-radius: 7px;
+  background: var(--ac-cream2); border: 1.5px solid var(--ac-line); color: var(--ac-dim);
+}
+.hud-bg--god { background: #fff3d6; border-color: var(--ac-bell); color: #8a6410; }
+.hud-bg--bad { background: #ffdfd8; border-color: #d0453a; color: #9a2c22; }
+.hud-bg--money { background: #e7f8dc; border-color: var(--ac-green); color: #2e6d1f; }
+.hud-side .ac-list__ic { font-size: 17px; width: 30px; height: 30px; border-radius: 10px; }
+.hud-side .ac-list__tx b { font-size: 12.5px; }
+.hud-side .ac-list__tx small { font-size: 10.5px; line-height: 1.35; display: block; margin-top: 1px; }
+.hud-side .ac-list__val { font-size: 13px; font-family: var(--ac-num); font-weight: 900;
+  font-variant-numeric: tabular-nums; color: var(--ac-orange-dk); }
+/* 相对榜首：18px 满宽药丸 → 6px 细条 + 百分比。细条不抢视觉，名次关系仍一眼可读。
+   这里原来记着一笔「em 溢出 29px」的遗留，实为**量测假象**：font-mode-measure.mjs 把同一行里
+   整段与嵌套 <b> 的 clientRect 相加了（141 + 29 = 170），em 的 max-content 其实就等于盒宽。
+   仍改成细条吃剩余（flex:1 1 96px）+ 文字可缩带省略号：视觉宽度不变（实测 track 187/152/176），
+   但长地名 + 三位数百分比时由裁字兜底，不会再让文字顶破卡片。 */
+.hud-rank {
+  grid-column: 1 / -1; display: flex; align-items: center; gap: 6px;
+  font-size: 10px; font-weight: 800; color: var(--ac-dim); margin-top: 2px;
+}
+.hud-rank__track { flex: 1 1 96px; min-width: 64px; height: 6px; border-radius: 999px; background: var(--ac-cream2);
+  overflow: hidden; box-shadow: inset 0 1px 2px rgba(122, 101, 71, .25); }
+.hud-rank__fill { display: block; height: 100%; border-radius: 999px;
+  background: linear-gradient(180deg, var(--ac-orange-lt), var(--ac-orange)); }
+.hud-rank em { font-style: normal; white-space: nowrap; flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.hud-rank b { color: var(--ac-brown); }
+
+/* 股市行 */
+.hud-stock { display: flex; flex-direction: column; gap: 5px; padding: 8px 0; border-bottom: 2px dashed var(--ac-line); }
+.hud-stock__hd { display: flex; align-items: baseline; gap: 6px; flex-wrap: nowrap; }
+.hud-stock__hd b { font-size: 12.5px; white-space: nowrap; }
+.hud-stock__hd .p { font-family: var(--ac-num); font-size: 15px; font-weight: 900; font-variant-numeric: tabular-nums; }
+.hud-stock__hd .c { font-size: 10.5px; font-weight: 800; white-space: nowrap; }
+/* 元信息固定第二行：早前混排会出现「流通」单独折行，每行高度不等 */
+.hud-stock__meta { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
+.hud-stock__meta .hud-chip { font-size: 10px; padding: 1px 7px; }
+.hud-stock--up .c { color: var(--ac-green-dk); }
+.hud-stock--down .c { color: #d0453a; }
+/* viewBox 宽 320 ≈ 面板实宽，避免 preserveAspectRatio="none" 把蜡烛横向拉伸 */
+.hud-kline { width: 100%; height: 52px; display: block; }
+
+/* 账本表：9 列挤 320px 栏 → 表头缩到 9.5px 单行、数字右对齐 tabular、外层可横滚兜底。
+   注意 flex:none —— 它是 .ac-panel__bd 这个纵向 flex 的子项，overflow 非 visible 时「自动最小尺寸」为 0，
+   会被压缩器直接压成 0 高（实测 1440×900 下整张资产清单消失）。 */
+.hud-tablewrap { flex: none; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
+.hud-tablewrap::-webkit-scrollbar { display: none; }
+.hud-side .ac-table { font-size: 10.5px; }
+.hud-side .ac-table thead th {
+  font-size: 9.5px; padding: 6px 3px; letter-spacing: 0; text-align: right; white-space: nowrap;
+}
+.hud-side .ac-table tbody td {
+  padding: 6px 3px; white-space: nowrap; text-align: right; font-variant-numeric: tabular-nums;
+}
+.hud-side .ac-table thead th:first-child,
+.hud-side .ac-table tbody td:first-child { text-align: left; }
+.hud-side .ac-table tbody td b { font-weight: 900; color: var(--ac-orange-dk); }
+.hud-kline .up { fill: #6cc457; stroke: #3f8a2f; }
+.hud-kline .down { fill: #f2857a; stroke: #b83c2f; }
+.hud-kline .wick { stroke: var(--ac-brown); stroke-width: 1; }
+.hud-kline .vol { fill: var(--ac-blue); opacity: .45; }
+.hud-kline .play { fill: var(--ac-orange); opacity: .9; }
+.hud-kline .now { stroke: var(--ac-orange); stroke-width: 1; stroke-dasharray: 3 2; }
+
+/* ---------- Dock：相机条 · 当前格 · 行囊 · 动作 ---------- */
+.hud-dock {
+  display: grid;
+  grid-template-columns: minmax(190px, 250px) minmax(0, 1fr) auto;
+  /* 相机条要横跨三列：写 "camp camp camp" 才是三格通栏，写 "camp camd camd" 只占第一列
+     （第一版就踩了这个 —— 250px 宽塞 4 个 tag，被 flex-wrap 折成 4 行 137px 高） */
+  grid-template-areas:
+    "camp camp camp"
+    "tile bag  act";
+  gap: 10px;
+  align-items: stretch;
+  z-index: 30;
+}
+.hud-tile { grid-area: tile; }
+.hud-bag { grid-area: bag; }
+.hud-act { grid-area: act; }
+
+/* 相机状态条：只占一行高度，让「镜头在干什么」与「现在能不能点」各自说清楚 */
+.hud-cambar {
+  grid-area: camp;
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  min-height: 26px;
+}
+.hud-camtag {
+  flex: none;
+  display: inline-flex; align-items: center; gap: 4px;
+  font: 800 10.5px/1 var(--ac-ui);
+  padding: 4px 8px; border-radius: 999px;
+  background: rgba(255, 251, 239, .92);
+  border: 2px solid var(--ac-line);
+  color: var(--ac-dim);
+  white-space: nowrap;
+}
+.hud-camtag b { color: var(--ac-orange-dk); font-weight: 900; }
+.hud-camtag--hint { border-style: dashed; background: transparent; font-weight: 700; }
+.hud-camtag--lock {
+  background: #fff3d6; border-color: var(--ac-bell); color: #8a5a12;
+  animation: hud-lockpulse 1.05s ease-in-out infinite;
+}
+@keyframes hud-lockpulse { 0%, 100% { opacity: 1; } 55% { opacity: .72; } }
+
+/* 必须显式补这一条：hidden 属性的 display:none 来自 UA 样式表，而上面 .hud-camtag 的
+   display:inline-flex 是作者样式 —— 作者样式优先级更高，会把 hidden 整个吃掉。
+   症状：解锁之后「🔒 镜头聚焦中」提示条还挂在界面上下不去（读 DOM 的 .hidden 属性看不出问题，
+   因为它确实是 true，得读计算样式才发现）。 */
+.hud-shell [hidden] { display: none !important; }
+.hud-cambar .ac-btn { margin-left: auto; min-height: 26px; padding: 3px 10px; font-size: 11px; }
+
+/* 镜头聚焦中：整壳压暗 + 非交互，配合捕获拦截，形成「看得见也点不动」的双保险 */
+.hud-shell--locked .hud-dock :is(.hud-tile, .hud-bag) { opacity: .55; }
+.hud-shell--locked .hud-side { opacity: .5; }
+.hud-shell--locked .hud-board .d25-stage::after {
+  /* 15 = 盖住两张画布（auto），但不盖 .d25-bar / .d25-hint（z-index 20） */
+  content: ''; position: absolute; inset: 0; z-index: 15;
+  background: radial-gradient(60% 50% at 50% 50%, transparent 0%, rgba(26, 20, 10, .14) 100%);
+  pointer-events: none;
+}
+.hud-shell--locked .hud-act .ac-btn:disabled {
+  cursor: progress; filter: grayscale(.35);
+}
+.hud-shell--locked .ac-btn:disabled { pointer-events: none; }
+@media (prefers-reduced-motion: reduce) {
+  .hud-camtag--lock { animation: none; }
+}
+.hud-tile {
+  border-radius: 16px;
+  border: 3px solid var(--ac-brown);
+  background: rgba(255, 251, 239, .96);
+  padding: 8px 10px;
+  display: flex; flex-direction: column; gap: 4px;
+  min-width: 0;
+}
+.hud-tile__hd { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 900; }
+.hud-tile__hd span { font-size: 17px; }
+.hud-tile__rows { display: flex; gap: 10px; flex-wrap: wrap; font-size: 11px; }
+.hud-tile__rows b { font-family: var(--ac-num); font-variant-numeric: tabular-nums; }
+.hud-bag {
+  border-radius: 16px;
+  border: 3px solid var(--ac-line);
+  background: rgba(255, 251, 239, .9);
+  padding: 6px 10px;
+  display: flex; flex-direction: column; gap: 4px;
+  min-width: 220px;
+}
+.hud-bag__hd {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 11px; font-weight: 800; color: var(--ac-dim);
+  white-space: nowrap; overflow: hidden;
+}
+/* 明细这行是可变的（卡片/道具数会变长），必须能省略号收尾，不能硬裁到「（每种」这种半截字 */
+.hud-bag__hd > span:first-of-type { font-style: normal; opacity: .85; flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.hud-bag__hd > .hud-chip { flex: none; }
+.hud-bag__row {
+  display: flex; gap: 6px; overflow-x: auto; overflow-y: hidden;
+  padding-bottom: 2px; scrollbar-width: none; flex: 1; align-items: center;
+  mask-image: linear-gradient(90deg, #000 calc(100% - 12px), transparent 100%);
+}
+.hud-bag__row::-webkit-scrollbar { display: none; }
+.hud-bag .ac-invgrid { display: contents; }
+.hud-bag .ac-invgrid__cell {
+  width: 44px; height: 44px; flex: none; font-size: 20px;
+}
+.hud-act {
+  display: flex; align-items: center; gap: 8px; flex: none;
+}
+.hud-act .ac-btn--lg { min-height: 48px; font-size: 16px; padding: 10px 18px; }
+.hud-act .ac-btn { min-height: 44px; }
+.hud-act__more { position: relative; }
+.hud-pop {
+  position: absolute; bottom: calc(100% + 8px); right: 0; z-index: 40;
+  width: min(420px, 78vw);
+  background: var(--ac-cream); border: 3px solid var(--ac-brown); border-radius: 16px;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, .22);
+  padding: 10px; display: none;
+}
+.hud-pop--open { display: block; }
+.hud-pop__t { font-size: 11px; font-weight: 900; color: var(--ac-dim); margin-bottom: 6px; letter-spacing: .04em; }
+.hud-pop__grid { display: flex; flex-wrap: wrap; gap: 6px; }
+.hud-pop__grid .ac-btn { min-height: 40px; }
+.hud-pop__list { display: flex; flex-direction: column; gap: 4px; }
+.hud-pop__row {
+  display: flex; justify-content: space-between; gap: 10px;
+  font-size: 11.5px; font-weight: 800; padding: 5px 8px;
+  border-radius: 10px; background: var(--ac-cream2); border: 2px solid var(--ac-line);
+}
+.hud-pop__row span { color: var(--ac-dim); font-weight: 700; text-align: right; }
+
+/* ---------- 方环棋盘（?board=flat 回退） ---------- */
+.hud-flatbar { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex: none; padding-top: 6px; }
+.hud-ring {
+  position: relative;
+  width: 100%;
+  max-width: 900px;
+  aspect-ratio: 1 / 1;
+  display: grid;
+  grid-template: repeat(17, 1fr) / repeat(17, 1fr);
+  gap: 2px;
+  margin: 0 auto;
+}
+.hud-cell {
+  position: relative;
+  border-radius: 9px;
+  border: 2px solid var(--ac-line);
+  background: var(--ac-cream);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  overflow: hidden;
+  transition: transform .12s, box-shadow .12s;
+}
+.hud-cell--named { background: color-mix(in srgb, var(--ac-cream) 78%, var(--g, var(--ac-cream2)) 22%); }
+.hud-cell__e { font-size: clamp(10px, 1.35vw, 18px); line-height: 1; }
+.hud-cell__n {
+  font-size: clamp(6.5px, .6vw, 9.5px); font-weight: 800; color: var(--ac-text);
+  text-align: center; line-height: 1.1; max-width: 98%; max-height: 2.4em;
+  overflow: hidden; word-break: break-all;
+}
+.hud-cell--owned { border-color: var(--oc); box-shadow: inset 0 0 0 2px #fff, 0 0 0 1px var(--oc); }
+.hud-cell--owned::after { content: ""; position: absolute; inset: auto 0 0 0; height: 22%; background: var(--oc); opacity: .85; }
+.hud-cell--cur { outline: 3px solid var(--ac-orange); outline-offset: -1px; z-index: 3; }
+.hud-cell--god { background: #fff3d6; border-color: var(--ac-bell); }
+.hud-cell:hover { transform: translateY(-2px); box-shadow: 0 4px 10px rgba(0, 0, 0, .14); z-index: 4; }
+.hud-cell__mark { position: absolute; top: 1px; right: 2px; font-size: 10px; line-height: 1; }
+.hud-cell__pips { position: absolute; left: 2px; bottom: 2px; display: flex; gap: 1px; }
+.hud-pip {
+  width: 9px; height: 9px; border-radius: 50%;
+  background: var(--pc); border: 1.5px solid #fff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .3);
+}
+.hud-cell__pips .hud-pip { width: 11px; height: 11px; }
+.hud-cell__pips .hud-pip:only-child { width: 14px; height: 14px; }
+.hud-center {
+  position: absolute;
+  grid-area: 3 / 3 / 15 / 15;
+  display: flex; flex-direction: column; gap: 8px;
+  padding: 8px; min-width: 0; overflow: hidden;
+  justify-content: center;
+}
+/* 环心宽度是「12/17 环宽」，比面板内容窄 —— 不收紧会把面板压到右侧格子上（实测压住 5 列） */
+.hud-center > * { max-width: 100%; min-width: 0; }
+.hud-center .ac-panel { overflow: hidden; }
+.hud-center .ac-panel__bd { overflow: hidden; }
+.hud-center .ac-card { width: 88px !important; }
+.hud-center .hud-chips { gap: 4px; }
+.hud-center .ac-panel { flex: none; }
+.hud-center .ac-panel__bd { display: flex; flex-direction: column; gap: 8px; }
+.hud-center .ac-card { width: 92px; }
+.hud-center .ac-card__art { height: 40px; font-size: 22px; }
+.hud-center .ac-card__name { font-size: 12px; }
+.hud-meter { display: inline-flex; align-items: center; gap: 6px; }
+
+/* ---------- 焦点与按下反馈（键盘可达性） ---------- */
+.hud-shell :is(button, .ac-btn, .ac-tabs__tab, .ac-nav__tab, [role="button"]):focus-visible {
+  outline: 3px solid var(--ac-blue);
+  outline-offset: 2px;
+}
+.hud-shell :is(button, .ac-btn, .ac-tabs__tab):hover { filter: brightness(1.04); }
+.hud-shell :is(button, .ac-btn):active { transform: scale(.97); }
+.hud-shell :is(button, .ac-btn) { cursor: pointer; touch-action: manipulation; }
+.hud-side .ac-list__item[role="button"] { cursor: pointer; }
+.hud-side .ac-list__item[role="button"]:hover { background: var(--ac-cream2); }
+
+/* ---------- 悬停说明（徽章 / 状态 chip / 指标） ---------- */
+.hud-tip { position: relative; }
+.hud-tip:hover::after {
+  content: attr(data-tip);
+  position: absolute;
+  left: 50%; bottom: calc(100% + 6px);
+  transform: translateX(-50%);
+  white-space: pre-line;
+  max-width: 260px;
+  background: var(--ac-brown);
+  color: #fff;
+  font-size: 11px; font-weight: 700; line-height: 1.45;
+  padding: 6px 9px; border-radius: 10px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, .25);
+  z-index: 40;
+  pointer-events: none;
+}
+
+/* ---------- 吐司 ---------- */
+.hud-toasts {
+  position: fixed; right: 14px; bottom: 108px; z-index: 50;
+  display: flex; flex-direction: column; gap: 8px; width: min(340px, 78vw);
+}
+.hud-toasts .ac-toast { animation: hud-in .22s ease-out; }
+@keyframes hud-in { from { transform: translateY(14px); opacity: 0; } }
+
+/* ---------- 动效降级 ---------- */
+@media (prefers-reduced-motion: reduce) {
+  * { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; }
+  .hud-cell:hover { transform: none; }
+}
+
+/* ---------- 极窄视口（≤960px）：一屏骨架彻底让位给纵向堆叠 ----------
+ * 1) dock 的三列要 190 + 220 + ~500 ≈ 930px 才排得下，窄了就会被 auto 那列撑破；
+ *    而相机条 grid-area 横跨三列，会把 dock 的总宽原样继承下来 —— 看起来像相机条撑的，其实是 dock。
+ * 2) 顶栏是 nowrap 的：三币 + 6 个页签跳转按钮在 390px 视口实测排到 920px。
+ * 两者叠加就是 390px 下 621px 横向溢出的全部来源。
+ *
+ * ⚠️ 这一段必须放在文件**末尾**：基础 .hud-dock / .hud-coin / .hud-topbtns 规则都在同文件上方，
+ *    与这里的覆盖规则特异性相同（0,1,0），同特异性下由源码顺序决定胜负 —— 写在上方会被基础规则
+ *    反过来覆盖（第一版就是这么失效的：dock 网格改了、实测 390px 溢出仍是 621px 才发现）。 */
+@media (max-width: 960px) {
+  .hud-dock {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "camp" "tile" "bag" "act";
+  }
+  .hud-bag { min-width: 0; }
+  .hud-act { flex-wrap: wrap; }
+
+  /* 顶栏是 nowrap 的：三币 + 6 个页签跳转按钮在 390px 视口实测排到 920px，整页横向溢出 621px。
+     窄屏让它换行 —— 数字块与跳转块各占一整行，内部再各自换行，不再撑破视口。 */
+  .hud-top.ac-hud { flex-wrap: wrap; row-gap: 6px; }
+  .hud-top .ac-hud__spacer { display: none; }
+  .hud-coin { flex: 0 0 100%; flex-wrap: wrap; }
+  .hud-topbtns { flex: 1 1 100%; flex-wrap: wrap; }
+
+  /* 状态条同理：它 nowrap，里面 8 个 `flex: none` 的日期/指数 chip 在 390px 下自己就超过一屏宽，
+     溢出直接算到整页上（行情带虽然自身可横滚，但挤不动的兄弟节点不会让位）。 */
+  .hud-status { flex-wrap: wrap; row-gap: 5px; }
+  .hud-status__sep { display: none; }
+  .hud-status__mkt { flex: 1 1 100%; }
+
+  /* 窄屏单列后舞台只有 ~340px 高，116px 的小地图会吃掉三分之一的可视区 ——
+     缩到 78px 保住方位感，同时去掉说明条（那行字在这个尺寸下比地图还宽）。 */
+  .d25-minimap { width: 78px; height: 78px; right: 8px; bottom: 8px; }
+  .d25-mininote { display: none; }
+}
+
+/* ---------- 并入 client 后新增：宿主接缝（顶栏工具位 / 非我方回合置灰） ---------- */
+#ac-hud-root { display: block; }
+.hud-hosttools { display: inline-flex; align-items: center; gap: 6px; flex: none; }
+.hud-shell--waiting .hud-dock { opacity: .72; }
+
+/* ---------- 宿主兼容：client 的 styles.css 对 html/body/#root 有全局设定（深色底 + 系统字体），
+   这里用 :has 提权 —— 不依赖两份样式表的注入顺序，HUD 挂载期间 ac 皮肤稳定生效 ---------- */
+html:has(#ac-hud-root) {
+  height: 100%;
+  background: transparent;
+}
+body:has(#ac-hud-root) {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: radial-gradient(120% 80% at 50% -10%, #bfe9ff 0%, var(--ac-cream2, #f4ead2) 55%, #e8d9b0 100%);
+  color: var(--ac-text);
+  font-family: var(--ac-ui);
+}
+#root:has(#ac-hud-root) {
+  height: 100%;
+  background: transparent;
+  color: var(--ac-text);
+  font-family: var(--ac-ui);
+}

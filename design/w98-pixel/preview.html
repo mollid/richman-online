@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>W98-Pixel UI Kit — 组件预览</title>
+<link rel="stylesheet" href="./tokens.css" />
+<link rel="stylesheet" href="./fonts.css" />
+<link rel="stylesheet" href="./ui-kit.css" />
+<style>
+  /* 仅预览页自身布局，不属于套件 */
+  body { margin: 0; background: #6b7a8f; font-family: var(--w98-font-ui); }
+  .page { max-width: 1180px; margin: 0 auto; padding: 24px; display: grid; gap: 24px; }
+  .shot { height: 720px; }
+  .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; }
+  .cell { padding: 16px; background: var(--w98-face); border: var(--w98-line-thin); box-shadow: var(--w98-bevel-out); }
+  .cell h3 { margin: 0 0 12px; font-size: 13px; color: var(--w98-chrome-blue-dk); letter-spacing: 1px; }
+  .row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+  /* 中段：棋盘舞台 + 右侧面板，不换行 */
+  .band { display: flex; align-items: stretch; gap: 0; flex: 1 1 auto; min-height: 0; }
+  .side { display: flex; align-items: flex-start; gap: 0; flex: 0 0 auto; padding: 12px; }
+  .board { position: absolute; inset: auto 0 0; padding: 0 290px 16px 24px; display: grid; align-content: end; justify-content: start; gap: 12px; grid-template-columns: repeat(4, auto); }
+  .stage .w98-tile { --w98-tile-w: 104px; --w98-tile-h: 52px; }
+  .swatches { display: grid; grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)); gap: 8px; }
+  .sw { height: 52px; border: var(--w98-line-thin); display: grid; place-content: end center; font: 700 10px/1.4 var(--w98-font-num); color: var(--w98-ink); }
+  .glyph { font-size: 26px; }
+  .map-ph { height: 150px; background: radial-gradient(ellipse at 45% 50%, var(--w98-grass) 0 34%, var(--w98-sand) 35% 40%, var(--w98-sea-deep) 41%); position: relative; }
+  .map-ph i { position: absolute; width: 7px; height: 7px; border-radius: 50%; background: var(--w98-accent); box-shadow: 0 0 0 1px var(--w98-ink); }
+  /* —— 字体对比区：同一句话分别用像素字与系统字、并在坏字号下渲染，肉眼可辨 —— */
+  .fx { display: grid; gap: 14px; }
+  .fx dt { font: 700 11px/1 var(--w98-font-num); color: var(--w98-chrome-blue-dk); letter-spacing: .5px; }
+  .fx dd { margin: 6px 0 0; }
+  .fx .spec { padding: 10px 14px; background: var(--w98-face-light); border: var(--w98-line-thin); box-shadow: var(--w98-bevel-in); }
+  .fx .spec--bad { background: #fff2f2; border-color: var(--w98-danger); }
+  .fx .verdict { margin-left: 8px; font: 700 11px/1 var(--w98-font-num); }
+  .fx .verdict--ok { color: var(--w98-ok-dk, #2f6b1f); }
+  .fx .verdict--bad { color: var(--w98-danger); }
+  .fx .zoom { zoom: 3; }     /* 放大看点是点还是糊块 */
+  table.cov { border-collapse: collapse; font: 700 12px/1.6 var(--w98-font-num); }
+  table.cov th, table.cov td { border: var(--w98-line-thin); padding: 5px 10px; text-align: left; }
+  table.cov th { background: var(--w98-chrome-blue); color: var(--w98-text-invert); }
+  table.cov .no { color: var(--w98-danger); }
+  table.cov .yes { color: var(--w98-ok-dk, #2f6b1f); }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- ============ 1. 整窗合成 ============ -->
+  <section class="w98-app shot">
+    <div class="w98-titlebar">
+      <span class="w98-titlebar__icon">🏝️</span>
+      <span class="w98-titlebar__text">環島大富翁 — Island Tycoon</span>
+      <span class="w98-titlebar__controls">
+        <button class="w98-caption-btn">_</button>
+        <button class="w98-caption-btn">□</button>
+        <button class="w98-caption-btn">×</button>
+      </span>
+    </div>
+
+    <div class="w98-toolbar">
+      <button class="w98-toolbtn"><span class="w98-icon glyph">❓</span>幫助</button>
+      <button class="w98-toolbtn"><span class="w98-icon glyph">🖥️</span>設定</button>
+      <button class="w98-toolbtn"><span class="w98-icon glyph">🔍</span>搜尋</button>
+      <button class="w98-toolbtn"><span class="w98-icon glyph">🔨</span>建設</button>
+      <button class="w98-toolbtn is-active"><span class="w98-icon glyph">🃏</span>卡片</button>
+      <button class="w98-toolbtn"><span class="w98-icon glyph">🏪</span>商店</button>
+      <button class="w98-toolbtn"><span class="w98-icon glyph">📊</span>排行榜</button>
+      <div class="w98-toolbar__sep"></div>
+      <button class="w98-toolbtn"><span class="w98-icon glyph">⚙️</span>選項</button>
+    </div>
+
+    <div class="band">
+      <div class="w98-stage stage">
+        <div class="board">
+          <div class="w98-tile w98-tile--blue"><span>?</span>機會</div>
+          <div class="w98-tile w98-tile--orange">商業</div>
+          <div class="w98-tile w98-tile--gray">通路</div>
+          <div class="w98-tile w98-tile--purple">特殊</div>
+          <div class="w98-tile w98-tile--gold is-selected">GO</div>
+          <div class="w98-tile w98-tile--green">公園</div>
+          <div class="w98-tile w98-tile--gray">稅務</div>
+          <div class="w98-tile w98-tile--blue">海景</div>
+        </div>
+
+        <div class="w98-news" style="position:absolute; top:20px; left:20px">
+          <span class="w98-heading" style="font-size:26px; color:var(--w98-tile-orange)">NEWS</span>
+          <div class="w98-news__body">海上觀光船<br />即將開放！</div>
+        </div>
+
+        <div class="w98-float" style="right:16px; bottom:16px">
+          <div class="w98-titlebar">
+            <span class="w98-titlebar__text">小地圖</span>
+            <span class="w98-titlebar__controls">
+              <button class="w98-caption-btn">_</button>
+              <button class="w98-caption-btn">×</button>
+            </span>
+          </div>
+          <div class="w98-float__body"><div class="map-ph"><i style="left:40%;top:45%"></i><i style="left:58%;top:30%"></i><i style="left:30%;top:66%"></i></div></div>
+        </div>
+      </div>
+
+      <div class="side">
+        <div class="w98-parchment" style="width:280px">
+          <span class="w98-parchment__title">玩家資料</span>
+          <div class="row" style="gap:12px; margin-bottom:8px">
+            <div class="w98-avatar glyph">👦</div>
+            <div style="font-size:18px;font-weight:700">小明</div>
+          </div>
+          <div class="w98-stat"><span>🪙</span><span class="w98-stat__label">現金</span><span class="w98-stat__value">$&nbsp;12,580</span></div>
+          <div class="w98-stat"><span>🪙</span><span class="w98-stat__label">存款</span><span class="w98-stat__value">$&nbsp;36,200</span></div>
+          <div class="w98-stat"><span>🪙</span><span class="w98-stat__label">總資產</span><span class="w98-stat__value">$&nbsp;48,780</span></div>
+          <div class="w98-stat"><span>📈</span><span class="w98-stat__label">物價指數</span><span class="w98-stat__value is-positive">1.12</span></div>
+        </div>
+        <div class="w98-tabs-v" style="margin-left:-6px">
+          <button class="w98-tab-v is-active">資金</button>
+          <button class="w98-tab-v">地產</button>
+          <button class="w98-tab-v">股票</button>
+          <button class="w98-tab-v">其他</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="w98-actionbar" style="margin:0 12px 12px">
+      <button class="w98-orb w98-orb--go"><span class="w98-orb__glyph">GO</span><span class="w98-orb__label">➜</span></button>
+      <button class="w98-orb w98-orb--card"><span class="w98-orb__glyph">🂠</span><span class="w98-orb__label">CARD</span></button>
+      <button class="w98-orb w98-orb--aid"><span class="w98-orb__glyph">✚</span></button>
+      <button class="w98-orb w98-orb--go" disabled><span class="w98-orb__glyph">GO</span></button>
+    </div>
+  </section>
+
+  <!-- ============ 2. 色板 ============ -->
+  <section class="grid2">
+    <div class="cell"><h3>环境 / 地产分组</h3><div class="swatches">
+      <div class="sw" style="background:var(--w98-sea)">sea</div>
+      <div class="sw" style="background:var(--w98-sea-deep)">sea-deep</div>
+      <div class="sw" style="background:var(--w98-grass)">grass</div>
+      <div class="sw" style="background:var(--w98-sand)">sand</div>
+      <div class="sw" style="background:var(--w98-tile-orange)">orange</div>
+      <div class="sw" style="background:var(--w98-tile-purple)">purple</div>
+      <div class="sw" style="background:var(--w98-tile-green)">green</div>
+      <div class="sw" style="background:var(--w98-tile-gold)">gold</div>
+    </div></div>
+    <div class="cell"><h3>桌面壳 / 羊皮纸 / 语义</h3><div class="swatches">
+      <div class="sw" style="background:var(--w98-face)">face</div>
+      <div class="sw" style="background:var(--w98-chrome-blue)">chrome</div>
+      <div class="sw" style="background:var(--w98-parch)">parch</div>
+      <div class="sw" style="background:var(--w98-accent)">accent</div>
+      <div class="sw" style="background:var(--w98-danger)">danger</div>
+      <div class="sw" style="background:var(--w98-ok)">ok</div>
+      <div class="sw" style="background:var(--w98-ink);color:var(--w98-text-invert)">ink</div>
+      <div class="sw" style="background:var(--w98-text);color:var(--w98-text-invert)">text</div>
+    </div></div>
+  </section>
+
+  <!-- ============ 3. 控件状态 ============ -->
+  <section class="grid2">
+    <div class="cell"><h3>Win9x 按钮 / 输入框</h3><div class="row">
+      <button class="w98-btn">一般</button>
+      <button class="w98-btn w98-btn--primary">主要</button>
+      <button class="w98-btn w98-btn--danger">危险</button>
+      <button class="w98-btn" disabled>停用</button>
+      <input class="w98-field" placeholder="输入玩家名" />
+    </div></div>
+    <div class="cell"><h3>数值行状态</h3>
+      <div class="w98-parchment">
+        <div class="w98-stat"><span>📉</span><span class="w98-stat__label">本回合</span><span class="w98-stat__value is-negative">-$&nbsp;1,200</span></div>
+        <div class="w98-stat"><span>📈</span><span class="w98-stat__label">本回合</span><span class="w98-stat__value is-positive">+$&nbsp;3,400</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 4. 字体：像素中文 ============ -->
+  <section class="grid2">
+    <div class="cell">
+      <h3>像素中文 — 缝合像素字体 12px 比例版</h3>
+      <dl class="fx">
+        <div>
+          <dt>--w98-fs-pix-sm · 12px · 正确</dt>
+          <dd><div class="spec"><span class="w98-pix">骰子擲出六點，買下這塊地，租金翻倍。</span></div></dd>
+        </div>
+        <div>
+          <dt>--w98-fs-pix-md · 24px · 正确</dt>
+          <dd><div class="spec"><span class="w98-pix w98-pix--md">骰子擲出六點，租金翻倍。</span></div></dd>
+        </div>
+        <div>
+          <dt>13px（非 12 的整数倍）· 错误 <span class="verdict verdict--bad">← 点阵被重采样</span></dt>
+          <dd><div class="spec spec--bad"><span class="w98-pix" style="font-size:13px">骰子擲出六點，租金翻倍。</span></div></dd>
+        </div>
+        <div>
+          <dt>同样的字用系统字（未加载本字库时的样子）</dt>
+          <dd><div class="spec"><span style="font-family: var(--w98-font-ui); font-size:12px">骰子擲出六點，租金翻倍。</span></div></dd>
+        </div>
+        <div>
+          <dt>备选口味 — 秋叶圆体 16px · <code>--w98-fs-qy-sm</code><span class="verdict">← 笔画更圆，边缘带 1px 灰边</span></dt>
+          <dd><div class="spec"><span class="w98-pix-qiuye">骰子擲出六點，買下這塊地，租金翻倍。</span></div></dd>
+        </div>
+        <div>
+          <dt>秋叶圆体 32px（16 的 2 倍）· <code>--w98-fs-qy-md</code></dt>
+          <dd><div class="spec"><span class="w98-pix-qiuye w98-pix-qiuye--md">骰子擲出六點</span></div></dd>
+        </div>
+        <div>
+          <dt>秋叶圆体 24px（不是 16 的整数倍）· 错误 <span class="verdict verdict--bad">← 点阵被重采样</span></dt>
+          <dd><div class="spec spec--bad"><span class="w98-pix-qiuye" style="font-size:24px">骰子擲出六點</span></div></dd>
+        </div>
+      </dl>
+      <p class="w98-pix" style="margin:14px 0 0; color:var(--w98-text)">放大 3 倍看边缘：像素字应该是方硬的孤点，不是渐变的灰边。</p>
+      <p style="font:700 12px/1.7 var(--w98-font-num); color:var(--w98-text); margin:10px 0 0">
+        秋叶圆体自带 16px 内嵌 1-bit 位图，但 <b>Chrome on Windows 不读它、走矢量轮廓</b> ——
+        把位图表剥掉再渲染逐像素相同。所以 Windows 上它 16px 略虚；缝合像素才是硬点阵主力。
+      </p>
+    </div>
+
+    <div class="cell">
+      <h3>为什么会挑这一款（实测）</h3>
+      <table class="cov">
+        <tr><th>字体</th><th>码位</th><th>体积</th><th>本项目用字覆盖</th></tr>
+        <tr><td>缝合像素 12px zh_hans</td><td>36,999</td><td>0.64 MB</td><td class="yes">100%（含繁体）</td></tr>
+        <tr><td>秋叶圆体 16（备选）</td><td>13,646</td><td>0.51 MB</td><td class="yes">GB2312 全覆盖</td></tr>
+        <tr><td>方舟像素 12px zh_hans</td><td>24,869</td><td>—</td><td class="no">95.4%</td></tr>
+        <tr><td>Press Start 2P</td><td>—</td><td>—</td><td class="no">仅拉丁，无中文</td></tr>
+      </table>
+      <p style="font:700 12px/1.7 var(--w98-font-num); color:var(--w98-text); margin:12px 0 0">
+        方舟像素缺的 8 个字是「骰 窗 券 即 筑 毁 旋 姿 旅 斜」——<br />
+        对一个《大富翁》来说，缺「骰」是致命的，所以换了缝合版。
+      </p>
+      <p style="font:700 12px/1.7 var(--w98-font-num); color:var(--w98-text); margin:10px 0 0">
+        秋叶圆体血统是日本 KHドット秋葉原16（Sharp X68000 时代的 16 点阵），<br />
+        风格更圆润，只缺「〞」「—」两个字，缺字会回退系统字。
+      </p>
+      <p style="font:700 12px/1.7 var(--w98-font-num); color:var(--w98-text); margin:10px 0 0">
+        许可：三者都是 SIL OFL 1.1，可商用、可自托管、可子集化。<br />
+        字库只在页面真的用到 <code>.w98-pix</code> / <code>.w98-pix-qiuye</code> 时才下载。
+      </p>
+    </div>
+  </section>
+
+</div>
+</body>
+</html>

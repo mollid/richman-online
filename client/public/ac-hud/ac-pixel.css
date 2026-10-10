@@ -1,0 +1,535 @@
+/* 本文件由 design/hud-ac/tools/build-pixel-skin.py 生成，不要手改。
+ *
+ * 「像素字口味」皮肤：把 ac 皮肤的字体栈换成像素中文字体，并把字号吸附到像素网格。
+ * 像素字只有在设计字号的整数倍下才清晰 —— 13px 的缝合像素是 12px 点阵被缩放 1.0833 倍，
+ * 直接糊。所以下面用生成的方式，把上游 CSS 里 [9, 16]px 的 font-size 全部重写。
+ * > 16px 的不动：那些基本都是 emoji 图标，不在中文字体里，跟着缩放只会撑坏布局。
+ *
+ * 由 acHudLayer 通过 <html> 上的 class 开关：
+ *   html.ac-font-pix12  缝合像素 12px —— 与 ac 的小字阶（11~13px）天然贴合
+ *   html.ac-font-qiuye  秋叶圆体 16px —— 会把小字整体撑大约 33~45%，属「放大版」观感
+ *
+ * ⚠️ 两种口味都关掉抗锯齿并归零字距，这是像素字的硬要求。
+ * 同时字重被压到 400：像素字只有一档字重，让浏览器合成粗体（faux bold）
+ * 会在 12px 上糊出 1px 毛边，比不加粗更难看。
+ */
+
+/* ============================================================ 缝合像素 12px · 12 / 24 网格 */
+
+html.ac-font-pix12 {
+  --ac-disp: 'Fusion Pixel 12px', system-ui, sans-serif;
+  --ac-ui:   'Fusion Pixel 12px', system-ui, sans-serif;
+  --ac-num:  'Fusion Pixel 12px', system-ui, sans-serif;
+}
+
+/* 像素字的硬要求：关抗锯齿、归零字距、字重单档。
+ * 注意 -webkit-font-smoothing 在 Windows / Linux 上是 **no-op**（只对 macOS 有效），
+ * 所以锐利度完全取决于字体轮廓有没有落在像素网格上 —— 这正是上面要做字号吸附的原因。
+ * 缝合像素 12px 的轮廓是按 12px 网格描的，吸附后是硬边；秋叶圆体走矢量轮廓，
+ * 横笔画常落半像素，所以 16px 下会带一圈灰边（见 w98-pixel/README.md 的像素裁决）。
+ */
+html.ac-font-pix12 body,
+html.ac-font-pix12 .ac-hud-root {
+  -webkit-font-smoothing: none;   /* macOS 生效；Windows 上无效，见上 */
+  -moz-osx-font-smoothing: unset; /* Firefox(macOS) 关灰度平滑 */
+  font-smooth: never;
+}
+html.ac-font-pix12 *,
+html.ac-font-pix12 *::before,
+html.ac-font-pix12 *::after {
+  letter-spacing: 0 !important;   /* 像素字字距已算进点阵，撑开就出半像素缝 */
+  font-variant-ligatures: none;
+  font-weight: 400 !important;    /* 只有一个字重，别让浏览器合成粗体 */
+}
+
+/* 字号吸附：9~16px → 12px，共 167 条 */
+  /* ---- client\public\ac-hud\ac.css · 51 条 ---- */
+  html.ac-font-pix12 .tok { font-size: 12px; }
+  html.ac-font-pix12 .comp-title::before { font-size: 12px; }
+  html.ac-font-pix12 .comp-desc { font-size: 12px; }
+  html.ac-font-pix12 .ac-btn { font-size: 12px; }
+  html.ac-font-pix12 .ac-btn--sm { font-size: 12px; }
+  html.ac-font-pix12 .ac-panel__hd { font-size: 12px; }
+  html.ac-font-pix12 .ac-panel__bd p { font-size: 12px; }
+  html.ac-font-pix12 .ac-bar__label { font-size: 12px; }
+  html.ac-font-pix12 .ac-currency { font-size: 12px; }
+  html.ac-font-pix12 .ac-currency__coin { font-size: 12px; }
+  html.ac-font-pix12 .ac-meter__num { font-size: 12px; }
+  html.ac-font-pix12 .ac-icon__cd { font-size: 12px; }
+  html.ac-font-pix12 .ac-card__tag { font-size: 12px; }
+  html.ac-font-pix12 .ac-card__name { font-size: 12px; }
+  html.ac-font-pix12 .ac-list__tx b { font-size: 12px; }
+  html.ac-font-pix12 .ac-list__tx small { font-size: 12px; }
+  html.ac-font-pix12 .ac-list__val { font-size: 12px; }
+  html.ac-font-pix12 .ac-hud__who b { font-size: 12px; }
+  html.ac-font-pix12 .ac-hud__who small { font-size: 12px; }
+  html.ac-font-pix12 .ac-nav__tab { font-size: 12px; }
+  html.ac-font-pix12 .ac-input { font-size: 12px; }
+  html.ac-font-pix12 .ac-field__ic { font-size: 12px; }
+  html.ac-font-pix12 .ac-select select { font-size: 12px; }
+  html.ac-font-pix12 .ac-badge { font-size: 12px; }
+  html.ac-font-pix12 .ac-ribbon { font-size: 12px; }
+  html.ac-font-pix12 .ac-tag { font-size: 12px; }
+  html.ac-font-pix12 .ac-toast { font-size: 12px; }
+  html.ac-font-pix12 .ac-toast b { font-size: 12px; }
+  html.ac-font-pix12 .ac-bubble { font-size: 12px; }
+  html.ac-font-pix12 .ac-avatars__more { font-size: 12px; }
+  html.ac-font-pix12 .ac-divider__mark { font-size: 12px; }
+  html.ac-font-pix12 .ac-empty__tt { font-size: 12px; }
+  html.ac-font-pix12 .ac-breadcrumb { font-size: 12px; }
+  html.ac-font-pix12 .ac-accordion summary { font-size: 12px; }
+  html.ac-font-pix12 .ac-drawer__hd { font-size: 12px; }
+  html.ac-font-pix12 .ac-table thead th { font-size: 12px; }
+  html.ac-font-pix12 .ac-pagination__pg { font-size: 12px; }
+  html.ac-font-pix12 .ac-timeline__t { font-size: 12px; }
+  html.ac-font-pix12 .ac-timeline__d { font-size: 12px; }
+  html.ac-font-pix12 .ac-tree { font-size: 12px; }
+  html.ac-font-pix12 .ac-tree summary::before { font-size: 12px; }
+  html.ac-font-pix12 .ac-energy__orb { font-size: 12px; }
+  html.ac-font-pix12 .ac-energy__top { font-size: 12px; }
+  html.ac-font-pix12 .ac-calendar__day { font-size: 12px; }
+  html.ac-font-pix12 .ac-calendar__day .r { font-size: 12px; }
+  html.ac-font-pix12 .ac-achievement__tx b { font-size: 12px; }
+  html.ac-font-pix12 .ac-achievement__tx small { font-size: 12px; }
+  html.ac-font-pix12 .ac-flipcard__front .nm { font-size: 12px; }
+  html.ac-font-pix12 .ac-invgrid__qty { font-size: 12px; }
+  html.ac-font-pix12 .ac-compare__stat { font-size: 12px; }
+  html.ac-font-pix12 .ac-compare__vs { font-size: 12px; }
+  /* ---- client\public\ac-hud\hud.css · 38 条 ---- */
+  html.ac-font-pix12 .hud-top .ac-hud__who small { font-size: 12px; }
+  html.ac-font-pix12 .hud-coin .ac-currency { font-size: 12px; }
+  html.ac-font-pix12 .hud-topbtns .ac-btn { font-size: 12px; }
+  html.ac-font-pix12 .hud-proto { font-size: 12px; }
+  html.ac-font-pix12 .hud-status { font-size: 12px; }
+  html.ac-font-pix12 .hud-status .hud-chip { font-size: 12px; }
+  html.ac-font-pix12 .hud-chip { font-size: 12px; }
+  html.ac-font-pix12 .hud-kv > b { font-size: 12px; }
+  html.ac-font-pix12 .hud-foot { font-size: 12px; }
+  html.ac-font-pix12 .hud-side .ac-panel__hd { font-size: 12px; }
+  html.ac-font-pix12 .d25-mininote { font-size: 12px; }
+  html.ac-font-pix12 .d25-hint { font-size: 12px; }
+  html.ac-font-pix12 .d25-legend { font-size: 12px; }
+  html.ac-font-pix12 .hud-board--wide .d25-legend { font-size: 12px; }
+  html.ac-font-pix12 .d25-tip { font-size: 12px; }
+  html.ac-font-pix12 .hud-panelfoot { font-size: 12px; }
+  html.ac-font-pix12 .hud-side .ac-tabs__tab { font-size: 12px; }
+  html.ac-font-pix12 .hud-you, html.ac-font-pix12 .hud-cur { font-size: 12px; }
+  html.ac-font-pix12 .hud-bg { font-size: 12px; }
+  html.ac-font-pix12 .hud-side .ac-list__tx b { font-size: 12px; }
+  html.ac-font-pix12 .hud-side .ac-list__tx small { font-size: 12px; }
+  html.ac-font-pix12 .hud-side .ac-list__val { font-size: 12px; }
+  html.ac-font-pix12 .hud-rank { font-size: 12px; }
+  html.ac-font-pix12 .hud-stock__hd b { font-size: 12px; }
+  html.ac-font-pix12 .hud-stock__hd .p { font-size: 12px; }
+  html.ac-font-pix12 .hud-stock__hd .c { font-size: 12px; }
+  html.ac-font-pix12 .hud-stock__meta .hud-chip { font-size: 12px; }
+  html.ac-font-pix12 .hud-side .ac-table { font-size: 12px; }
+  html.ac-font-pix12 .hud-side .ac-table thead th { font-size: 12px; }
+  html.ac-font-pix12 .hud-cambar .ac-btn { font-size: 12px; }
+  html.ac-font-pix12 .hud-tile__hd { font-size: 12px; }
+  html.ac-font-pix12 .hud-tile__rows { font-size: 12px; }
+  html.ac-font-pix12 .hud-bag__hd { font-size: 12px; }
+  html.ac-font-pix12 .hud-act .ac-btn--lg { font-size: 12px; }
+  html.ac-font-pix12 .hud-pop__t { font-size: 12px; }
+  html.ac-font-pix12 .hud-pop__row { font-size: 12px; }
+  html.ac-font-pix12 .hud-cell__mark { font-size: 12px; }
+  html.ac-font-pix12 .hud-tip:hover::after { font-size: 12px; }
+  /* ---- client\src\ui\acHudClient.css · 3 条 ---- */
+  html.ac-font-pix12 .ac-lobby__hint { font-size: 12px; }
+  html.ac-font-pix12 .ac-sheet__esc { font-size: 12px; }
+  html.ac-font-pix12 .ac-banner { font-size: 12px; }
+  /* ---- client\src\styles.css · 75 条 ---- */
+  html.ac-font-pix12 button { font-size: 12px; }
+  html.ac-font-pix12 .start-btn { font-size: 12px; }
+  html.ac-font-pix12 .panel-title { font-size: 12px; }
+  html.ac-font-pix12 .badge { font-size: 12px; }
+  html.ac-font-pix12 .phase-row { font-size: 12px; }
+  html.ac-font-pix12 .current-name { font-size: 12px; }
+  html.ac-font-pix12 .settlement-rank { font-size: 12px; }
+  html.ac-font-pix12 .card-name { font-size: 12px; }
+  html.ac-font-pix12 .card-desc { font-size: 12px; }
+  html.ac-font-pix12 button.mini { font-size: 12px; }
+  html.ac-font-pix12 .stock-flag { font-size: 12px; }
+  html.ac-font-pix12 .stock-pl { font-size: 12px; }
+  html.ac-font-pix12 .stock-section-note { font-size: 12px; }
+  html.ac-font-pix12 .stock-tile { font-size: 12px; }
+  html.ac-font-pix12 .stock-lock { font-size: 12px; }
+  html.ac-font-pix12 .company-locked { font-size: 12px; }
+  html.ac-font-pix12 .stock-chart.empty { font-size: 12px; }
+  html.ac-font-pix12 .stock-chart-meta { font-size: 12px; }
+  html.ac-font-pix12 .stock-chart-foot { font-size: 12px; }
+  html.ac-font-pix12 .stock-qty-row { font-size: 12px; }
+  html.ac-font-pix12 .stock-hint { font-size: 12px; }
+  html.ac-font-pix12 .name-input, html.ac-font-pix12 .join-row input { font-size: 12px; }
+  html.ac-font-pix12 .room-code { font-size: 12px; }
+  html.ac-font-pix12 .me-tag { font-size: 12px; }
+  html.ac-font-pix12 .mode-tag { font-size: 12px; }
+  html.ac-font-pix12 .wait-banner { font-size: 12px; }
+  html.ac-font-pix12 .chat-empty { font-size: 12px; }
+  html.ac-font-pix12 .chat-name { font-size: 12px; }
+  html.ac-font-pix12 .room-row { font-size: 12px; }
+  html.ac-font-pix12 .conn-banner { font-size: 12px; }
+  html.ac-font-pix12 .auth-bar { font-size: 12px; }
+  html.ac-font-pix12 .auth-row input { font-size: 12px; }
+  html.ac-font-pix12 .lb-row { font-size: 12px; }
+  html.ac-font-pix12 .replay-title { font-size: 12px; }
+  html.ac-font-pix12 .replay-finish-banner { font-size: 12px; }
+  html.ac-font-pix12 .record-row { font-size: 12px; }
+  html.ac-font-pix12 .minigame-hint { font-size: 12px; }
+  html.ac-font-pix12 .cup-btn span { font-size: 12px; }
+  html.ac-font-pix12 .minigame-score { font-size: 12px; }
+  html.ac-font-pix12 .card-name .owned { font-size: 12px; }
+  html.ac-font-pix12 .calendar-date { font-size: 12px; }
+  html.ac-font-pix12 .calendar-index b { font-size: 12px; }
+  html.ac-font-pix12 .calendar-weekday { font-size: 12px; }
+  html.ac-font-pix12 .calendar-day { font-size: 12px; }
+  html.ac-font-pix12 .bank-balance { font-size: 12px; }
+  html.ac-font-pix12 .bank-input-row input { font-size: 12px; }
+  html.ac-font-pix12 .bank-action-row button { font-size: 12px; }
+  html.ac-font-pix12 .bank-hint { font-size: 12px; }
+  html.ac-font-pix12 .lottery-hint, html.ac-font-pix12 .lottery-mine { font-size: 12px; }
+  html.ac-font-pix12 .npc-magic-hint, html.ac-font-pix12 .npc-bail-hint { font-size: 12px; }
+  html.ac-font-pix12 .surrender-hint { font-size: 12px; }
+  html.ac-font-pix12 .report-street-head { font-size: 12px; }
+  html.ac-font-pix12 .report-table { font-size: 12px; }
+  html.ac-font-pix12 .report-empty, html.ac-font-pix12 .report-foot { font-size: 12px; }
+  html.ac-font-pix12 .report-change { font-size: 12px; }
+  html.ac-font-pix12 .report-tile { font-size: 12px; }
+  html.ac-font-pix12 .report-subtotal { font-size: 12px; }
+  html.ac-font-pix12 .company-hint { font-size: 12px; }
+  html.ac-font-pix12 .company-buy input { font-size: 12px; }
+  html.ac-font-pix12 .company-buy select { font-size: 12px; }
+  html.ac-font-pix12 .settings-row { font-size: 12px; }
+  html.ac-font-pix12 .settings-row input[type='number'] { font-size: 12px; }
+  html.ac-font-pix12 .settings-row select { font-size: 12px; }
+  html.ac-font-pix12 .settings-value { font-size: 12px; }
+  html.ac-font-pix12 button.setup-tool { font-size: 12px; }
+  html.ac-font-pix12 .settings-hint { font-size: 12px; }
+  html.ac-font-pix12 .hotkey-row .hotkey-name { font-size: 12px; }
+  html.ac-font-pix12 .help-filter input { font-size: 12px; }
+  html.ac-font-pix12 .help-count { font-size: 12px; }
+  html.ac-font-pix12 .help-body { font-size: 12px; }
+  html.ac-font-pix12 .trade-row { font-size: 12px; }
+  html.ac-font-pix12 .trade-kind { font-size: 12px; }
+  html.ac-font-pix12 .trade-empty, html.ac-font-pix12 .trade-hint { font-size: 12px; }
+  html.ac-font-pix12 .trade-history-row { font-size: 12px; }
+  html.ac-font-pix12 .revenge-hint { font-size: 12px; }
+
+  /* ---- 排版补偿（手写，不从上游派生） ----
+   * 字号吸附是把 [9,16]px 统一到一档，信息密度高的行会因此放不下而换行，
+   * 且换行点常常很难看（实测岛民面板的资产行断出孤零零的「· 🧰6」）。
+   * text-wrap: balance 让两行均分，看起来是有意的两行而不是溢出。实测：
+   *   缝合像素 12px  资产行自然宽 277px / 可用 238px → 平衡后两行各 ~139px，放得下
+   *   秋叶圆体 16px  资产行自然宽 332px / 可用 218px → 平衡后两行各 ~166px，放得下
+   */
+  html.ac-font-pix12 .ac-list__tx small,
+  html.ac-font-pix12 .hud-foot,
+  html.ac-font-pix12 .ac-list__tx b { text-wrap: balance; }
+
+/* ============================================================ 秋叶圆体 16 · 16 / 32 网格 */
+
+html.ac-font-qiuye {
+  --ac-disp: 'QiuYe Round 16', system-ui, sans-serif;
+  --ac-ui:   'QiuYe Round 16', system-ui, sans-serif;
+  --ac-num:  'QiuYe Round 16', system-ui, sans-serif;
+}
+
+/* 像素字的硬要求：关抗锯齿、归零字距、字重单档。
+ * 注意 -webkit-font-smoothing 在 Windows / Linux 上是 **no-op**（只对 macOS 有效），
+ * 所以锐利度完全取决于字体轮廓有没有落在像素网格上 —— 这正是上面要做字号吸附的原因。
+ * 缝合像素 12px 的轮廓是按 12px 网格描的，吸附后是硬边；秋叶圆体走矢量轮廓，
+ * 横笔画常落半像素，所以 16px 下会带一圈灰边（见 w98-pixel/README.md 的像素裁决）。
+ */
+html.ac-font-qiuye body,
+html.ac-font-qiuye .ac-hud-root {
+  -webkit-font-smoothing: none;   /* macOS 生效；Windows 上无效，见上 */
+  -moz-osx-font-smoothing: unset; /* Firefox(macOS) 关灰度平滑 */
+  font-smooth: never;
+}
+html.ac-font-qiuye *,
+html.ac-font-qiuye *::before,
+html.ac-font-qiuye *::after {
+  letter-spacing: 0 !important;   /* 像素字字距已算进点阵，撑开就出半像素缝 */
+  font-variant-ligatures: none;
+  font-weight: 400 !important;    /* 只有一个字重，别让浏览器合成粗体 */
+}
+
+/* 字号吸附：9~16px → 16px，共 218 条 */
+  /* ---- client\public\ac-hud\ac.css · 55 条 ---- */
+  html.ac-font-qiuye .doc-head .eb { font-size: 16px; }
+  html.ac-font-qiuye .tok { font-size: 16px; }
+  html.ac-font-qiuye .comp-desc { font-size: 16px; }
+  html.ac-font-qiuye .classline { font-size: 16px; }
+  html.ac-font-qiuye .ac-btn { font-size: 16px; }
+  html.ac-font-qiuye .ac-btn--sm { font-size: 16px; }
+  html.ac-font-qiuye .ac-panel__bd p { font-size: 16px; }
+  html.ac-font-qiuye .ac-bar__label { font-size: 16px; }
+  html.ac-font-qiuye .ac-currency { font-size: 16px; }
+  html.ac-font-qiuye .ac-currency__coin { font-size: 16px; }
+  html.ac-font-qiuye .ac-meter__num { font-size: 16px; }
+  html.ac-font-qiuye .ac-card__tag { font-size: 16px; }
+  html.ac-font-qiuye .ac-card__name { font-size: 16px; }
+  html.ac-font-qiuye .ac-list__tx b { font-size: 16px; }
+  html.ac-font-qiuye .ac-list__tx small { font-size: 16px; }
+  html.ac-font-qiuye .ac-list__val { font-size: 16px; }
+  html.ac-font-qiuye .ac-hud__who b { font-size: 16px; }
+  html.ac-font-qiuye .ac-hud__who small { font-size: 16px; }
+  html.ac-font-qiuye .ac-nav__tab { font-size: 16px; }
+  html.ac-font-qiuye .ac-tabs__tab { font-size: 16px; }
+  html.ac-font-qiuye .ac-input { font-size: 16px; }
+  html.ac-font-qiuye .ac-field__ic { font-size: 16px; }
+  html.ac-font-qiuye .ac-select select { font-size: 16px; }
+  html.ac-font-qiuye .ac-badge { font-size: 16px; }
+  html.ac-font-qiuye .ac-ribbon { font-size: 16px; }
+  html.ac-font-qiuye .ac-tag { font-size: 16px; }
+  html.ac-font-qiuye .ac-tooltip::after { font-size: 16px; }
+  html.ac-font-qiuye .ac-toast { font-size: 16px; }
+  html.ac-font-qiuye .ac-toast b { font-size: 16px; }
+  html.ac-font-qiuye .ac-bubble { font-size: 16px; }
+  html.ac-font-qiuye .ac-bubble__who { font-size: 16px; }
+  html.ac-font-qiuye .ac-avatars__more { font-size: 16px; }
+  html.ac-font-qiuye .ac-divider__mark { font-size: 16px; }
+  html.ac-font-qiuye .ac-empty__ds { font-size: 16px; }
+  html.ac-font-qiuye .ac-breadcrumb { font-size: 16px; }
+  html.ac-font-qiuye .ac-accordion summary { font-size: 16px; }
+  html.ac-font-qiuye .ac-accordion summary::before { font-size: 16px; }
+  html.ac-font-qiuye .ac-accordion__bd { font-size: 16px; }
+  html.ac-font-qiuye .ac-table { font-size: 16px; }
+  html.ac-font-qiuye .ac-table thead th { font-size: 16px; }
+  html.ac-font-qiuye .ac-pagination__pg { font-size: 16px; }
+  html.ac-font-qiuye .ac-timeline__t { font-size: 16px; }
+  html.ac-font-qiuye .ac-timeline__d { font-size: 16px; }
+  html.ac-font-qiuye .ac-tree { font-size: 16px; }
+  html.ac-font-qiuye .ac-tree summary::before { font-size: 16px; }
+  html.ac-font-qiuye .ac-energy__orb { font-size: 16px; }
+  html.ac-font-qiuye .ac-energy__top { font-size: 16px; }
+  html.ac-font-qiuye .ac-calendar__day { font-size: 16px; }
+  html.ac-font-qiuye .ac-achievement__tx b { font-size: 16px; }
+  html.ac-font-qiuye .ac-achievement__tx small { font-size: 16px; }
+  html.ac-font-qiuye .ac-flipcard__front .nm { font-size: 16px; }
+  html.ac-font-qiuye .ac-chest__label { font-size: 16px; }
+  html.ac-font-qiuye .ac-invgrid__qty { font-size: 16px; }
+  html.ac-font-qiuye .ac-compare__nm { font-size: 16px; }
+  html.ac-font-qiuye .ac-compare__stat { font-size: 16px; }
+  /* ---- client\public\ac-hud\hud.css · 39 条 ---- */
+  html.ac-font-qiuye .hud-top .ac-hud__who small { font-size: 16px; }
+  html.ac-font-qiuye .hud-coin .ac-currency { font-size: 16px; }
+  html.ac-font-qiuye .hud-topbtns .ac-btn { font-size: 16px; }
+  html.ac-font-qiuye .hud-proto { font-size: 16px; }
+  html.ac-font-qiuye .hud-status { font-size: 16px; }
+  html.ac-font-qiuye .hud-status .hud-chip { font-size: 16px; }
+  html.ac-font-qiuye .hud-chip { font-size: 16px; }
+  html.ac-font-qiuye .hud-kv { font-size: 16px; }
+  html.ac-font-qiuye .hud-kv > b { font-size: 16px; }
+  html.ac-font-qiuye .hud-foot { font-size: 16px; }
+  html.ac-font-qiuye .hud-side .ac-panel__hd { font-size: 16px; }
+  html.ac-font-qiuye .d25-mininote { font-size: 16px; }
+  html.ac-font-qiuye .d25-hint { font-size: 16px; }
+  html.ac-font-qiuye .d25-legend { font-size: 16px; }
+  html.ac-font-qiuye .hud-board--wide .d25-legend { font-size: 16px; }
+  html.ac-font-qiuye .d25-tip { font-size: 16px; }
+  html.ac-font-qiuye .hud-panelfoot { font-size: 16px; }
+  html.ac-font-qiuye .hud-side .ac-tabs__tab { font-size: 16px; }
+  html.ac-font-qiuye .hud-you, html.ac-font-qiuye .hud-cur { font-size: 16px; }
+  html.ac-font-qiuye .hud-bg { font-size: 16px; }
+  html.ac-font-qiuye .hud-side .ac-list__tx b { font-size: 16px; }
+  html.ac-font-qiuye .hud-side .ac-list__tx small { font-size: 16px; }
+  html.ac-font-qiuye .hud-side .ac-list__val { font-size: 16px; }
+  html.ac-font-qiuye .hud-rank { font-size: 16px; }
+  html.ac-font-qiuye .hud-stock__hd b { font-size: 16px; }
+  html.ac-font-qiuye .hud-stock__hd .p { font-size: 16px; }
+  html.ac-font-qiuye .hud-stock__hd .c { font-size: 16px; }
+  html.ac-font-qiuye .hud-stock__meta .hud-chip { font-size: 16px; }
+  html.ac-font-qiuye .hud-side .ac-table { font-size: 16px; }
+  html.ac-font-qiuye .hud-side .ac-table thead th { font-size: 16px; }
+  html.ac-font-qiuye .hud-cambar .ac-btn { font-size: 16px; }
+  html.ac-font-qiuye .hud-tile__hd { font-size: 16px; }
+  html.ac-font-qiuye .hud-tile__rows { font-size: 16px; }
+  html.ac-font-qiuye .hud-bag__hd { font-size: 16px; }
+  html.ac-font-qiuye .hud-pop__t { font-size: 16px; }
+  html.ac-font-qiuye .hud-pop__row { font-size: 16px; }
+  html.ac-font-qiuye .hud-cell__mark { font-size: 16px; }
+  html.ac-font-qiuye .hud-center .ac-card__name { font-size: 16px; }
+  html.ac-font-qiuye .hud-tip:hover::after { font-size: 16px; }
+  /* ---- client\src\ui\acHudClient.css · 4 条 ---- */
+  html.ac-font-qiuye .ac-lobby__me { font-size: 16px; }
+  html.ac-font-qiuye .ac-lobby__hint { font-size: 16px; }
+  html.ac-font-qiuye .ac-sheet__esc { font-size: 16px; }
+  html.ac-font-qiuye .ac-banner { font-size: 16px; }
+  /* ---- client\src\styles.css · 120 条 ---- */
+  html.ac-font-qiuye button { font-size: 16px; }
+  html.ac-font-qiuye button.small { font-size: 16px; }
+  html.ac-font-qiuye .hint { font-size: 16px; }
+  html.ac-font-qiuye .panel-title { font-size: 16px; }
+  html.ac-font-qiuye .player-sub { font-size: 16px; }
+  html.ac-font-qiuye .badge { font-size: 16px; }
+  html.ac-font-qiuye .phase-row { font-size: 16px; }
+  html.ac-font-qiuye .cell-hint { font-size: 16px; }
+  html.ac-font-qiuye .build-row { font-size: 16px; }
+  html.ac-font-qiuye .build-row button { font-size: 16px; }
+  html.ac-font-qiuye .settlement-row { font-size: 16px; }
+  html.ac-font-qiuye .settlement-rank { font-size: 16px; }
+  html.ac-font-qiuye .log-list { font-size: 16px; }
+  html.ac-font-qiuye .shop-sell-title { font-size: 16px; }
+  html.ac-font-qiuye .card-row button { font-size: 16px; }
+  html.ac-font-qiuye .card-name { font-size: 16px; }
+  html.ac-font-qiuye .card-name .price { font-size: 16px; }
+  html.ac-font-qiuye .card-desc { font-size: 16px; }
+  html.ac-font-qiuye .param-row { font-size: 16px; }
+  html.ac-font-qiuye .stock-table { font-size: 16px; }
+  html.ac-font-qiuye button.mini { font-size: 16px; }
+  html.ac-font-qiuye .stock-market-bar { font-size: 16px; }
+  html.ac-font-qiuye .stock-flag { font-size: 16px; }
+  html.ac-font-qiuye .stock-pl { font-size: 16px; }
+  html.ac-font-qiuye .stock-section-title { font-size: 16px; }
+  html.ac-font-qiuye .stock-section-note { font-size: 16px; }
+  html.ac-font-qiuye .stock-tile { font-size: 16px; }
+  html.ac-font-qiuye .stock-lock { font-size: 16px; }
+  html.ac-font-qiuye .company-locked { font-size: 16px; }
+  html.ac-font-qiuye .stock-chart.empty { font-size: 16px; }
+  html.ac-font-qiuye .stock-chart-head { font-size: 16px; }
+  html.ac-font-qiuye .stock-chart-meta { font-size: 16px; }
+  html.ac-font-qiuye .stock-chart-foot { font-size: 16px; }
+  html.ac-font-qiuye .stock-qty-row { font-size: 16px; }
+  html.ac-font-qiuye .stock-summary-row { font-size: 16px; }
+  html.ac-font-qiuye .stock-hint { font-size: 16px; }
+  html.ac-font-qiuye .name-input, html.ac-font-qiuye .join-row input { font-size: 16px; }
+  html.ac-font-qiuye .error-text { font-size: 16px; }
+  html.ac-font-qiuye .room-code { font-size: 16px; }
+  html.ac-font-qiuye .me-tag { font-size: 16px; }
+  html.ac-font-qiuye .mode-tag { font-size: 16px; }
+  html.ac-font-qiuye .wait-banner { font-size: 16px; }
+  html.ac-font-qiuye .chat-list { font-size: 16px; }
+  html.ac-font-qiuye .chat-empty { font-size: 16px; }
+  html.ac-font-qiuye .chat-name { font-size: 16px; }
+  html.ac-font-qiuye .chat-input-row input { font-size: 16px; }
+  html.ac-font-qiuye .chat-input-row button { font-size: 16px; }
+  html.ac-font-qiuye .room-empty { font-size: 16px; }
+  html.ac-font-qiuye .room-row { font-size: 16px; }
+  html.ac-font-qiuye .room-players { font-size: 16px; }
+  html.ac-font-qiuye .conn-banner { font-size: 16px; }
+  html.ac-font-qiuye .auth-bar { font-size: 16px; }
+  html.ac-font-qiuye .auth-row input { font-size: 16px; }
+  html.ac-font-qiuye .lb-row { font-size: 16px; }
+  html.ac-font-qiuye .lb-stats { font-size: 16px; }
+  html.ac-font-qiuye .replay-title { font-size: 16px; }
+  html.ac-font-qiuye .replay-progress { font-size: 16px; }
+  html.ac-font-qiuye .replay-finish-banner { font-size: 16px; }
+  html.ac-font-qiuye .record-row { font-size: 16px; }
+  html.ac-font-qiuye .record-meta { font-size: 16px; }
+  html.ac-font-qiuye .record-meta-info { font-size: 16px; }
+  html.ac-font-qiuye .minigame-hint { font-size: 16px; }
+  html.ac-font-qiuye .cup-btn span { font-size: 16px; }
+  html.ac-font-qiuye .empty-hint { font-size: 16px; }
+  html.ac-font-qiuye .rack-title { font-size: 16px; }
+  html.ac-font-qiuye .card-name .owned { font-size: 16px; }
+  html.ac-font-qiuye .calendar-date { font-size: 16px; }
+  html.ac-font-qiuye .calendar-sub { font-size: 16px; }
+  html.ac-font-qiuye .calendar-index { font-size: 16px; }
+  html.ac-font-qiuye .calendar-index b { font-size: 16px; }
+  html.ac-font-qiuye .calendar-weekday { font-size: 16px; }
+  html.ac-font-qiuye .calendar-day { font-size: 16px; }
+  html.ac-font-qiuye .control-meta { font-size: 16px; }
+  html.ac-font-qiuye .bank-balance { font-size: 16px; }
+  html.ac-font-qiuye .bank-input-row input { font-size: 16px; }
+  html.ac-font-qiuye .bank-action-row button { font-size: 16px; }
+  html.ac-font-qiuye .bank-loan-info, html.ac-font-qiuye .bank-loan-due { font-size: 16px; }
+  html.ac-font-qiuye .bank-hint { font-size: 16px; }
+  html.ac-font-qiuye .lottery-pool, html.ac-font-qiuye .auction-info, html.ac-font-qiuye .auction-turn { font-size: 16px; }
+  html.ac-font-qiuye .lottery-hint, html.ac-font-qiuye .lottery-mine { font-size: 16px; }
+  html.ac-font-qiuye .npc-magic-condition { font-size: 16px; }
+  html.ac-font-qiuye .npc-magic-curse { font-size: 16px; }
+  html.ac-font-qiuye .npc-magic-hint, html.ac-font-qiuye .npc-bail-hint { font-size: 16px; }
+  html.ac-font-qiuye .surrender-hint { font-size: 16px; }
+  html.ac-font-qiuye .discard-title { font-size: 16px; }
+  html.ac-font-qiuye .report-card-head, html.ac-font-qiuye .report-street-head { font-size: 16px; }
+  html.ac-font-qiuye .report-street-head { font-size: 16px; }
+  html.ac-font-qiuye .report-table { font-size: 16px; }
+  html.ac-font-qiuye .report-empty, html.ac-font-qiuye .report-foot { font-size: 16px; }
+  html.ac-font-qiuye .report-change { font-size: 16px; }
+  html.ac-font-qiuye .report-tile { font-size: 16px; }
+  html.ac-font-qiuye .report-subtotal { font-size: 16px; }
+  html.ac-font-qiuye .company-hint { font-size: 16px; }
+  html.ac-font-qiuye .company-meta { font-size: 16px; }
+  html.ac-font-qiuye .company-row { font-size: 16px; }
+  html.ac-font-qiuye .company-label { font-size: 16px; }
+  html.ac-font-qiuye .company-buy input { font-size: 16px; }
+  html.ac-font-qiuye .company-buy select { font-size: 16px; }
+  html.ac-font-qiuye .settings-group-title { font-size: 16px; }
+  html.ac-font-qiuye .settings-row { font-size: 16px; }
+  html.ac-font-qiuye .settings-row input[type='number'] { font-size: 16px; }
+  html.ac-font-qiuye .settings-row select { font-size: 16px; }
+  html.ac-font-qiuye .settings-value { font-size: 16px; }
+  html.ac-font-qiuye button.setup-tool { font-size: 16px; }
+  html.ac-font-qiuye .settings-hint { font-size: 16px; }
+  html.ac-font-qiuye .hotkey-row .hotkey-name { font-size: 16px; }
+  html.ac-font-qiuye .date-row label { font-size: 16px; }
+  html.ac-font-qiuye .help-filter input { font-size: 16px; }
+  html.ac-font-qiuye .help-count { font-size: 16px; }
+  html.ac-font-qiuye .help-group-title { font-size: 16px; }
+  html.ac-font-qiuye .help-no { font-size: 16px; }
+  html.ac-font-qiuye .help-body { font-size: 16px; }
+  html.ac-font-qiuye .trade-section-title { font-size: 16px; }
+  html.ac-font-qiuye .trade-row { font-size: 16px; }
+  html.ac-font-qiuye .trade-kind { font-size: 16px; }
+  html.ac-font-qiuye .trade-empty, html.ac-font-qiuye .trade-hint { font-size: 16px; }
+  html.ac-font-qiuye .trade-form-label { font-size: 16px; }
+  html.ac-font-qiuye .trade-history-row { font-size: 16px; }
+  html.ac-font-qiuye .revenge-title { font-size: 16px; }
+  html.ac-font-qiuye .revenge-hint { font-size: 16px; }
+
+  /* ---- 排版补偿（手写，不从上游派生） ----
+   * 字号吸附是把 [9,16]px 统一到一档，信息密度高的行会因此放不下而换行，
+   * 且换行点常常很难看（实测岛民面板的资产行断出孤零零的「· 🧰6」）。
+   * text-wrap: balance 让两行均分，看起来是有意的两行而不是溢出。实测：
+   *   缝合像素 12px  资产行自然宽 277px / 可用 238px → 平衡后两行各 ~139px，放得下
+   *   秋叶圆体 16px  资产行自然宽 332px / 可用 218px → 平衡后两行各 ~166px，放得下
+   */
+  html.ac-font-qiuye .ac-list__tx small,
+  html.ac-font-qiuye .hud-foot,
+  html.ac-font-qiuye .ac-list__tx b { text-wrap: balance; }
+
+/* ============================================================ 内容适配（手写，不从上游派生）
+ * 只写秋叶圆体：它是定下来的像素口味，设计字号 16px 比 ac 皮肤原有小字阶（10~13px）
+ * 大 23%~60%，凡是按小字排的紧凑容器都要给去处。缝合像素 12px 与原字阶几乎重合，不需要。
+ *
+ * 审计口径：design/hud-ac/tools/font-mode-audit.mjs 逐元素量 scrollWidth/clientWidth，
+ * 只看 overflow 为 visible 的（auto/scroll 的滚动容器是设计如此）。
+ */
+
+/* 1. 顶栏：16px 下整行实测 1717px / 可用 1420px，最宽的是名字旁那行日期。
+ *    而那行日期几乎全是冗余 —— 紧跟在下面的状态条就给了 M/D 周X · 岛历 N 天 · 月末 N 天，
+ *    例假日还有专门的 🏖️ chip。所以 hud.js 把日期段拆成 .hud-when，这里只在秋叶模式藏掉，
+ *    保留「第 N 回合 · 第 N 圈」（状态条没有这个）。藏掉后整行 ~1.3k px，一行放得下。 */
+html.ac-font-qiuye .hud-top .ac-hud__who .hud-when { display: none; }
+
+/* 2. 顶栏按钮：字从 12.5/13px 涨到 16px，内边距按 16px 字号重排，
+ *    省下的宽度还给文字，整行不再靠挤压谁。 */
+html.ac-font-qiuye .hud-topbtns .ac-btn { padding: 6px 10px 7px; }
+html.ac-font-qiuye .hud-top .ac-btn--sm { padding: 7px 12px 8px; }
+
+/* 3. 状态条行情带：6 支股票 chip 在 16px 下超出行宽 86px。它本来就是可横滚的
+ *    （带渐隐遮罩 + 隐藏滚动条），不算坏 —— 但把 chip 内边距、行情带内距与
+ *    容器间距各收紧一档，能整条塞进默认视野，不用横向滚才能看到「金融」。
+ *    实测 86px → 22px → 0。 */
+html.ac-font-qiuye .hud-status { gap: 6px; padding: 5px 8px; }
+html.ac-font-qiuye .hud-status .hud-chip { padding: 2px 6px; gap: 3px; }
+html.ac-font-qiuye .hud-status__mkt { gap: 4px; }
+
+/* 4. 面板底注：原 10px → 16px 后被省略号截断（实测丢掉「物价 ×1.000」）。
+ *    这行是唯一的回合/阶段/物价摘要，截断比折行糟，允许它折成两行。 */
+html.ac-font-qiuye .hud-panelfoot { white-space: normal; line-height: 1.5; }
+
+/* 5. 左下地块信息条：标题行在 16px 下会把类型名（small）从词中间断开，让它整段下移 */
+html.ac-font-qiuye .hud-tile__hd { flex-wrap: wrap; row-gap: 2px; }
+
+/* 6. 侧栏按字号等比加宽：26vw（374px@1440）是按 10.5px 表格字排的，账本 9 列在 16px 下
+ *    溢出 96px，把最重要的「Σ总」列裁掉了。字大 45%，栏也该宽一档 ——
+ *    提到 31vw（446px@1440，上限 470px），账本 + 表格内距收紧后刚好放得下。
+ *    代价是棋盘少 72px，可接受；棋盘是 minmax(0,1fr) 弹性列，不会破版。 */
+html.ac-font-qiuye .hud-shell { grid-template-columns: minmax(0, 1fr) clamp(360px, 31vw, 470px); }
+html.ac-font-qiuye .hud-side .ac-table thead th,
+html.ac-font-qiuye .hud-side .ac-table tbody td { padding: 4px 1px; }
+
+/* 7. 面板标题：emoji 的行框比汉字高，16px 下底部被裁 13px，放宽行框 */
+html.ac-font-qiuye .hud-side .ac-panel__hd { line-height: 1.45; }

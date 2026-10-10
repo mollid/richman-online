@@ -1,0 +1,178 @@
+/* ==========================================================================
+   W98-Pixel UI Kit — Design Tokens
+   独立美术方向 B 套：伪 Win9x 桌面壳 + 高清像素热带海岛棋盘
+   与 v6 提案（大富翁Online-美术风格提案.md）无依赖关系，勿混用。
+   规则：本文件只允许出现 :root 变量，不得出现任何选择器。
+   ========================================================================== */
+
+:root {
+  /* ---------- 环境色（棋盘 / 场景） ---------- */
+  --w98-sea:            #1e7fc2;  /* 海面主色 */
+  --w98-sea-deep:       #0e4c8a;  /* 深水 / 小地图底 */
+  --w98-sea-foam:       #8fd9f8;  /* 波光、浪花 */
+  --w98-grass:          #57c24a;  /* 草地 */
+  --w98-grass-dark:     #2e8b2e;  /* 草背光面 */
+  --w98-sand:           #f2dca8;  /* 沙滩 */
+  --w98-sand-dark:      #d9bd80;
+
+  /* ---------- 地产分组色（瓦片砖面，信息色） ---------- */
+  --w98-tile-orange:    #f09a28;  /* 商业 */
+  --w98-tile-purple:    #9b59b6;  /* 特殊 / 卡片 */
+  --w98-tile-green:     #34b24b;  /* 公园 / 住宅 */
+  --w98-tile-blue:      #3b82c4;  /* 机会 / 海景 */
+  --w98-tile-gray:      #c6c2b8;  /* 通路 / 税务 */
+  --w98-tile-gold:      #ffc93c;  /* GO 起点 */
+
+  /* ---------- 桌面壳（Win9x 拟物层） ---------- */
+  --w98-face:           #e2dbcb;  /* 窗口 / 工具栏主面 */
+  --w98-face-light:     #f4f0e6;  /* bevel 亮边、内高光 */
+  --w98-face-dark:      #a8a08c;  /* bevel 暗边 */
+  --w98-face-darker:    #8a8271;  /* bevel 最深边 */
+  --w98-chrome-blue:    #2f5fa0;  /* 标题栏中段 */
+  --w98-chrome-blue-dk: #16345f;  /* 标题栏左端 */
+  --w98-chrome-blue-lt: #4a82c4;  /* 标题栏右端 */
+
+  /* ---------- 羊皮纸信息层 ---------- */
+  --w98-parch:          #ebd9ac;
+  --w98-parch-light:    #f7ecd0;
+  --w98-parch-edge:     #c9a96a;
+  --w98-parch-edge-dk:  #a3813f;
+
+  /* ---------- 语义色 ---------- */
+  --w98-accent:         #ffc93c;  /* 选中态、金币、高亮 */
+  --w98-accent-deep:    #e0a317;
+  --w98-danger:         #d8402f;  /* 破产、缴税、急救 */
+  --w98-danger-deep:    #9e2a1d;
+  --w98-ok:             #2fa84f;
+  --w98-ink:            #3b2a1a;  /* 全套件统一描边色 */
+  --w98-text:           #2b2118;
+  --w98-text-dim:       #6f6553;
+  --w98-text-invert:    #fff6dc;  /* 标题栏 / 深蓝底上的字 */
+
+  /* ---------- 描边 ---------- */
+  --w98-stroke:         2px;
+  --w98-stroke-thin:    1px;
+  --w98-stroke-heavy:   3px;
+  --w98-line:           var(--w98-stroke) solid var(--w98-ink);
+  --w98-line-thin:      var(--w98-stroke-thin) solid var(--w98-ink);
+  --w98-line-parch:     var(--w98-stroke) solid var(--w98-parch-edge);
+
+  /* Win9x 立体边：凸起 / 凹陷。用 inset 阴影画，不占布局。 */
+  --w98-bevel-out:
+    inset -2px -2px 0 0 var(--w98-face-darker),
+    inset  2px  2px 0 0 var(--w98-face-light);
+  --w98-bevel-in:
+    inset  2px  2px 0 0 var(--w98-face-darker),
+    inset -2px -2px 0 0 var(--w98-face-light);
+  --w98-bevel-out-thin:
+    inset -1px -1px 0 0 var(--w98-face-darker),
+    inset  1px  1px 0 0 var(--w98-face-light);
+
+  /* ---------- 体积 / 投影 ---------- */
+  --w98-shadow-sprite:  0 3px 0 rgba(59, 42, 26, 0.35);   /* 像素物件的落地硬影 */
+  --w98-shadow-float:   0 6px 0 rgba(14, 76, 138, 0.35);  /* 悬浮窗 / 徽章 */
+  --w98-shadow-inset:   inset 0 3px 6px rgba(59, 42, 26, 0.25);
+  --w98-glow-select:    0 0 0 3px var(--w98-accent), 0 0 0 5px var(--w98-ink);
+
+  /* ---------- 圆角 ---------- */
+  /* 桌面壳一律直角（Win9x 语言）；只有羊皮纸卡与圆形按钮用圆角。 */
+  --w98-radius-chrome:  0;
+  --w98-radius-card:    14px;
+  --w98-radius-chip:    8px;
+  --w98-radius-pill:    999px;
+
+  /* ---------- 间距（4px 基准格） ---------- */
+  --w98-space-1: 4px;
+  --w98-space-2: 8px;
+  --w98-space-3: 12px;
+  --w98-space-4: 16px;
+  --w98-space-5: 24px;
+  --w98-space-6: 32px;
+  --w98-space-8: 48px;
+
+  /* ---------- 尺寸 ---------- */
+  --w98-titlebar-h:    26px;
+  --w98-toolbar-h:     76px;
+  --w98-actionbar-h:   108px;
+  --w98-icon-size:     40px;
+  --w98-orb-size:      84px;
+  --w98-tab-v-w:       44px;
+  --w98-side-w:        330px;
+  --w98-avatar-size:   92px;
+  --w98-tile-w:        128px;
+  --w98-tile-h:        64px;
+
+  /* ---------- 字体 ----------
+   * `--w98-font-pix` 走**缝合像素字体 Fusion Pixel 12px 比例版**（自托管，见 fonts.css）。
+   * 原来写的 'Press Start 2P' 只覆盖拉丁，中文要 'Zpix' —— 两个都要么连不通、要么用户没装，
+   * 于是「像素中文」实际是系统字，风格整个塌掉。现在换成自带简繁的像素字库，中文也真是点阵。
+   *
+   * 用量实测（design/hud-ac/tools/check-font-coverage.py）：
+   *   缝合像素 12px zh_hans  36999 码位  0.64MB  本项目界面用字 1790 个，覆盖 100%
+   *   秋叶圆体 16            13646 码位  0.51MB  GB2312 一/二级 6763 字全覆盖，
+   *                                              仅缺「〞」「—」，回退到系统字，可接受
+   *   方舟像素 12px zh_hans  24869 码位  ——      覆盖 95.4%，缺「骰窗券即筑毁旋姿旅斜」，
+   *                                              对本作来说缺「骰」是致命的，故不选它。
+   * 结论：0.64MB 换 100% 覆盖 + 自带繁体，可以接受；且它是**按需加载**（只有 .w98-pix 用到）。
+   *
+   * ⚠️ 像素字体只有在**设计字号的整数倍**下才是清晰的点阵，其它字号会被重采样糊掉。
+   *    缝合像素设计字号 12px → 取下面 --w98-fs-pix-* 三档（12/24/36）；
+   *    秋叶圆体设计字号 16px → 取 --w98-fs-qy-* 两档（16/32）。两组不可混用。
+   */
+  --w98-font-ui:   'Microsoft YaHei', 'PingFang SC', 'Noto Sans TC', sans-serif;
+  --w98-font-pix:  'Fusion Pixel 12px', 'Zpix', 'Microsoft YaHei', monospace;
+  --w98-font-qy:   'QiuYe Round 16', 'Fusion Pixel 12px', 'Microsoft YaHei', monospace;
+  --w98-font-num:  ui-monospace, 'Cascadia Mono', 'Consolas', monospace;
+
+  /* 像素字号的合法档位：12px 的整数倍 */
+  --w98-fs-pix-sm:   12px;
+  --w98-fs-pix-md:   24px;
+  --w98-fs-pix-lg:   36px;
+
+  /* 秋叶圆体的合法档位：16px 的整数倍（设计字号 16） */
+  --w98-fs-qy-sm:    16px;
+  --w98-fs-qy-md:    32px;
+
+  --w98-fs-caption:  14px;
+  --w98-fs-tool:     13px;
+  --w98-fs-body:     14px;
+  --w98-fs-label:    15px;
+  --w98-fs-value:    19px;
+  --w98-fs-title:    22px;
+  --w98-fs-orb:      22px;
+
+  /* 标题字：深蓝填充 + 白描边 + 硬投影，全部用文字阴影实现，不生成字体贴图 */
+  --w98-text-outline:
+    -2px 0 0 var(--w98-text-invert), 2px 0 0 var(--w98-text-invert),
+     0 -2px 0 var(--w98-text-invert), 0  2px 0 var(--w98-text-invert),
+    -2px -2px 0 var(--w98-text-invert), 2px  2px 0 var(--w98-text-invert),
+    -2px 2px 0 var(--w98-text-invert),  2px -2px 0 var(--w98-text-invert),
+     3px  4px 0 var(--w98-ink);
+  --w98-text-hard-shadow: 2px 3px 0 rgba(59, 42, 26, 0.45);
+
+  /* ---------- 渐变 ---------- */
+  --w98-grad-titlebar: linear-gradient(90deg,
+    var(--w98-chrome-blue-dk) 0%, var(--w98-chrome-blue) 55%, var(--w98-chrome-blue-lt) 100%);
+  --w98-grad-actionbar: linear-gradient(180deg,
+    #4a82c4 0%, #2f5fa0 45%, #16345f 100%);
+  --w98-grad-orb: linear-gradient(180deg,
+    rgba(255, 255, 255, 0.85) 0%, rgba(255, 255, 255, 0.25) 42%,
+    rgba(255, 255, 255, 0) 43%, rgba(0, 0, 0, 0.18) 100%);
+  --w98-grad-parch: linear-gradient(160deg,
+    var(--w98-parch-light) 0%, var(--w98-parch) 60%, var(--w98-parch-edge) 100%);
+
+  /* ---------- 动效 ---------- */
+  --w98-dur-fast:   90ms;
+  --w98-dur:        140ms;
+  --w98-ease-out:   cubic-bezier(0.22, 1, 0.36, 1);
+  /* 像素动画专用阶梯缓动，避免亚像素插值 */
+  --w98-ease-step:  steps(3, end);
+
+  /* ---------- 层级 ---------- */
+  --w98-z-board:    1;
+  --w98-z-sprite:   10;
+  --w98-z-badge:    20;   /* NEWS 徽章压在棋盘上 */
+  --w98-z-float:    30;   /* 小地图等悬浮窗 */
+  --w98-z-actionbar: 40;
+  --w98-z-modal:    100;
+}

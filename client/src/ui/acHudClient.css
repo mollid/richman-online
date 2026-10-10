@@ -1,0 +1,273 @@
+/* ac-HUD 并入 client 后新增的宿主层样式：大厅 / 弹层 / 横幅 / 加载提示。
+   HUD 本体（骨架、dock、面板）仍是 public/ac-hud/hud.css + ac.css，这里只补「HUD 不负责」的那几块。
+   令牌沿用 ac.css 的 --ac-*，并给 fallback，避免样式表尚未加载时闪成无样式。 */
+
+.ac-hud-root {
+  display: block;
+  min-height: 100dvh;
+}
+
+/* ---------- 全屏遮罩（大厅 / 加载失败） ---------- */
+.ac-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(60, 48, 30, 0.42);
+}
+
+.ac-note {
+  max-width: min(560px, 92vw);
+  padding: 14px 18px;
+  border-radius: 16px;
+  border: 3px solid var(--ac-brown, #7a6547);
+  background: var(--ac-cream, #fffbef);
+  color: var(--ac-text, #6b5940);
+  font-family: var(--ac-ui, system-ui);
+  font-weight: 800;
+}
+
+.ac-note--danger {
+  border-color: #c0483c;
+  background: #ffe9e6;
+  color: #9a2c22;
+}
+
+/* ---------- 联机大厅 ---------- */
+.ac-lobby {
+  width: min(460px, 92vw);
+  padding: 18px;
+  border-radius: 18px;
+  border: 3px solid var(--ac-brown, #7a6547);
+  background: var(--ac-cream, #fffbef);
+  box-shadow: 0 18px 40px rgba(60, 48, 30, 0.28);
+  font-family: var(--ac-ui, system-ui);
+  color: var(--ac-text, #6b5940);
+}
+
+.ac-lobby__code {
+  font-weight: 800;
+  color: var(--ac-brown, #7a6547);
+}
+
+.ac-lobby__code b {
+  font-family: var(--ac-num, sans-serif);
+  font-size: 20px;
+  color: var(--ac-orange-dk, #d1802a);
+  letter-spacing: 1px;
+}
+
+.ac-lobby__title {
+  margin-top: 12px;
+  font-weight: 800;
+}
+
+.ac-lobby__list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 8px 0 14px;
+}
+
+.ac-lobby__row {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--ac-cream2, #fbf2d7);
+  border: 2px solid var(--ac-line, #e8d9b0);
+  font-weight: 800;
+}
+
+.ac-lobby__me {
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--ac-green, #6fbf5a);
+  color: #fff;
+  font-size: 12px;
+}
+
+.ac-lobby__acts {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.ac-lobby__hint {
+  margin: 12px 0 0;
+  font-size: 13px;
+  color: var(--ac-dim, #b0a184);
+  font-weight: 800;
+}
+
+/* ---------- 输入型流程的弹层（银行 / 商店 / 股市 / 挂出 / 拍卖 / 小游戏…） ----------
+ *
+ * 名字叫 sheet 而不是 modal，是**故意的**：原型的设计系统 ac.css 里已经有一个 `.ac-modal`
+ * （`width: min(380px, 92vw)`，给原型自己的小对话框用的）。ac.css 是后挂的 <link>，
+ * 同权重后加载者胜 —— 宿主层如果也叫 `.ac-modal`，宽度会被它按死成 380px，
+ * 而且不管怎么调 `width` 都不动，看起来像「改了没生效」。
+ * 换名比提权干净：两边是根本不同的组件，不该共用类名。
+ */
+.ac-sheet-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 55;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(60, 48, 30, 0.35);
+}
+
+.ac-sheet {
+  /* 宽度由面板内容决定：壳只负责「给够地方」，具体档位见下面的 --sm/--md/--wide。
+     窄屏一律回落 94vw，所以分级只是「有多宽就用多宽」，不会撑破屏幕。 */
+  --ac-sheet-w: 560px;
+  width: min(var(--ac-sheet-w), 94vw);
+  max-height: min(88dvh, 900px);
+  display: flex;
+  flex-direction: column;
+  border: 3px solid var(--ac-brown, #7a6547);
+  border-radius: 18px;
+  background: var(--ac-cream, #fffbef);
+  overflow: hidden;
+  box-shadow: 0 18px 44px rgba(60, 48, 30, 0.3);
+}
+
+/* 尺寸分级 ——
+   sm   单列表单（乐透选号）
+   md   分区 + 列表（银行、商店、魔法屋、医院、手牌、拍卖、流程控制）
+   wide 双表格 + 图表 + 长文案（目前只有股市）
+   不分级时一律 380px（ac.css 那个 .ac-modal 的宽度），股市面板塞进去就是这个下场：
+   K 线只有拇指大、五列表挤成两行。 */
+.ac-sheet--sm {
+  --ac-sheet-w: 520px;
+}
+
+.ac-sheet--md {
+  --ac-sheet-w: 760px;
+}
+
+.ac-sheet--wide {
+  --ac-sheet-w: 1120px;
+}
+
+.ac-sheet__hd {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 14px;
+  background: var(--ac-green, #6fbf5a);
+  color: #3d5226;
+  font-family: var(--ac-ui, system-ui);
+  font-weight: 800;
+}
+
+.ac-sheet__bd {
+  /* flex 子项必须显式 min-height:0，否则内容一长就撑破 max-height，滚动条落到整页上 */
+  min-height: 0;
+  padding: 14px;
+  overflow: auto;
+  overscroll-behavior: contain;
+  background: var(--ac-cream2, #fbf2d7);
+  /* 这里托管的是既有 React 深色面板，它们走 client 自己的字体栈（Microsoft YaHei），
+     于是弹层里的中文和壳里的圆体一眼看就是两套字。只给弹层内容统一字体，大厅不动。
+     面板内多数元素写的是 font-family: inherit，所以只设这一层即可覆盖。 */
+  font-family: var(--ac-ui);
+}
+
+/* 宽版下，面板里那些「本来就是一列列表」的区块改成多列铺开，
+   否则 1100px 宽的一行「标签…………值」会拉成一条长缝，反而更难读。 */
+.ac-sheet--wide .ac-sheet__bd .stock-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 6px 14px;
+  align-items: center;
+}
+
+/* 长段说明按可读行长收口（中文约 40 字/行），别让它铺满整个宽弹层 */
+.ac-sheet--wide .ac-sheet__bd .stock-hint {
+  max-width: 76ch;
+}
+
+/* K 线图按量到的容器宽度出图，窗口骤缩时先夹住不让它撑破弹层（等比回落，最多两侧留白） */
+.ac-sheet__bd .stock-chart svg {
+  max-width: 100%;
+}
+
+/* 弹层里的滚动条：细一点，别和奶油底打架 */
+.ac-sheet__bd::-webkit-scrollbar {
+  width: 10px;
+}
+
+.ac-sheet__bd::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: var(--ac-line, #e8d9b0);
+}
+
+.ac-sheet__bd::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* 「关闭」按钮上的 Esc 提示：让键盘操作可发现 */
+.ac-sheet__esc {
+  margin-left: 4px;
+  padding: 0 5px;
+  border-radius: 4px;
+  background: rgba(122, 101, 71, 0.16);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+/* 弹层里托管的既有面板是深色主题（自带 #16211b 底 + 浅字）。
+   这里刻意**不**去改它 —— 保持原样最可读，「壳换皮、流程先不丢」。
+   重做成 ac 皮肤是后续单独一轮的事。 */
+
+/* ---------- 连接 / 等待横幅 ---------- */
+.ac-banners {
+  position: fixed;
+  top: 76px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 45;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  pointer-events: none;
+}
+
+.ac-banner {
+  padding: 6px 16px;
+  border: 2px solid var(--ac-brown, #7a6547);
+  border-radius: 999px;
+  background: var(--ac-cream, #fffbef);
+  color: var(--ac-text, #6b5940);
+  font-family: var(--ac-ui, system-ui);
+  font-weight: 800;
+  font-size: 13px;
+  box-shadow: 0 6px 18px rgba(60, 48, 30, 0.18);
+}
+
+.ac-banner--warn {
+  border-color: var(--ac-bell-dk, #e0a51f);
+  background: #fff3d6;
+}
+
+.ac-banner--danger {
+  border-color: #c0483c;
+  background: #ffe9e6;
+  color: #9a2c22;
+}
+
+/* ---------- 窄屏兜底 ---------- */
+@media (max-width: 720px) {
+  .ac-banners {
+    top: auto;
+    bottom: 12px;
+  }
+}

@@ -4,12 +4,19 @@
   "version": "0.1.0",
   "description": "大富翁4 风格联网多人棋盘游戏（原创美术，复刻玩法）",
   "scripts": {
+    "docker:up": "docker compose up -d --build",
+    "docker:down": "docker compose down",
+    "docker:logs": "docker compose logs -f",
+    "docker:ps": "docker compose ps",
     "dev": "concurrently -n server,client -c blue,green \"pnpm --filter @richman/server dev\" \"pnpm --filter @richman/client dev\"",
     "dev:client": "pnpm --filter @richman/client dev",
     "dev:server": "pnpm --filter @richman/server dev",
     "build": "pnpm -r build",
     "test": "pnpm --filter @richman/shared test",
-    "typecheck": "pnpm -r typecheck"
+    "typecheck": "pnpm -r typecheck",
+    "fonts": "python design/hud-ac/tools/build-fonts.py",
+    "fonts:clean": "python design/hud-ac/tools/build-fonts.py --clean",
+    "pixel-skin": "python design/hud-ac/tools/build-pixel-skin.py"
   },
   "devDependencies": {
     "concurrently": "^9.1.2",

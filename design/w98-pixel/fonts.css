@@ -1,0 +1,42 @@
+/* ============================================================================
+   w98-pixel 字体接入
+   ----------------------------------------------------------------------------
+   本文件只做一件事：把自托管的像素中文字库挂上，供 tokens.css 的 --w98-font-pix 使用。
+
+   为什么单独一个文件，而不是塞进 tokens.css：
+   tokens.css 的约束是「只有 :root 变量、不得出现任何选择器」，@font-face 不该混进去。
+
+   字体文件本体不在本目录，而在 client 的静态资源里（由 design/hud-ac/tools/build-fonts.py
+   从上游下载并落地）：
+     client/public/fonts/pixel/fusion-pixel-12px-zh_hans.woff2   缝合像素 12px（主力）
+     client/public/fonts/pixel/qiuye-round-16.woff2              秋叶圆体 16（备选）
+
+   授权：均为 SIL Open Font License 1.1，原文见 client/public/fonts/pixel/OFL.txt
+   与 client/public/fonts/licenses/OFL-qiuye-round.txt。
+   缝合版上游 github.com/TakWolf/fusion-pixel-font 整合了 ark-pixel / cubic-11 / galmuri
+   三家开源像素字；秋叶圆体上游 github.com/yzdnn/qiuyeyuanti-16。
+
+   ⚠️ 预览必须通过 HTTP 打开，不能直接 file:// 双击 preview.html ——
+      Chrome 把 file:// 视为不透明来源，会拦掉字体请求，你会看到一片系统字。
+      起个服务即可：  python -m http.server 8080  （在仓库根目录执行）
+      然后开 http://localhost:8080/design/w98-pixel/preview.html
+   ============================================================================ */
+
+@font-face {
+  font-family: 'Fusion Pixel 12px';
+  font-style: normal;
+  font-weight: 400;
+  font-display: block; /* 像素字换成系统字会整个错位，宁可短暂空白 */
+  src: url('../../client/public/fonts/pixel/fusion-pixel-12px-zh_hans.woff2') format('woff2');
+}
+
+/* 秋叶圆体 16 —— 16px 点阵圆体，圆润口味的像素字。
+   走矢量轮廓渲染（该字体的内嵌 1-bit 位图 Chrome on Windows 不读），
+   比缝合像素略虚，但字形更圆、覆盖到 GB2312 全集。见 README「已评估：秋叶圆体 16」。 */
+@font-face {
+  font-family: 'QiuYe Round 16';
+  font-style: normal;
+  font-weight: 400;
+  font-display: block;
+  src: url('../../client/public/fonts/pixel/qiuye-round-16.woff2') format('woff2');
+}

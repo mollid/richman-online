@@ -1,12 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import {
-  availableActions,
-  MAX_DAY_CHOICES,
-  ONLINE_DEFAULT_MAX_DAYS,
-  type GameState,
-  type PlayerAction,
-} from '@richman/shared';
-import { BoardRenderer } from './game/BoardRenderer.js';
+import { MAX_DAY_CHOICES, ONLINE_DEFAULT_MAX_DAYS, type GameState, type PlayerAction } from '@richman/shared';
 import { sfx } from './game/sfx.js';
 import {
   loadHotseatGame,
@@ -27,22 +20,8 @@ import {
   type ReplayRecord,
   type ReplayRecordSummary,
 } from './net/auth.js';
-import { PlayerList } from './ui/PlayerList.js';
-import { ControlPanel } from './ui/ControlPanel.js';
-import { CompanyPanel } from './ui/CompanyPanel.js';
-import { CalendarPanel } from './ui/CalendarPanel.js';
-import { BankPanel } from './ui/BankPanel.js';
-import { LogPanel } from './ui/LogPanel.js';
-import { HandPanel } from './ui/HandPanel.js';
-import { StockPanel } from './ui/StockPanel.js';
-import { ShopPanel } from './ui/ShopPanel.js';
-import { LotteryPanel } from './ui/LotteryPanel.js';
-import { NpcPanel } from './ui/NpcPanel.js';
-import { ReportPanel } from './ui/ReportPanel.js';
-import { TradePanel } from './ui/TradePanel.js';
-import { AuctionPanel } from './ui/AuctionPanel.js';
-import { ChatPanel } from './ui/ChatPanel.js';
 import { ReplayScreen } from './ui/ReplayScreen.js';
+import { AcHudLayer } from './ui/AcHudLayer.js';
 import { useGameSfx } from './ui/useGameSfx.js';
 import { useHotkeys } from './ui/useHotkeys.js';
 import { SettingsPanel } from './ui/SettingsPanel.js';
@@ -50,17 +29,6 @@ import { HelpPanel } from './ui/HelpPanel.js';
 import { duckMusic, initMusic } from './game/bgm.js';
 
 type SetupMode = 'local' | 'online' | 'replay';
-
-type SidebarTab = 'status' | 'finance' | 'shop' | 'report' | 'trade' | 'log';
-
-const SIDEBAR_TABS: Array<[SidebarTab, string]> = [
-  ['status', '状态'],
-  ['finance', '金融'],
-  ['shop', '商店'],
-  ['report', '报表'],
-  ['trade', '交易'],
-  ['log', '日志'],
-];
 
 /** 天数上限的显示文案（`null` = 不限，只靠「对手全破产」收场） */
 function dayLimitLabel(days: number | null): string {
@@ -508,8 +476,6 @@ function GameScreen({
   const [netError, setNetError] = useState('');
   const [connection, setConnection] = useState<'connected' | 'reconnecting' | 'closed'>('connected');
   const [muted, setMuted] = useState(sfx.isMuted());
-  const boardRef = useRef<HTMLDivElement>(null);
-  const rendererRef = useRef<BoardRenderer | null>(null);
 
   useGameSfx(game);
 
@@ -524,37 +490,11 @@ function GameScreen({
     };
   }, [session]);
 
-  useEffect(() => {
-    const el = boardRef.current;
-    if (!el) return;
-    const renderer = new BoardRenderer(el, session.getGame().board);
-    rendererRef.current = renderer;
-    renderer.setState(session.getGame());
-    return () => {
-      renderer.destroy();
-      rendererRef.current = null;
-    };
-  }, [session]);
-
-  useEffect(() => {
-    rendererRef.current?.setState(game);
-  }, [game]);
-
   const current = game.players[game.currentPlayerIndex];
   const isMyTurn =
     session.myPlayerId == null || (current != null && current.id === session.myPlayerId);
   const interactive = isMyTurn && game.phase !== 'game_over';
   const isRemote = session.myPlayerId != null;
-
-  const actions = availableActions(game);
-  const [tab, setTab] = useState<SidebarTab>('status');
-  const atBank = actions.canDeposit || actions.canWithdraw || actions.canLoan || actions.canRepayLoan;
-  const contextTab: SidebarTab | '' = actions.canShop ? 'shop' : atBank ? 'finance' : '';
-  const lastContext = useRef('');
-  useEffect(() => {
-    if (contextTab && contextTab !== lastContext.current) setTab(contextTab);
-    lastContext.current = contextTab;
-  }, [contextTab]);
 
   // UI-02 指令热键：把动作名绑到真实实现。
   // onAction 保持“收到就派发”的原语义（面板按钮依赖它，含强制舍弃手牌等流程）；
@@ -580,7 +520,6 @@ function GameScreen({
   );
 
   const doRoll = useCallback(() => hotkeyAction({ type: 'ROLL_DICE' }), [hotkeyAction]);
-  const setReportTab = useCallback(() => setTab('report'), []);
   const toggleMute = useCallback(() => {
     const next = sfx.toggleMuted();
     setMuted(next);
@@ -597,141 +536,27 @@ function GameScreen({
     [registerAction, hotkeyAction],
   );
   useEffect(() => registerAction('end_turn', () => hotkeyAction({ type: 'END_TURN' })), [registerAction, hotkeyAction]);
-  useEffect(() => registerAction('toggle_report', setReportTab), [registerAction, setReportTab]);
   useEffect(() => registerAction('toggle_mute', toggleMute), [registerAction, toggleMute]);
 
   return (
-    <div className="game-screen">
-      <div className="board-area" ref={boardRef}>
-        {/* UI-07 地图指令：滚轮缩放 / 拖拽平移，此按钮回到自适应满屏 */}
-        <button
-          className="ghost small board-reset-view"
-          title="回到全图（滚轮缩放 / 拖拽平移）"
-          onClick={() => rendererRef.current?.resetView()}
-        >
-          🗺️ 全图
-        </button>
-        {game.phase === 'lobby' && isRemote && (
-          <div className="lobby-overlay">
-            <div className="lobby-card">
-              <div className="room-code">
-                房间码 <span className="code">{session.roomId}</span>
-              </div>
-              <div className="panel-title">房间玩家（{game.players.length}/4）</div>
-              <div className="lobby-players">
-                {game.players.map((p) => (
-                  <div key={p.id} className="lobby-player">
-                    {p.name}
-                    {p.id === session.myPlayerId && <span className="me-tag">你</span>}
-                  </div>
-                ))}
-              </div>
-              <div className="lobby-actions">
-                <button
-                  className="primary"
-                  disabled={game.players.length < 2}
-                  onClick={() => session.startGame?.()}
-                >
-                  开始对局{game.players.length < 2 ? '（至少 2 人）' : ''}
-                </button>
-                <button
-                  className="ghost"
-                  disabled={game.players.length >= 4 || !session.addBot}
-                  onClick={() => session.addBot?.()}
-                >
-                  🤖 添加 AI
-                </button>
-              </div>
-              <p className="hint">把上方房间码发给好友即可加入</p>
-            </div>
-          </div>
-        )}
-      </div>
-      <aside className="sidebar">
-        <div className="sidebar-header">
-          <span className="logo">大富翁 Online</span>
-          <span className="mode-tag">{isRemote ? '联机' : '热座'}</span>
-          <button
-            className="ghost small"
-            title={muted ? '开启音效' : '静音'}
-            onClick={toggleMute}
-          >
-            {muted ? '🔇' : '🔊'}
-          </button>
-          <button className="ghost small" title="帮助" onClick={onOpenHelp}>
-            ❓
-          </button>
-          <button className="ghost small" title="设置" onClick={onOpenSettings}>
-            ⚙️
-          </button>
-          {!isRemote && (
-            <>
-              <button className="ghost small" title="存档" onClick={onSaveGame}>
-                💾
-              </button>
-              <button className="ghost small" title="读档" onClick={onLoadGame}>
-                📂
-              </button>
-            </>
-          )}
-          <button className="ghost small" onClick={onExit}>
-            退出
-          </button>
-        </div>
-        {connection === 'reconnecting' && (
-          <div className="conn-banner">⚡ 连接已断开，正在尝试重新连接…</div>
-        )}
-        {netError && <div className="error-text">{netError}</div>}
-        {!isMyTurn && current && !current.online && game.phase !== 'game_over' && (
-          <div className="wait-banner offline">{current.name} 掉线了，稍后将自动托管…</div>
-        )}
-        {!isMyTurn && current?.online && game.phase !== 'lobby' && game.phase !== 'game_over' && (
-          <div className="wait-banner">等待 {current.name} 操作…</div>
-        )}
-        <ControlPanel game={game} onAction={onAction} interactive={interactive} />
-        <AuctionPanel game={game} onAction={onAction} myPlayerId={session.myPlayerId} />
-        <CompanyPanel game={game} onAction={onAction} interactive={interactive} />
-        <LotteryPanel game={game} onAction={onAction} interactive={interactive} />
-        {/* ECON-09 help[14]：随时可买卖 → 股市常驻显示，不需切页签、不限格型 */}
-        <StockPanel game={game} onAction={onAction} interactive={interactive} />
-        <NpcPanel game={game} onAction={onAction} interactive={interactive} />
-
-        <div className="sidebar-tabs">
-          {SIDEBAR_TABS.map(([id, label]) => (
-            <button key={id} className={`small ${tab === id ? 'primary' : ''}`} onClick={() => setTab(id)}>
-              {label}
-            </button>
-          ))}
-        </div>
-
-        {tab === 'status' && (
-          <>
-            <CalendarPanel game={game} />
-            <PlayerList game={game} myPlayerId={session.myPlayerId} />
-            <HandPanel game={game} onAction={onAction} interactive={interactive} />
-          </>
-        )}
-        {tab === 'finance' &&
-          (atBank ? (
-            <BankPanel game={game} onAction={onAction} interactive={interactive} />
-          ) : (
-            <div className="panel empty-hint">未停留在银行格</div>
-          ))}
-        {tab === 'shop' &&
-          (actions.canShop ? (
-            <ShopPanel game={game} onAction={onAction} interactive={interactive} />
-          ) : (
-            <div className="panel empty-hint">未停留在商店格</div>
-          ))}
-        {tab === 'report' && <ReportPanel game={game} myPlayerId={session.myPlayerId} />}
-        {tab === 'trade' && <TradePanel game={game} onAction={onAction} interactive={interactive} />}
-        {tab === 'log' && (
-          <>
-            <ChatPanel session={session} myPlayerId={session.myPlayerId} />
-            <LogPanel game={game} />
-          </>
-        )}
-      </aside>
-    </div>
+    <AcHudLayer
+      game={game}
+      myPlayerId={session.myPlayerId}
+      isRemote={isRemote}
+      interactive={interactive}
+      muted={muted}
+      connection={connection}
+      netError={netError}
+      roomId={session.roomId}
+      onAction={onAction}
+      onToggleMute={toggleMute}
+      onOpenSettings={onOpenSettings}
+      onOpenHelp={onOpenHelp}
+      onSaveGame={onSaveGame}
+      onLoadGame={onLoadGame}
+      onExit={onExit}
+      onStartGame={() => session.startGame?.()}
+      onAddBot={() => session.addBot?.()}
+    />
   );
 }

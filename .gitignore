@@ -10,3 +10,31 @@ coverage/
 .scratch/
 # 原版游戏素材（版权原因不入库，仅用于解析数值表）
 docs/extraction/raw/
+
+# 字体构建的下载缓存（源文件 17MB/个，不进仓库）
+.font-cache/
+# 手动放置在 assets/ 的字体源文件（如 QiuYeYuanTi-16.ttf，4.1MB）。
+# build-fonts.py 的 fetch() 优先用它，没有时自动回落到 GitHub Release 上钉死的版本，故不必入库。
+assets/*.ttf
+
+# playwright-cli 会话快照与控制台日志（工具产物）
+.playwright-cli/
+
+# ---------- 图片一律不入库（仓库只放代码与文档，已跟踪图片数：0） ----------
+# 覆盖 design/hud-ac/preview/（33MB 预览图）、design/w98-pixel/art/、assets/art/、
+# vibe_images/、design/island-richman-harness/ 与根目录交付截图。
+# ⚠️ 运行时真正要读的图片不在这里 —— client/public/art/（BoardRenderer 的 v6 贴图）与
+# 棋盘素材若要入库，显式 `git add -f <路径>`，别放开这条规则。
+*.png
+*.jpg
+*.jpeg
+*.webp
+*.gif
+
+# ---------- 工具产物 ----------
+# WorkBuddy 的会话记忆与运行记录
+.workbuddy/
+.zwork/
+# playwright 无障碍树 dump（根目录散落的 entry.yaml / s1.yaml）
+/entry.yaml
+/s1.yaml

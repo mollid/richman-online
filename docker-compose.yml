@@ -1,3 +1,10 @@
+# 本项目所有服务都走 Docker，本机只需装 Docker（含 compose 插件），不需要 node / pnpm。
+# 一条命令起全套：docker compose up -d --build
+#   client  http://localhost:8080   （nginx 静态站点 + /api 反代）
+#   server  ws://localhost:2567     （Colyseus 对战 + REST）
+#   db      postgres:16
+#   redis   redis:7
+
 services:
   db:
     image: postgres:16-alpine
@@ -14,6 +21,7 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+    restart: unless-stopped
 
   redis:
     image: redis:7-alpine
@@ -24,6 +32,7 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+    restart: unless-stopped
 
   server:
     build:
@@ -41,6 +50,18 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    # 让 client 容器能等到「服务真的起来」再启动，避免首屏打开就连接失败
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:2567/healthz').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 15s
+    restart: unless-stopped
 
   client:
     build:
@@ -49,8 +70,9 @@ services:
     ports:
       - '8080:80'
     depends_on:
-      - server
+      server:
+        condition: service_healthy
+    restart: unless-stopped
 
 volumes:
   pgdata:
-

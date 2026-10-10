@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>像素中文字体库 · 样张（缝合像素 12px / 秋叶圆体 16）</title>
+<link rel="stylesheet" href="./tokens.css" />
+<link rel="stylesheet" href="./fonts.css" />
+<style>
+  body { margin: 0; background: #6b7a8f; font-family: var(--w98-font-ui); color: var(--w98-text); }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 24px; display: grid; gap: 20px; }
+  .card { background: var(--w98-face); border: var(--w98-line-thin); box-shadow: var(--w98-bevel-out); padding: 16px; }
+  h1 { font-size: 20px; margin: 0 0 4px; color: var(--w98-chrome-blue-dk); }
+  h2 { font-size: 13px; margin: 0 0 12px; color: var(--w98-chrome-blue-dk); letter-spacing: 1px; }
+  .meta { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 6px 16px; font-size: 13px; }
+  .meta b { font-family: var(--w98-font-num); }
+  .rules { margin: 0; padding-left: 18px; font-size: 13px; line-height: 2; }
+  code { font-family: var(--w98-font-num); background: var(--w98-face-light); padding: 1px 5px; }
+  /* 字集网格 */
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(26px, 1fr)); gap: 2px; }
+  .grid span { display: grid; place-items: center; height: 26px; background: var(--w98-face-light); border: 1px solid rgba(0,0,0,.06); }
+  .grid span.miss { background: #ffe3e3; color: #b03030; }
+  .toolbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 12px; font-size: 13px; }
+  .toolbar button { font: inherit; padding: 4px 12px; background: var(--w98-face); border: var(--w98-line-thin); box-shadow: var(--w98-bevel-out); cursor: pointer; }
+  .toolbar button.is-active { background: var(--w98-accent); color: var(--w98-text-invert); }
+  .count { font-family: var(--w98-font-num); }
+  .sizes { display: grid; gap: 10px; }
+  .sizes > div { padding: 8px 12px; background: var(--w98-face-light); border: var(--w98-line-thin); }
+  .bad { background: #fff2f2; border-color: var(--w98-danger); }
+  .tag { font: 700 11px/1 var(--w98-font-num); margin-left: 8px; }
+  .seg { display: inline-flex; }
+  .seg button { border-left-width: 0; }
+  .seg button:first-child { border-left-width: 2px; }
+  .cmp { display: grid; gap: 0; border: var(--w98-line-thin); background: var(--w98-face-light); }
+  .cmp > div { padding: 10px 12px; border-top: 1px solid rgba(0,0,0,.10); }
+  .cmp > div:first-child { border-top: 0; }
+  .cmp .lbl { font: 700 11px/1.6 var(--w98-font-num); color: var(--w98-chrome-blue-dk); display: block; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="card">
+    <h1>像素中文字体库 · 样张</h1>
+    <h2>两款像素中文 · 均为 SIL OFL 1.1 · 自托管</h2>
+    <div class="meta">
+      <div>主力 <b>Fusion Pixel 12px</b>（缝合像素 12px 比例版）</div>
+      <div>备选 <b>QiuYe Round 16</b>（秋叶圆体 16）</div>
+      <div>码位数 <b>36,999</b> / <b>13,646</b></div>
+      <div>体积 <b>650.6</b> / <b>522.3 KB</b></div>
+      <div>设计字号 <b>12px</b>（12/24/36）/ <b>16px</b>（16/32）</div>
+      <div>GB2312 一/二级 <b>全覆盖</b> / <b>全覆盖</b></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>使用规则（不遵守点阵就会被重采样成糊的）</h2>
+    <ol class="rules">
+      <li><code>font-size</code> 必须是**该字体设计字号**的整数倍。
+          缝合像素取 <code>--w98-fs-pix-sm/md/lg</code>（<b>12 / 24 / 36px</b>）；
+          秋叶圆体取 <code>--w98-fs-qy-sm/md</code>（<b>16 / 32px</b>）。两组不可混用。</li>
+      <li>关抗锯齿：<code>-webkit-font-smoothing: none</code>（加 <code>.w98-pix</code> 或 <code>.w98-pix-qiuye</code> 类即可）。</li>
+      <li><code>line-height</code> 取整数像素；<code>letter-spacing: 0</code>（像素字字距已算进点阵，撑开会出半像素缝）。</li>
+      <li>canvas 里绘制时贴图需 <code>scaleMode: NEAREST</code> / <code>image-rendering: pixelated</code>。</li>
+    </ol>
+  </div>
+
+  <div class="card">
+    <h2>1:1 像素裁决：同一句话，四种渲染</h2>
+    <div class="cmp">
+      <div><span class="lbl">缝合像素 12px ← 主力，笔画实心纯黑</span><span class="w98-pix">骰子掷出六点，买下这块地，租金翻倍。阿福</span></div>
+      <div><span class="lbl">秋叶圆体 16px ← 备选，笔画圆润但边缘带 1px 灰过渡</span><span class="w98-pix-qiuye">骰子掷出六点，买下这块地，租金翻倍。阿福</span></div>
+      <div><span class="lbl">秋叶圆体 32px（2 倍放大，实心 2 像素，很清晰）</span><span class="w98-pix-qiuye w98-pix-qiuye--md">骰子掷出六点</span></div>
+      <div><span class="lbl">系统字对照（Microsoft YaHei 12px）</span><span style="font-size:12px">骰子掷出六点，买下这块地，租金翻倍。阿福</span></div>
+    </div>
+    <p class="rules" style="margin:10px 0 0">
+      秋叶圆体自带 16px 1-bit 内嵌位图（<code>bloc</code>/<code>bdat</code> 表），但
+      <b>Chrome on Windows 并不使用内嵌位图、走的是矢量轮廓</b> —— 实测把位图表整个剥掉再渲染，
+      逐像素结果完全相同。所以在 Windows 上它 16px 下会略带灰边；在会读内嵌位图的实现
+      （若干 Linux/Firefox 环境）上则是硬点阵。
+    </p>
+  </div>
+
+  <div class="card">
+    <h2>字号对照</h2>
+    <div class="sizes">
+      <div><span class="w98-pix">缝合 12px 正确：骰子掷出六点，买下这块地。</span><span class="tag" style="color:#2f6b1f">← 硬边点阵</span></div>
+      <div><span class="w98-pix w98-pix--md">缝合 24px 正确：骰子掷出六点。</span></div>
+      <div class="bad"><span class="w98-pix" style="font-size:13px">缝合 13px 错误：骰子掷出六点，租金翻倍。</span><span class="tag" style="color:#b03030">← 已糊</span></div>
+      <div><span class="w98-pix-qiuye">秋叶 16px 正确：骰子掷出六点，买下这块地。</span><span class="tag" style="color:#2f6b1f">← 原生字号</span></div>
+      <div class="bad"><span class="w98-pix-qiuye" style="font-size:24px">秋叶 24px 错误：骰子掷出六点。</span><span class="tag" style="color:#b03030">← 16 的非整数倍，已糊</span></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>字集浏览</h2>
+    <div class="toolbar">
+      <span class="seg">
+        <button data-font="fusion" class="is-active">缝合像素 12px</button>
+        <button data-font="qiuye">秋叶圆体 16</button>
+      </span>
+      <span class="seg">
+        <button data-set="l1" class="is-active">GB2312 一级</button>
+        <button data-set="l2">GB2312 二级</button>
+        <button data-set="latin">拉丁 / 数字 / 全角</button>
+      </span>
+      <label><input type="checkbox" id="mark" checked /> 标出字体缺少的字</label>
+      <span class="count" id="stat"></span>
+    </div>
+    <div class="grid" id="grid"></div>
+  </div>
+
+  <div class="card">
+    <h2>为什么主力是缝合像素，秋叶圆体当备选</h2>
+    <ol class="rules">
+      <li><b>方舟像素 Ark Pixel 12px zh_hans</b>（24,869 码位）缺 8 个字：「骰 窗 券 即 筑 毁 旋 姿 旅 斜」。
+          对一个《大富翁》来说缺「骰」是致命的，所以换掉。</li>
+      <li>缝合像素把 ark-pixel / cubic-11 / galmuri 三家开源像素字的字形并在一起，补上了这些字，还顺带带繁体。</li>
+      <li><b>秋叶圆体 16</b> 血统是日本 <b>KHドット秋葉原16</b>（Sharp X68000 时代的 16 点阵商用位图字体），
+          作者 yzdnn 增补了简繁汉字。它风格更圆润，覆盖 GB2312 全集，适合当「圆体像素」口味。</li>
+      <li>但它在 Windows Chrome 上走矢量轮廓（见上），1:1 截图比缝合像素虚，故排在第二位。
+          两者缺字都会回退到系统字 —— 秋叶圆体只缺「〞」「—」两个字。</li>
+      <li>三者授权都是 SIL OFL 1.1，可商用、可自托管、可子集化。</li>
+    </ol>
+  </div>
+
+</div>
+
+<script>
+/* GBK 是浏览器 TextDecoder 支持的编码标签，所以可以直接在客户端把 GB2312
+   的字节区间解成汉字，不必往仓库里塞一份 6000+ 字的字符表。
+   注意 GB2312 每行只到 0xFE（0xFF 是无效尾字节），统一滤掉解码出的 U+FFFD。
+   另外用的是 GBK 解码器（浏览器里 'gb2312' 这个标签本来就映射到 GBK），比 GB2312
+   多认几个空位，所以一级解出来是 3760 而不是标准里的 3755 —— 这多出的几个字在 GBK 里有定义，
+   不算错。 */
+function decodeRange(hiFrom, hiTo) {
+  const bytes = [];
+  for (let hi = hiFrom; hi <= hiTo; hi++) for (let lo = 0xA1; lo <= 0xFE; lo++) bytes.push(hi, lo);
+  return new TextDecoder('gbk', { fatal: false }).decode(new Uint8Array(bytes)).replace(/\uFFFD/g, '');
+}
+const SETS = {
+  l1: decodeRange(0xB0, 0xD7),
+  l2: decodeRange(0xD8, 0xF7),
+  latin: (() => { let s = ''; for (let c = 0x20; c <= 0x7E; c++) s += String.fromCharCode(c);
+                  for (let c = 0xA1; c <= 0xFE; c++) s += String.fromCharCode(0xFF00 + c - 0xA0); return s; })(),
+};
+
+const grid = document.getElementById('grid');
+const stat = document.getElementById('stat');
+const mark = document.getElementById('mark');
+
+/* 两款字体各自的渲染参数。canvas 签名必须用**和页面上一致的字号**，
+   否则「字体有 vs 系统回退」的对比会被字号差异污染。 */
+const FONTS = {
+  fusion: { size: 12, stack: '"Fusion Pixel 12px", monospace', cls: 'w98-pix',          label: '缝合像素 12px' },
+  qiuye:  { size: 16, stack: '"QiuYe Round 16", monospace',   cls: 'w98-pix-qiuye',     label: '秋叶圆体 16' },
+};
+let curFont = 'fusion';
+
+/* 用 canvas 像素签名判断某个字到底有没有被像素字体渲染：
+   同一台机器上，字体有字形 vs 回退到系统字，画出来的位图必然不同。
+   这是浏览器里能拿到的、最接近"实测覆盖率"的做法。 */
+function signature(ch, stack, size) {
+  const box = size * 2;
+  const cv = document.createElement('canvas');
+  cv.width = box; cv.height = box;
+  const ctx = cv.getContext('2d', { willReadFrequently: true });
+  ctx.clearRect(0, 0, box, box);
+  ctx.fillStyle = '#000'; ctx.textBaseline = 'top';
+  ctx.font = `${size}px ${stack}`;
+  ctx.fillText(ch, 0, 0);
+  return ctx.getImageData(0, 0, box, box).data.join('');
+}
+
+function render(setName) {
+  const f = FONTS[curFont];
+  const chars = [...SETS[setName]];
+  let missing = 0;
+  const frag = document.createDocumentFragment();
+  for (const ch of chars) {
+    const span = document.createElement('span');
+    span.textContent = ch;
+    span.className = f.cls;
+    if (mark.checked && ch.trim()) {
+      const has = signature(ch, f.stack, f.size);
+      /* 故意用一个不含该字的字体族，逼出系统回退字形 */
+      const fb = signature(ch, '"__no_such_font__", monospace', f.size);
+      if (has === fb) { span.classList.add('miss'); missing++; }
+    }
+    frag.appendChild(span);
+  }
+  grid.replaceChildren(frag);
+  stat.textContent = `${f.label} · 共 ${chars.length} 字 · 缺 ${missing} 字（红底为缺，说明回退到了系统字）`;
+}
+
+document.querySelectorAll('.toolbar button[data-set]').forEach((b) => {
+  b.addEventListener('click', () => {
+    document.querySelectorAll('.toolbar button[data-set]').forEach((x) => x.classList.remove('is-active'));
+    b.classList.add('is-active');
+    render(b.dataset.set);
+  });
+});
+document.querySelectorAll('.toolbar button[data-font]').forEach((b) => {
+  b.addEventListener('click', () => {
+    document.querySelectorAll('.toolbar button[data-font]').forEach((x) => x.classList.remove('is-active'));
+    b.classList.add('is-active');
+    curFont = b.dataset.font;
+    render(document.querySelector('.toolbar button[data-set].is-active').dataset.set);
+  });
+});
+mark.addEventListener('change', () => {
+  render(document.querySelector('.toolbar button[data-set].is-active').dataset.set);
+});
+
+/* 等两款字体都真的加载完再渲染，否则第一批签名全是回退字形，会被整片误标成缺字 */
+Promise.all([
+  document.fonts.load('12px "Fusion Pixel 12px"', '骰'),
+  document.fonts.load('16px "QiuYe Round 16"', '骰'),
+]).then(() => render('l1'));
+</script>
+</body>
+</html>

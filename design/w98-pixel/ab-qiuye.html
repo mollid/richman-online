@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>像素中文 A/B：缝合像素 12px vs 秋叶圆体 16</title>
+<link rel="stylesheet" href="./fonts.css" />
+<style>
+  body { margin: 0; background: #6b7a8f; font-family: 'Microsoft YaHei', sans-serif; color: #1a1a1a; }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 24px; display: grid; gap: 16px; }
+  .card { background: #d4cfc0; border: 2px solid #a09880; box-shadow: 2px 2px 0 rgba(0,0,0,.35); padding: 16px; }
+  h1 { font-size: 20px; margin: 0 0 2px; }
+  h2 { font-size: 13px; margin: 0 0 10px; letter-spacing: 1px; }
+  .lbl { font: 700 12px/1.6 Consolas, monospace; }
+  canvas { display: block; background: #fff; border: 1px solid #8a8272; image-rendering: pixelated; }
+  .row { display: grid; gap: 12px; grid-template-columns: 1fr; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="card">
+    <h1>像素中文 A/B 对照 · 3 倍最近邻放大</h1>
+    <h2>AGFA: LEFT = FUSION PIXEL 12PX   ·   RIGHT = QIUYE ROUND 16</h2>
+    <p class="lbl" style="margin:0">下面是同一串文字在两种像素字下的真实点阵，按 3 倍最近邻放大（不是矢量缩放，放大后每个方块就是一个真实像素）。</p>
+  </div>
+  <div class="card"><div class="row" id="rows"></div></div>
+</div>
+
+<script>
+/* 直接往 canvas 里以设计字号绘制，再用 drawImage 做 3 倍最近邻放大 ——
+   这样看到的是浏览器真实光栅化出来的点阵，而不是矢量字形被重新放大。
+   这正是判断「像素字够不够锐」唯一靠谱的口径。 */
+const SAMPLES = [
+  { label: '骰子掷出六点，买下这块地，租金翻倍。', size: 12 },
+  { label: '阿福 走到 台湾站 · 缴过路费 $1200', size: 12 },
+  { label: '大富翁 Online — 掷骰 买地 盖房 收租', size: 12 },
+];
+
+const SPECS = [
+  { name: '缝合像素 12px', stack: '"Fusion Pixel 12px"', size: 12, tag: '主力' },
+  { name: '秋叶圆体 16px', stack: '"QiuYe Round 16"',   size: 16, tag: '备选' },
+];
+
+const rows = document.getElementById('rows');
+
+function draw(spec, text, zoom) {
+  const padX = 6, padY = 4;
+  const meas = document.createElement('canvas').getContext('2d');
+  meas.font = `${spec.size}px ${spec.stack}, monospace`;
+  const w = Math.ceil(meas.measureText(text).width) + padX * 2;
+  const h = Math.ceil(spec.size * 1.5) + padY * 2;
+
+  const src = document.createElement('canvas');
+  src.width = w; src.height = h;
+  const sctx = src.getContext('2d');
+  sctx.fillStyle = '#fff'; sctx.fillRect(0, 0, w, h);
+  sctx.fillStyle = '#000';
+  sctx.textBaseline = 'top';
+  sctx.font = `${spec.size}px ${spec.stack}, monospace`;
+  sctx.fillText(text, padX, padY);
+
+  const out = document.createElement('canvas');
+  out.width = w * zoom; out.height = h * zoom;
+  const octx = out.getContext('2d');
+  octx.imageSmoothingEnabled = false;   // 最近邻，放大后是一个个方块
+  octx.drawImage(src, 0, 0, w, h, 0, 0, out.width, out.height);
+  return out;
+}
+
+(async () => {
+  await Promise.all([
+    document.fonts.load('12px "Fusion Pixel 12px"', '骰'),
+    document.fonts.load('16px "QiuYe Round 16"', '骰'),
+  ]);
+
+  for (const s of SAMPLES) {
+    for (const spec of SPECS) {
+      const box = document.createElement('div');
+      const lbl = document.createElement('div');
+      lbl.className = 'lbl';
+      lbl.textContent = `${spec.name}（${spec.tag}）· 设计字号 ${spec.size}px`;
+      box.appendChild(lbl);
+      box.appendChild(draw(spec, s.label, 3));
+      rows.appendChild(box);
+    }
+    const hr = document.createElement('hr');
+    hr.style.cssText = 'border:0;border-top:1px dashed #8a8272;margin:4px 0';
+    rows.appendChild(hr);
+  }
+  window.__abReady = true;
+})();
+</script>
+</body>
+</html>
