@@ -14,7 +14,10 @@ export function useGameSfx(game: GameState, enabled = true): void {
     prev.current = game;
     if (!enabled || !old) return;
 
-    if (game.dice && !old.dice) sfx.dice();
+    // 引擎把「掷骰 + 走子」压在一个原子动作里，所以有人挪了位就等于刚掷出一手。
+    // 不能只比 `game.dice` 有没有：那玩意儿会一路留到下一手，全场只在第一次响。
+    const moved = game.players.some((p, i) => old.players[i]?.position !== p.position);
+    if (game.dice && moved) sfx.dice();
 
     // 日切翻页（回合回绕，elapsedDays 自增）
     if (game.calendar.elapsedDays > old.calendar.elapsedDays) sfx.dayTurn();

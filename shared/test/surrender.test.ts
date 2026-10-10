@@ -8,7 +8,7 @@ import {
   type GameState,
   type PlayerDef,
 } from '../src/index.js';
-import { pinIndexOne } from './helpers/state.js';
+import { atLegacyStart, pinIndexOne } from './helpers/state.js';
 
 /**
  * UI-13 认输投降 + GOD-12 死神效果（对标 help[13]、help[51]、文档 UI-13 与 GOD-12）。
@@ -30,7 +30,7 @@ const PLAYERS: PlayerDef[] = [
 const MONDAY = { year: 2026, month: 1, day: 5 } as const;
 
 function newGame(seed = 42): GameState {
-  return applyAction(createGame(PLAYERS, seed, { startDate: { ...MONDAY } }), { type: 'START_GAME' });
+  return atLegacyStart(applyAction(createGame(PLAYERS, seed, { startDate: { ...MONDAY } }), { type: 'START_GAME' }));
 }
 
 /** 让指定玩家持有卡牌与道具，便于验证被清空 */

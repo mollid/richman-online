@@ -88,6 +88,12 @@
       const w = host.clientWidth || 600, h = host.clientHeight || 600;
       if (app.renderer.width !== w || app.renderer.height !== h) app.renderer.resize(w, h);
       const now = performance.now();
+      /* 名牌每帧跟一次真实锚点：移动演出（逐格跳）期间棋子一直在动，
+         而 userData 里存的是 rebuild 那一刻的格心 —— 不刷新的话名牌会钉在原地等回合结束。 */
+      for (const a of globalThis.D25World.tokenAnchors()) {
+        const c = plates.get(a.pid);
+        if (c) c.userData = a;
+      }
       for (const c of names.children) {
         const a = c.userData;
         const s = globalThis.D25World.project(a.x, a.y, a.z);

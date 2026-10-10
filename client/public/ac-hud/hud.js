@@ -186,6 +186,8 @@
     HUD_LOCKED = nv;
     /* 锁上的瞬间把已展开的弹层收起 —— 否则弹出层会浮在灰壳上，看着仍可点 */
     if (changed && nv) document.querySelectorAll('.hud-pop--open').forEach((p) => p.classList.remove('hud-pop--open'));
+    /* 解锁的瞬间补上演出期间攒下的换人聚焦（镜头入场时正好有人在跳） */
+    if (changed && !nv) flushPendingFocus();
     applyCamLockUI();
   }
 
@@ -396,6 +398,8 @@
       onHover: (id) => showTip(id),
       onSelect: (id) => { if (HUD_LOCKED) return; if (id != null) { selCell = id; render(); } },
       onLand: (pid, cellId) => globalThis.D25Overlay.float(`来到「${cellName(cellId)}」`, cellId, 'gold'),
+      /* 一次移动演出收尾：把攒下来的「换人聚焦」放出去（见 playMovement / syncStage） */
+      onMoveSettled: () => flushPendingFocus(),
       /* 相机进场期间锁操作；视角停稳（补间跑完）才解锁 —— 这两条回调就是「屏蔽输入」的唯一开关 */
       onCameraLock: (v) => camLock(v),
       onCameraSettled: () => camLock(false),
@@ -423,10 +427,62 @@
     return wrap;
   }
 
+  /* ---------------- 移动演出：快照差分 → 骰子 + 逐格跳 ----------------
+   * 引擎把「掷骰 → 走 n 步 → 落格结算」压成一个原子动作，客户端每次拿到的都是走完之后的状态，
+   * 中间那些格子从不进状态。所以这里记下上一帧每个人的脚下格，两帧之差就是这一回合走了几步、
+   * 朝哪个方向 —— 把它交给 world 逐格跳，棋盘上的棋子就不再是「闪现」到终点的。
+   * 纯表现：不参与任何规则判定，也不改写状态。
+   */
+  const HOP_MAX_CELLS = 8;    // 一次最多演 8 格（0.16 秒/格 ≈ 1.3 秒）；更长的行程只演最后 8 格
+  let lastPos = null;         // Map<pid, cellId>；null = 还没基线（HUD 首帧不演）
+  let spunDice = null;        // 已经摇过的那一手骰子（同一份点数不摇第二遍）
+  let pendingTurnPid = null;  // 演出期间攒着的镜头交接对象（跳完才放）
+
+  function playMovement() {
+    const now = new Map(st.players.map((p) => [p.id, p.position]));
+    const prev = lastPos;
+    lastPos = now;
+    if (!prev || flatMode || !HAS_GL) return false;
+    if (!globalThis.D25World || !globalThis.D25World.playMove) return false;
+    const moved = st.players.filter((p) => prev.has(p.id) && prev.get(p.id) !== p.position);
+    // 只演「一个人沿圈走了几步」。多人同帧位移 = 换位卡那类，硬演会让人绕半个棋盘飘过去
+    if (moved.length !== 1) return false;
+    const p = moved[0];
+    const n = st.board.length || 64;
+    const dir = p.direction === -1 ? -1 : 1;
+    const from0 = prev.get(p.id);
+    const steps = dir === 1 ? (p.position - from0 + n) % n : (from0 - p.position + n) % n;
+    if (steps < 1) return false;
+    // 行程可能比骰和长（神明把人又挪了几位、时光机、传送），也可能被路障截短。
+    // 两种都照走真路线：太长就只演最后几格，至少看得见棋子是「走进那一格」的。
+    const walk = Math.min(steps, HOP_MAX_CELLS);
+    const from = walk === steps ? from0 : (p.position - dir * walk + n) % n;
+    /* 骰子只在「这一手第一次出现」时摇：`state.dice` 如今留到下一手才被覆盖（回合推进不清），
+       不认脸的话传送、神明挪位那些也会把上一手的点数又摇一遍。 */
+    const dice = st.dice || [];
+    const key = `${st.turn}:${dice.join('+')}`;
+    const spin = dice.length > 0 && steps <= dice.reduce((a, b) => a + b, 0) && key !== spunDice;
+    if (spin) spunDice = key;
+    return globalThis.D25World.playMove({ pid: p.id, from, steps: walk, dir, dice: spin ? dice : null });
+  }
+
+  /** 演出结束（或被取消）后把攒下的换人聚焦放出去 —— 「跳完才交接镜头」的那一刀 */
+  function flushPendingFocus() {
+    // 镜头还在入场补间里就先留着，由 camLock 解锁的那一侧补放，别让这次交接彻底丢掉
+    if (!pendingTurnPid || HUD_LOCKED || flatMode || !HAS_GL) return;
+    const pid = pendingTurnPid;
+    pendingTurnPid = null;
+    scheduleFocus(pid);
+    if (globalThis.D25Overlay) globalThis.D25Overlay.rebuild();
+    if (globalThis.D25World) globalThis.D25World.renderOnce();
+  }
+
   /** 舞台进 DOM 之后再量尺寸：rAF 在后台标签页被冻结，所以这里同步出首帧 */
   function syncStage() {
     if (!stage || flatMode || !HAS_GL) return;
     globalThis.D25World.resize();
+    // 先派发动画再 sync：sync 会把没在演出的棋子直接摆到真值格上
+    playMovement();
     globalThis.D25World.sync(S);
     if (globalThis.D25Overlay.setSnapshot) globalThis.D25Overlay.setSnapshot(S);
     globalThis.D25World.paintOwners();
@@ -450,7 +506,10 @@
       const turnPid = st.players[st.currentPlayerIndex].id;
       if (turnPid !== lastTurnPid) {
         lastTurnPid = turnPid;
-        if (!HUD_LOCKED) scheduleFocus(turnPid);
+        /* 上一位还在格子上跳 ⇒ 先记账，等他跳完再交镜头：状态是一次原子掷骰一起到的，
+           镜头若此刻就甩向下一位，玩家看到的是「棋子腾空、画面已走」。 */
+        if (globalThis.D25World.isHopping && globalThis.D25World.isHopping()) pendingTurnPid = turnPid;
+        else if (!HUD_LOCKED) scheduleFocus(turnPid);
       }
     }
 
@@ -1211,6 +1270,9 @@
         stage = null;
       }
       camFocused = false;
+      lastPos = null;      // 重新挂载的第一帧不演动画：那之前的脚下格属于上一副棋盘
+      spunDice = null;
+      pendingTurnPid = null;
       if (tipEl) { tipEl.remove(); tipEl = null; }
       document.querySelectorAll('.hud-toasts').forEach((n) => n.remove());
       toasts.length = 0;

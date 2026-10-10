@@ -15,7 +15,7 @@ import {
   SHOP_ITEM_IDS,
 } from '../src/index.js';
 import type { GameState, PlayerDef } from '../src/index.js';
-import { pinIndexOne } from './helpers/state.js';
+import { atLegacyStart, pinIndexOne } from './helpers/state.js';
 
 /**
  * 波 2 卡片 / 道具系统测试：
@@ -37,6 +37,7 @@ const MONDAY = { year: 2026, month: 1, day: 5 } as const;
 /** 与 engine.test 一致的迁移：测试玩家统一配机车（diceCount=2），历史断言基于两骰之和 */
 function newGame(seed = 42): GameState {
   const g = applyAction(createGame(PLAYERS, seed, { startDate: { ...MONDAY } }), { type: 'START_GAME' });
+  atLegacyStart(g); // SP-01 出生点随机：道具用例的「前方 n 步」要能从已知格起算
   for (const p of g.players) p.diceCount = 2;
   return g;
 }

@@ -138,7 +138,7 @@ describe('TILE-18 新闻格：游标轮询 + 前提过滤', () => {
     const r = applyAction(newsState(22), { type: 'ROLL_DICE' });
     expect(r.players[0]!.position).toBe(44);
     expect(r.phase).toBe('awaiting_roll');
-    expect(r.dice).toBeNull();
+    expect(r.dice).not.toBeNull(); // 回合推进不再抹点数：骰子动画与面板要读这一手
     expect(r.log.some((e) => e.text.startsWith('【新闻】财经新闻｜'))).toBe(true);
   });
 });

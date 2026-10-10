@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { atLegacyStart } from './helpers/state.js';
 import { applyAction, botDecide, createGame } from '../src/index.js';
 import type { PlayerAction } from '../src/index.js';
 
@@ -112,6 +113,7 @@ describe('M9 AI 原始股变现（CORP-14）', () => {
     const g = applyAction(createGame(BOTS, 421, { startDate: { year: 2026, month: 1, day: 5 } }), {
       type: 'START_GAME',
     });
+    atLegacyStart(g); // SP-01 出生点随机：夹具要的是「脚下无事可做」，钉回起点才是那个局面
     const comp = g.companies.find((c) => c.cellId === 43)!; // 电脑公司，面值 ¥400
     comp.shares.b1 = opts.shares ?? 10;
     comp.firstHeldDayIndex.b1 = 0;

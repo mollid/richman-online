@@ -143,9 +143,11 @@ describe('天数上限收场（W4）', () => {
     // 注意两点：① 不能用 `game()` 夹具（它带 pinIndexOne，物价指数分母是夹具改的、
     // 记录里没有）；② 神明现身按生产默认开着 —— 关掉的话回放里它是开的，轨迹就分叉。
     let s = applyAction(createGame(PLAYERS, 42, { startDate: { ...MONDAY }, maxDays: 3 }), { type: 'START_GAME' });
-    s.players[0]!.deposit = 9000; // 名次稳定：到期时阿福居首
     const actions: PlayerAction[] = [{ type: 'START_GAME' }];
-    for (let i = 0; i < 60 && s.phase !== 'game_over'; i++) {
+    // 出生点随机（SP-01）之后到点那一手更靠后，预算从 60 放宽到 120 —— 本用例钉的是「记录能复现」，
+    // 不是「几手收口」。这里也绝不能用 atLegacyStart 把出生点钉回起点：那等于造一个录像记录里
+    // 不存在的前提，回放拿的是没钉过的那一局，轨迹必然分叉。
+    for (let i = 0; i < 120 && s.phase !== 'game_over'; i++) {
       const mg = s.minigame;
       const open = mg?.kind === 'memory'
         ? mg.matched.map((m, idx) => (m || mg.revealed.includes(idx) ? -1 : idx)).find((idx) => idx >= 0) ?? 0
@@ -176,6 +178,11 @@ describe('天数上限收场（W4）', () => {
     const replay = new ReplayEngine(record).finalState;
     expect(replay.endReason).toBe('daylimit');
     expect(replay.winnerId).toBe(s.winnerId);
+    // 终局逐位对齐：名次、脚下了哪一格、总资产。旧夹具在此前给阿福塞过 9000 存款，
+    // 那种局外改动进不了记录 ⇒ 回放拿到的是没塞过的初始态，随机出生之后排名就会分叉。
+    const finalForm = (state: GameState) =>
+      state.players.map((p) => [p.id, p.position, Math.round(totalAssets(state, p))]);
+    expect(finalForm(replay)).toEqual(finalForm(s));
     expect(replay.calendar.elapsedDays).toBe(s.calendar.elapsedDays);
 
     // 反证：漏存 maxDays 就复现不出到期结算 —— 这一条正是本次修复的意义

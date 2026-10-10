@@ -2,6 +2,20 @@ import { totalAssets } from '../../src/index.js';
 import type { GameState } from '../../src/index.js';
 
 /**
+ * 把所有人的出生点钉回 0 号起点（SP-01 之前的默认）。
+ *
+ * 随机出生之后，凡「从已知格走 n 步落到哪格」的历史断言都要先钉这一手。
+ * 派生出生点**不消耗 RNG 抽数**，所以钉回去之后整条轨迹与随机出生之前逐位相同，
+ * 既有断言继续成立；随机出生本身的规则另有 `spawn.test.ts` 专门钉。
+ *
+ * 就地修改传入的 state（调用方一律已是新造或 `structuredClone` 出来的副本）。
+ */
+export function atLegacyStart(state: GameState): GameState {
+  for (const p of state.players) p.position = 0;
+  return state;
+}
+
+/**
  * 冻结物价指数为 1。
  *
  * 引擎里所有交易金额都过 `scaled()`（乘物价指数），而指数的分母是「开局总资产」。

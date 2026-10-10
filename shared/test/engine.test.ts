@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { addPlayer, allAssetSummaries, allStockSummaries, applyAction, availableActions, BOARD_SIZE, gameDate, createGame, priceIndex, forceGameOver, GOD_DURATION_DAYS, GODS, nextRandom, removePlayer, rentOf, ReplayEngine, rollDie, STARTING_ITEMS, stockExecPrice, upgradeCost } from '../src/index.js';
+import { addPlayer, allAssetSummaries, allStockSummaries, applyAction, availableActions, BOARD_SIZE, gameDate, createGame, priceIndex, forceGameOver, GOD_DURATION_DAYS, GODS, nextRandom, removePlayer, rentOf, ReplayEngine, rollDie, spawnCellPool, STARTING_ITEMS, stockExecPrice, upgradeCost } from '../src/index.js';
 import type { GameState, PlayerAction, PlayerDef } from '../src/index.js';
-import { pinIndexOne } from './helpers/state.js';
+import { atLegacyStart, pinIndexOne } from './helpers/state.js';
 
 const PLAYERS: PlayerDef[] = [
   { id: 'p1', name: '阿福', color: 0xef5350 },
@@ -18,6 +18,7 @@ const MONDAY = { year: 2026, month: 1, day: 5 } as const;
 function newGame(seed = 42): GameState {
   // spawnGods:false —— 神明随机现身会占用日切的 RNG 抽数，本文件的断言基于固定骰子序列
   const g = applyAction(createGame(PLAYERS, seed, { startDate: { ...MONDAY }, spawnGods: false }), { type: 'START_GAME' });
+  atLegacyStart(g); // SP-01 出生点随机，本文件的落格算式全部从已知格起算
   // 迁移（波 2 / CORE-03）：步行默认 1 颗骰子，机车 2 颗、汽车 3 颗。
   // 下列历史断言基于「两骰之和」，故统一给测试玩家配机车（diceCount=2）以保持既有语义。
   for (const p of g.players) p.diceCount = 2;
@@ -87,7 +88,8 @@ describe('createGame', () => {
     expect(g.phase).toBe('lobby');
     expect(g.players).toHaveLength(2);
     expect(g.players[0]!.cash).toBe(15000);
-    expect(g.players[0]!.position).toBe(0);
+    // SP-01：出生点不再是写死的 0 号起点，而是按 (seed, seat) 派生的一格可行走普通格
+    expect(spawnCellPool(g.board)).toContain(g.players[0]!.position);
     expect(g.board).toHaveLength(BOARD_SIZE);
     expect(BOARD_SIZE).toBe(64);
   });

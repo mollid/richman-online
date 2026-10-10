@@ -608,6 +608,7 @@
   }
 
   let diceGroup;
+  const DICE_SIZE = 1.15;
   function buildDice() {
     diceGroup = new THREE.Group();
     /* 骰盘：把骰子放进中央广场南侧的木盘里。原先是 0.86 的方块埋在草里，
@@ -618,23 +619,58 @@
     const trayRim = new THREE.Mesh(new THREE.RingGeometry(2.5, 2.72, 36), mat(0xc9b48a, { roughness: 0.85 }));
     trayRim.rotation.x = -Math.PI / 2; trayRim.position.y = groundY + 0.014;
     scene.add(trayRim);
-    const SIZE = 1.15;
-    const n = state.dice ? state.dice.length : 1;
-    const cnt = Math.max(1, n);
-    for (let i = 0; i < cnt; i++) {
+    fillDice(state.dice ? state.dice.length : 1, state.dice);
+    diceGroup.position.set(0, groundY, 2.7);
+    scene.add(diceGroup);
+  }
+  /**
+   * 造 cnt 颗骰子摆进骰盘（`values` 已知就直接落定，未知只给个初始朝向）。
+   * 骰子的垂直位置靠 group 的 y 抬：棋盘格顶面与广场草皮顶面不是一个高度，
+   * 写死一个值会在近景里让骰子半埋进格子里。
+   */
+  function fillDice(cnt, values) {
+    if (!diceGroup) return;
+    const n = Math.max(1, cnt | 0);
+    for (const cube of diceGroup.children.slice()) {
+      cube.geometry.dispose();
+      for (const m of cube.material) { if (m.map) m.map.dispose(); m.dispose(); }
+      diceGroup.remove(cube);
+    }
+    for (let i = 0; i < n; i++) {
       const mats = [1, 6, 2, 5, 3, 4].map((v) => new THREE.MeshStandardMaterial({ map: pipTexture(v), roughness: 0.5 }));
-      const cube = new THREE.Mesh(new THREE.BoxGeometry(SIZE, SIZE, SIZE), mats);
+      const cube = new THREE.Mesh(new THREE.BoxGeometry(DICE_SIZE, DICE_SIZE, DICE_SIZE), mats);
       cube.castShadow = true;
-      cube.position.set((i - (cnt - 1) / 2) * 1.5, groundY + SIZE / 2 + 0.06, 0);   // 骰盘居中
-      cube.userData.value = state.dice ? state.dice[i] : 1;
+      cube.position.set((i - (n - 1) / 2) * 1.5, DICE_SIZE / 2 + 0.06, 0);
+      cube.userData.value = values ? (values[i] || 1) : 1;
       settle(cube, cube.userData.value);
       diceGroup.add(cube);
     }
-    diceGroup.position.set(0, 0, 2.7);
-    scene.add(diceGroup);
   }
-  // 三个轴的一次定转，把指定点数朝上（标准盒面序：+X=1 -X=6 +Y=2 -Y=5 +Z=3 -Z=4）
-  const FACE_ROT = { 1: [0, -Math.PI / 2, 0], 2: [0, 0, 0], 3: [Math.PI / 2, 0, 0], 4: [-Math.PI / 2, 0, 0], 5: [Math.PI, 0, 0], 6: [0, Math.PI / 2, 0] };
+  /**
+   * 把骰子甩出去：颗数按这次真的掷了几颗重建（骰力道具会把一颗变两三颗），
+   * 旋转结束后翻向本次掷出的真实点数。
+   * 俯视时骰子留在中央骰盘；近景等距里骰盘在镜头外，就搬到行动者脚下那一格旁边。
+   */
+  function throwDice(values, from) {
+    if (!diceGroup) return;
+    const vals = (values && values.length ? values : [1]).slice(0, 4);
+    if (diceGroup.children.length !== vals.length) fillDice(vals.length, null);
+    const near = camMode === 'iso';
+    const a = near ? ringPos(from) : { x: 0, z: 2.7 };
+    diceGroup.position.set(a.x + (near ? 0.8 : 0), near ? tileTop : groundY, a.z + (near ? 0.8 : 0));
+    const cubes = diceGroup.children;
+    for (let i = 0; i < cubes.length; i++) {
+      const cube = cubes[i];
+      cube.userData.value = vals[i] || vals[vals.length - 1] || 1;
+      cube.userData.spin = Math.max(0.2, DICE_ROLL_SEC - i * 0.14);   // 一颗接一颗落定
+      cube.rotation.set(0.4 + i, 0.9 + i * 1.7, 0.2);                 // 起手先给个歪斜朝向，落定时才翻回真点数
+    }
+  }
+  /* 单轴一次定转，把指定点数转到「朝上」。盒面序 +X=1 / -X=6 / +Y=2 / -Y=5 / +Z=3 / -Z=4
+     （与 fillDice 里 mats 的顺序一一对应，对面之和恒为 7）。
+     绕 X 转 −90° 把 +Z 抬朝上、绕 Z 转 +90° 把 +X 抬朝上 —— 轴选错就会把点数转到侧面去，
+     屏幕上看到的就是「骰子显示 2 点、面板写着 1 点」。 */
+  const FACE_ROT = { 1: [0, 0, Math.PI / 2], 2: [0, 0, 0], 3: [-Math.PI / 2, 0, 0], 4: [Math.PI / 2, 0, 0], 5: [Math.PI, 0, 0], 6: [0, 0, -Math.PI / 2] };
   function settle(cube, value) {
     const r = FACE_ROT[value] || FACE_ROT[1];
     cube.rotation.set(r[0], r[1], r[2]);
@@ -1059,7 +1095,10 @@
   }
 
   /* ---------- 动画 ---------- */
-  let hopQ = null;   // {pid, path:[{x,z}], i, t}
+  /** 逐格跳的节拍：一格 0.16 秒。骰子从出手到落定 0.62 秒，这段时间棋子原地等 —— 先看点数再走路 */
+  const HOP_CELL_SEC = 0.16;
+  const DICE_ROLL_SEC = 0.62;
+  let hopQ = null;   // {pid, path:[{x,z}], i, t, wait, lastCell}
 
   function frame(now) {
     if (disposed) return;
@@ -1105,9 +1144,11 @@
   }
 
   function stepHop(dt) {
+    if (hopQ.wait > 0) { hopQ.wait -= dt; return; }   // 骰子还没停稳，棋子原地等
     const g = tokenGroups.get(hopQ.pid);
+    if (!g) { hopQ = null; return; }
     const from = hopQ.path[hopQ.i], to = hopQ.path[Math.min(hopQ.i + 1, hopQ.path.length - 1)];
-    hopQ.t += dt / 0.16;
+    hopQ.t += dt / HOP_CELL_SEC;
     const k = Math.min(1, hopQ.t);
     g.position.x = from.x + (to.x - from.x) * k;
     g.position.z = from.z + (to.z - from.z) * k;
@@ -1116,8 +1157,12 @@
       hopQ.i++; hopQ.t = 0;
       if (hopQ.i >= hopQ.path.length - 1) {
         g.position.y = 0;
-        hooks.onLand && hooks.onLand(hopQ.pid, hopQ.lastCell);
+        const pid = hopQ.pid, cell = hopQ.lastCell;
         hopQ = null;
+        hooks.onLand && hooks.onLand(pid, cell);
+        /* 跳完了才允许交接镜头：引擎一位玩家的掷骰是一个原子动作，状态到的那一刻
+           回合指针已经换人了，不排队就会看见「棋子在半空、镜头已经甩走」。 */
+        hooks.onMoveSettled && hooks.onMoveSettled(pid, cell);
       }
     }
   }
@@ -1168,7 +1213,13 @@
       state = Snap.state; view = Snap.view;
       for (const p of state.players) {
         const g = tokenGroups.get(p.id);
-        if (!g || (hopQ && hopQ.pid === p.id)) continue;
+        if (!g) continue;
+        if (hopQ && hopQ.pid === p.id) {
+          /* 演出没跟上真状态（传送卡、交换位置那类一步跨很远）就立刻落位，
+             别把棋子留在半路某一格上 —— 玩家看到的必须是引擎的真值。 */
+          if (p.position === hopQ.lastCell) continue;
+          hopQ = null;
+        }
         const { x, z } = ringPos(p.position);
         g.position.x = x; g.position.z = z;
         g.position.y = 0;
@@ -1185,20 +1236,32 @@
         decal.material.needsUpdate = true;
       }
     },
-    /** 骰子摇一摇 + 棋子沿圈跳 N 步（纯表现，落地回调里由 DOM 说明「不落规则」） */
-    hop(steps) {
-      const cur = state.players[state.currentPlayerIndex];
-      const path = [ringPos(cur.position)];
-      let pos = cur.position;
+    /**
+     * 掷骰演出：骰子按真实点数翻滚落定 → 棋子沿圈逐格跳过 `steps` 格（带小弧线）。
+     *
+     * 引擎一次 `ROLL_DICE` 就把整段路原子地走完了，中间那些格子从不进状态，
+     * 所以「路过哪几格」只能由宿主把前后两帧的脚下格之差交给表现层补 —— 纯表现，不落规则。
+     * @param {{pid:string, from:number, steps:number, dir?:1|-1, dice?:number[]|null}} opts
+     * @returns {boolean} 真的开始演出了才返回 true（减弱动效偏好下返回 false，宿主直接落位）
+     */
+    playMove(opts) {
+      const { pid, from, steps, dir = 1, dice = null } = opts || {};
+      const g = tokenGroups.get(pid);
+      if (!g || REDUCED || !(steps > 0)) return false;
+      const n = state.board.length || 64;
+      const path = [ringPos(from)];
+      let pos = from;
       for (let k = 0; k < steps; k++) {
-        pos = (pos + 1) % state.board.length;
+        pos = (pos + dir + n) % n;
         path.push(ringPos(pos));
       }
-      path.lastCell = pos;
-      hopQ = { pid: cur.id, path, i: 0, t: 0 };
-      for (const cube of diceGroup.children) cube.userData.spin = 0.55 + Math.random() * 0.35;
-      return path.length - 1;
+      /* `dice` 为空 = 这一手不是掷骰走路（神明挪位、传送那类）：不摇骰子，直接开走 */
+      hopQ = { pid, path, i: 0, t: 0, wait: dice ? DICE_ROLL_SEC : 0, lastCell: pos };
+      if (dice) throwDice(dice, from);
+      return true;
     },
+    /** 是否有移动演出正在进行（HUD 用它决定「跳完才交接镜头」） */
+    isHopping: () => !!hopQ,
     project(x, y, z) {
       const v = new THREE.Vector3(x, y, z).project(camera);
       const r = host.getBoundingClientRect();

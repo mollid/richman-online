@@ -273,6 +273,7 @@ function emptyState(): GameState {
     dice: null,
     turn: 0,
     round: 1,
+    seed: 0,
     rngState: 0,
     log: [{ turn: 0, text: '正在同步房间状态…' }],
     winnerId: null,

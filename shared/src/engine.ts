@@ -152,15 +152,61 @@ export interface CreateGameOptions {
   maxDays?: number | null;
 }
 
+/**
+ * 出生格候选池（SP-01）：只取「站上去无事发生」的普通格 —— 可购地、商业地、机会、商店。
+ * 起点（经过领薪水的特权格）、监狱、医院、银行、神庙、公司企业一律不作出生点。
+ */
+const SPAWNABLE_TYPES: BoardCell['type'][] = ['property', 'commercial', 'chance', 'shop'];
+/** 两个出生点沿环的最小间隔（格数）：太近就失去「把人撒到全图」的意思；凑不满时退让成「只要不重叠」 */
+const MIN_SPAWN_GAP = 4;
+
+export function spawnCellPool(board: BoardCell[]): number[] {
+  return board.filter((c) => SPAWNABLE_TYPES.includes(c.type)).map((c) => c.id);
+}
+
+/** 两格沿环形圈的最短距离 */
+function ringGap(a: number, b: number, size: number): number {
+  const d = Math.abs(a - b);
+  return Math.min(d, size - d);
+}
+
+/**
+ * 前 `count` 个座位的出生格（SP-01）。
+ *
+ * 口径同 `newsCursor`：**只从种子派生，不消耗 `rngState` 抽数**。联机房是「空房建局 + 逐个
+ * `addPlayer`」，回放是「一次性 `createGame(全部座位)`」，两条路径必须算出同一批出生点；
+ * 一旦走抽数，「谁几点进房」就会串改此后所有随机事件。座位 k 的结果与 `count` 无关，
+ * 中途有人进房/退房也不会挪动别人已经拿到的出生点。
+ */
+export function spawnCells(seed: number, count: number, board: BoardCell[]): number[] {
+  const pool = spawnCellPool(board);
+  const size = board.length || BOARD_SIZE;
+  const taken: number[] = [];
+  for (let seat = 0; seat < count; seat++) {
+    if (pool.length === 0) break;
+    const start = Math.floor(nextRandom(((seed >>> 0) + (seat + 1) * 0x9e3779b1) >>> 0).value * pool.length) % pool.length;
+    // 从派生出的那一格起沿池顺扫：先要「隔得开」，池子挤不满时退而求其次只要「不重叠」
+    const order = pool.map((_, k) => pool[(start + k) % pool.length]!);
+    const free = (cellId: number) => !taken.includes(cellId);
+    const spaced = (cellId: number) => taken.every((t) => ringGap(t, cellId, size) >= MIN_SPAWN_GAP);
+    const pick = order.find((c) => free(c) && spaced(c)) ?? order.find(free);
+    if (pick == null) break;
+    taken.push(pick);
+  }
+  return taken;
+}
+
 /** 新玩家的初始字段（createGame 与 addPlayer 共用） */
-function basePlayer(def: PlayerDef): Player {
+function basePlayer(def: PlayerDef, spawnAt: number): Player {
   return {
     ...def,
     cash: STARTING_CASH,
     deposit: 0,
     points: POINTS_START,
     loan: null,
-    position: 0,
+    position: spawnAt,
+    // SP-02：出生格先「押着」，踏出第一步之前这一格不算落到（见 standsOnOwnSpawn）
+    spawnCell: spawnAt,
     properties: [],
     cards: [],
     items: {},
@@ -190,8 +236,9 @@ export function createGame(players: PlayerDef[], seed = Date.now() % 2147483647,
   if (players.length > 4) {
     throw new Error('游戏最多 4 名玩家');
   }
+  const spawns = spawnCells(seed >>> 0, players.length, DEFAULT_BOARD);
   return {
-    players: players.map((p) => basePlayer(p)),
+    players: players.map((p, i) => basePlayer(p, spawns[i] ?? 0)),
     board: structuredClone(DEFAULT_BOARD),
     currentPlayerIndex: 0,
     phase: 'lobby',
@@ -199,6 +246,8 @@ export function createGame(players: PlayerDef[], seed = Date.now() % 2147483647,
     dice: null,
     turn: 0,
     round: 1,
+    // 建局参数原样存一份：出生点按 (seed, seat) 派生，`rngState` 会被后续抽数推着走、不能当种子用
+    seed: seed >>> 0,
     rngState: seed >>> 0,
     log: [{ turn: 0, text: '游戏房间已创建' }],
     winnerId: null,
@@ -277,7 +326,9 @@ export function addPlayer(state: GameState, def: PlayerDef): GameState {
   if (state.players.length >= 4) throw new Error('房间已满');
   if (state.players.some((p) => p.id === def.id)) throw new Error('玩家已存在');
   const next = clone(state);
-  next.players.push(basePlayer(def));
+  const seat = next.players.length;
+  const spawns = spawnCells(state.seed, seat + 1, state.board);
+  next.players.push(basePlayer(def, spawns[seat] ?? 0));
   log(next, `${def.name} 加入了房间`);
   return next;
 }
@@ -1354,13 +1405,11 @@ function advanceTurn(state: GameState): void {
     captureRoundSnapshot(state);
     state.calendar.elapsedDays += 1;
     onDayChange(state);
-    if (isGameOver(state)) {
-      state.dice = null;
-      return;
-    }
+    if (isGameOver(state)) return;
     tickStockMarket(state);
   }
-  state.dice = null;
+  // `dice` 不在这里清：它的定位是「最近一次掷骰结果」（见 types），客户端的骰子动画与
+  // 走格子都取这一手。回合推进时掷骰与换人挤在同一个原子动作里，一清就没人知道骰了几点。
   state.phase = 'awaiting_roll';
   state.turnStage = 'start';
 }
@@ -1368,6 +1417,19 @@ function advanceTurn(state: GameState): void {
 function cellAt(state: GameState, position: number): BoardCell {
   const c = state.board[position]!;
   return c;
+}
+
+/**
+ * 还站在自己的出生格上（SP-02）：开局是被「撒」到这格的，不是走到的，
+ * 所以在 TA 第一次离开这格之前，这格不产生任何落格权益（买地、进商店）。
+ */
+function standsOnOwnSpawn(p: Player): boolean {
+  return p.spawnCell !== null && p.spawnCell === p.position;
+}
+
+/** 人在商店里 —— 出生格正好撒到商店格也不算进店 */
+function inShop(state: GameState, p: Player): boolean {
+  return isShopCell(cellAt(state, p.position)) && !standsOnOwnSpawn(p);
 }
 
 /**
@@ -1470,7 +1532,6 @@ function surrender(state: GameState, revengeTargetId: string): void {
   if (!isGameOver(state)) {
     state.currentPlayerIndex = state.players.findIndex((q) => !q.bankrupt);
     if (state.currentPlayerIndex < 0) state.currentPlayerIndex = 0;
-    state.dice = null;
     state.phase = 'awaiting_roll';
   }
 }
@@ -1719,7 +1780,7 @@ export function availableActions(state: GameState): AvailableActions {
       canEnd: can({ type: 'END_TURN' }),
       // 商店没有「进入商店」这个动作：这一位只表示「脚下是商店格」，
       // 具体能不能买、能不能卖由 BUY_CARD / SELL_CARD 等动作各自的校验决定。
-      canShop: state.phase === 'awaiting_action' && isShopCell(c),
+      canShop: state.phase === 'awaiting_action' && inShop(state, p),
       // 股市可交易性是整个市场的状态；能否买某一只、买几只由 BUY_STOCK 的校验决定（bot 与 UI 都问它）
       canTradeStock: canTradeStockNow(state) && !p.bankrupt && isMarketOpen(state),
       canPick: state.phase === 'awaiting_pick',
@@ -1826,6 +1887,11 @@ function startGame(state: GameState): void {
   // 开局赠送道具：机器娃娃/遥控骰子/路障/定时炸弹/地雷/机器工人 各 1（用户规则）
   for (const p of state.players) p.items = { ...STARTING_ITEMS };
   log(state, '游戏开始！每人获赠开局道具：机器娃娃、遥控骰子、路障、定时炸弹、地雷、机器工人 各 1');
+  // SP-01 随机出生：出生点在 createGame/addPlayer 就已定下，开局只负责把它播报出来。
+  // 顺带说明 SP-02（站着不算落到），否则玩家站在可地上却发现买不了，只会当成 bug。
+  for (const p of state.players) {
+    log(state, `${p.name} 随机出生落在「${state.board[p.position]?.name ?? `第 ${p.position} 格`}」—— 站着不算落到，走回来才能买`);
+  }
 }
 
 /**
@@ -3131,6 +3197,8 @@ function checkBuyLand(state: GameState, p: Player | null, _action: ActionOf<'BUY
   if (p.sleepwalkTurns > 0) return '梦游中无法买地';
   const c = cellAt(state, p.position);
   if ((c.type !== 'property' && c.type !== 'commercial') || c.price === undefined) return '此格不可购买';
+  // SP-02：开局撒在可买格上也不给买 —— 只有「走到」的那一格才算落到
+  if (standsOnOwnSpawn(p)) return '出生格不能直接购买，要先掷骰走过去';
   if (cellOwner(state, c.id)) return '该地产已有主人';
   if (godBlocksInvestment(p)) return '衰神附身，买地流拍';
   // help[22]：商业用地按自身公定地价购买，与住宅同源
@@ -3221,7 +3289,7 @@ function checkDiscardCard(state: GameState, p: Player | null, action: ActionOf<'
 function checkBuyCard(state: GameState, p: Player | null, action: ActionOf<'BUY_CARD'>): ActionRefusal {
   if (state.phase !== 'awaiting_action') return '当前不能购买卡片';
   if (!p) return NO_ACTOR_MESSAGE;
-  if (!isShopCell(cellAt(state, p.position))) return '不在商店，不能购买卡片';
+  if (!inShop(state, p)) return '不在商店，不能购买卡片';
   const card = CARDS[action.cardId];
   if (!card || !SHOP_CARD_IDS.includes(card.id)) return '商店不出售这张卡片';
   if (p.cards.length >= MAX_HAND_CARDS) return `手牌已满（上限 ${MAX_HAND_CARDS}），请先舍弃卡片`;
@@ -3232,7 +3300,7 @@ function checkBuyCard(state: GameState, p: Player | null, action: ActionOf<'BUY_
 function checkSellCard(state: GameState, p: Player | null, action: ActionOf<'SELL_CARD'>): ActionRefusal {
   if (state.phase !== 'awaiting_action') return '当前不能变卖卡片';
   if (!p) return NO_ACTOR_MESSAGE;
-  if (!isShopCell(cellAt(state, p.position))) return '不在商店，不能变卖卡片';
+  if (!inShop(state, p)) return '不在商店，不能变卖卡片';
   const card = CARDS[action.cardId];
   if (!card || !p.cards.includes(card.id)) return '没有这张卡片';
   return null;
@@ -3253,7 +3321,7 @@ function checkUseItem(state: GameState, p: Player | null, action: ActionOf<'USE_
 function checkBuyItem(state: GameState, p: Player | null, action: ActionOf<'BUY_ITEM'>): ActionRefusal {
   if (state.phase !== 'awaiting_action') return '当前不能购买道具';
   if (!p) return NO_ACTOR_MESSAGE;
-  if (!isShopCell(cellAt(state, p.position))) return '不在商店，不能购买道具';
+  if (!inShop(state, p)) return '不在商店，不能购买道具';
   const item = ITEMS[action.itemId];
   if (!item || !SHOP_ITEM_IDS.includes(item.id)) return '商店不出售这种道具';
   if ((p.items[item.id] ?? 0) >= MAX_ITEM_COUNT) return `该道具已达上限（${MAX_ITEM_COUNT} 个）`;
@@ -3264,7 +3332,7 @@ function checkBuyItem(state: GameState, p: Player | null, action: ActionOf<'BUY_
 function checkSellItem(state: GameState, p: Player | null, action: ActionOf<'SELL_ITEM'>): ActionRefusal {
   if (state.phase !== 'awaiting_action') return '当前不能变卖道具';
   if (!p) return NO_ACTOR_MESSAGE;
-  if (!isShopCell(cellAt(state, p.position))) return '不在商店，不能变卖道具';
+  if (!inShop(state, p)) return '不在商店，不能变卖道具';
   const item = ITEMS[action.itemId];
   if (!item || (p.items[item.id] ?? 0) <= 0) return '没有这个道具';
   return null;
@@ -3591,5 +3659,17 @@ const ACTION_SPECS: ActionSpecMap = {
     throw new Error(`未知动作: ${JSON.stringify(action)}`);
   }
   spec.apply(next, action);
+  releaseSpawnCells(next);
   return next;
+}
+
+/**
+ * 踏出出生格（SP-02）：谁离开了自己那格出生点，就把出生点解除掉 —— 之后绕回同一格
+ * 是真「走到」的，买地 / 进店照常放行。放在 `applyAction` 一处收口，掷骰、传送、
+ * 交换位置这几条会改 `position` 的路径就都覆盖到了。
+ */
+function releaseSpawnCells(state: GameState): void {
+  for (const p of state.players) {
+    if (p.spawnCell !== null && p.position !== p.spawnCell) p.spawnCell = null;
+  }
 }

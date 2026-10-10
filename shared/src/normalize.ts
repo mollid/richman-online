@@ -15,6 +15,14 @@ import type { GameState } from './types.js';
  * 引擎内部构造的状态本就带齐全部字段，无需再走这里。
  */
 export function normalizeGameState(state: GameState): GameState {
+  // 随机出生（SP-01）：出生点按 (seed, seat) 派生，老对象没有 seed 就退回当前 RNG 状态
+  //（出生点在入局时已经落到 `Player.position` 上，这里补的值只影响此后新加入的座位）
+  state.seed ??= state.rngState ?? 0;
+
+  // 出生格押着不放（SP-02）：老存档的玩家没有这一项，按「早已踏出过」补 ——
+  // 把 null 当默认值意味着不封锁 TA 现在站的格子，比反过来猜「这格是出生格、不许买」安全。
+  for (const p of state.players ?? []) p.spawnCell ??= null;
+
   // 神明现身机制（W2）：缺键按「开启但场上没有神明」补
   state.boardGods ??= [];
   state.spawnGods ??= true;

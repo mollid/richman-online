@@ -32,7 +32,7 @@ import {
   WHEEL_KINDS,
 } from '../src/index.js';
 import type { DateSerial, GameState, PlayerAction, PlayerDef } from '../src/index.js';
-import { pinIndexOne } from './helpers/state.js';
+import { atLegacyStart, pinIndexOne } from './helpers/state.js';
 
 const PLAYERS: PlayerDef[] = [
   { id: 'p1', name: '阿福', color: 0xef5350 },
@@ -44,6 +44,7 @@ const MONDAY: DateSerial = { year: 2026, month: 1, day: 5 };
 
 function newGame(seed = 9001, startDate: DateSerial = MONDAY): GameState {
   const g = applyAction(createGame(PLAYERS, seed, { startDate: { ...startDate } }), { type: 'START_GAME' });
+  atLegacyStart(g); // SP-01 出生点随机：本文件多处拿「脚下那格是什么」当门控前提
   // 统一配机车（diceCount=2），两骰之和可控
   for (const p of g.players) p.diceCount = 2;
   return g;

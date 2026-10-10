@@ -266,6 +266,12 @@ export interface Player {
   /** 波 5 预留：各股票建仓成本，用于计算持股浮动盈亏 */
   stockCost?: Record<string, number>;
   position: number;
+  /**
+   * 尚未踏出的出生格（SP-02）。开局把人撒在随机格上，**站着不等于落到**：
+   * 在 TA 第一次真正离开这格之前，这一格不产生任何落格权益（买地、进商店）。
+   * 离开后置 null —— 之后绕回同一格是「走到的」，照常可买。
+   */
+  spawnCell: number | null;
   properties: PlayerProperty[];
   /** 手持卡片（cardId 列表，上限 MAX_HAND_CARDS=15 张） */
   cards: string[];
@@ -474,11 +480,20 @@ export interface GameState {
   phase: Phase;
   /** 回合内子阶段（见 `TurnStage` 的用途与限制） */
   turnStage: TurnStage;
-  /** 最近一次掷骰结果（用于客户端走格子动画；骰子个数随机车/汽车变化） */
+  /**
+   * 最近一次掷骰结果（骰子个数随机车/汽车变化）。
+   * 客户端的骰子动画与走格子都读这里，所以**回合推进不清空** —— 掷骰与换人挤在同一个
+   * 原子动作里，一清就没有人知道这一手掷了几点。
+   */
   dice: number[] | null;
   turn: number;
   /** 回合数（每循环一圈 +1，股票随回合波动） */
   round: number;
+  /**
+   * 建局种子（原样存一份，不随抽数变）。`rngState` 会被后续抽数推着走，不能当种子用；
+   * 出生点这类「开局即定、只认种子与座位」的量必须从这里派生，回放才还原得出来。
+   */
+  seed: number;
   /** 确定性 RNG 状态（可回放/防作弊校验） */
   rngState: number;
   log: LogEntry[];

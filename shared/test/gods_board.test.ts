@@ -20,7 +20,7 @@ import {
   type GameState,
   type PlayerDef,
 } from '../src/index.js';
-import { pinIndexOne, putGodOnBoard } from './helpers/state.js';
+import { atLegacyStart, pinIndexOne, putGodOnBoard } from './helpers/state.js';
 import { MONDAY, runGoldenMatch } from './helpers/golden_run.js';
 
 /**
@@ -39,6 +39,7 @@ const PLAYERS: PlayerDef[] = [
 
 function game(seed: number, spawnGods: boolean): GameState {
   const g = applyAction(createGame(PLAYERS, seed, { startDate: { ...MONDAY }, spawnGods }), { type: 'START_GAME' });
+  atLegacyStart(g); // SP-01 出生点随机会改写落格轨迹；本文件钉的是神明现身，出生点钉回旧默认
   for (const p of g.players) p.diceCount = 2;
   return pinIndexOne(g);
 }
