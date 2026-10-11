@@ -1108,8 +1108,12 @@
       acts.append(more, b);
     } else if (hostApi.interactive === false) {
       acts.append(more, el('span', 'hud-chip hud-chip--off', '等待对方操作'));
-    } else {
+    } else if (!secondary.length) {
+      // 只有「真的什么都没有」才说这句：会话窗（银行 / 商店）没有主 CTA，
+      // 但次操作与出口都在 —— 旧写法会在开着「办完离开」的同时写「此刻没有可执行的操作」
       acts.append(more, el('span', 'hud-chip hud-chip--off', '此刻没有可执行的操作'));
+    } else {
+      acts.appendChild(more);
     }
     /* 落格窗的那个出口：不是 CTA（它是「不做」），所以奶油色、排在主操作之后 */
     if (exit) {

@@ -111,7 +111,7 @@ export function StockPanel({
         ) : date.isHoliday ? (
           <span className="stock-closed">例假日休市</span>
         ) : (
-          <span className="stock-closed">当前阶段不可交易</span>
+          <span className="stock-closed">落格窗里不交易 · 回到掷骰前那一段随时可买卖</span>
         )}
       </div>
 
