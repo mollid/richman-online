@@ -345,13 +345,14 @@ describe('CORP-13 房地产公司加盖', () => {
 });
 
 describe('CORP-09 企业银行与特别融资', () => {
-  it('功能同公立银行：落格开放存取款/贷款/股票', () => {
+  it('功能同公立银行：落格开放存取款与贷款（股票改到掷骰前，R4）', () => {
     const g = landOnCompany(58, (s) => giveChairman(s, 'bank', 'p2'));
     expect(g.bankAccess).not.toBeNull();
     const acts = availableActions(g);
     expect(acts.canDeposit).toBe(true);
     expect(acts.canLoan).toBe(true);
-    expect(acts.canTradeStock).toBe(true);
+    // 企业银行那格从此不再附带交易权限：炒股是自由操作，和存取款不在同一扇窗口里
+    expect(acts.canTradeStock).toBe(false);
     // 非董事长无融资权
     expect(acts.canFinancing).toBe(false);
   });
@@ -459,7 +460,8 @@ describe('ECON-10 股票持仓成本指标', () => {
     const s = newGame();
     s.players[s.currentPlayerIndex]!.position = 38; // 证交所
     s.players[s.currentPlayerIndex]!.deposit = 100000; // 股票只能用存款买
-    s.phase = 'awaiting_action';
+    // R4：交易只认掷骰前 —— 这个夹具造的是「手里正拿着钱要建仓」的那一段
+    s.phase = 'awaiting_roll';
     return s;
   }
 
@@ -485,11 +487,16 @@ describe('ECON-10 股票持仓成本指标', () => {
     expect(g.players[0]!.stockCost?.[stock.id]).toBeUndefined();
   });
 
-  it('企业银行格同样可交易股票（CORP-09）', () => {
+  it('企业银行那格不再就地交易股票（R4：落格窗只办这一格的事）', () => {
     const g = landOnCompany(58);
     g.players[g.currentPlayerIndex]!.deposit = 100000;
     const stock = g.stockMarket.stocks[0]!;
-    const acted = applyAction(g, { type: 'BUY_STOCK', stockId: stock.id, quantity: 1 });
+    expect(() => applyAction(g, { type: 'BUY_STOCK', stockId: stock.id, quantity: 1 })).toThrow('当前不能交易股票');
+    // 同一笔存款在掷骰前照样建仓 —— 限制的是时机，不是格子
+    const pre = structuredClone(g);
+    pre.phase = 'awaiting_roll';
+    pre.landing = null;
+    const acted = applyAction(pre, { type: 'BUY_STOCK', stockId: stock.id, quantity: 1 });
     expect(acted.players[0]!.stocks[stock.id]).toBe(1);
   });
 });
@@ -546,8 +553,11 @@ describe('CORP-14 原始股与股市互通', () => {
     g.players[0]!.cash = 0;
     g.players[0]!.deposit = 500000;
     expect(() => applyAction(g, { type: 'BUY_SHARES', cellId: 43, quantity: 1 })).toThrow(/现金不足/);
-    // 同一笔钱换成现金才能买的原始股，但存款照样能炒股（两档货币各走各的）
-    expect(actionRefusal(g, { type: 'BUY_STOCK', stockId: 'tech', quantity: 1 })).toBeNull();
+    // 同一笔钱换成现金才能买的原始股，而存款那档只认掷骰前（R4）：关上窗口再问
+    const pre = structuredClone(g);
+    pre.phase = 'awaiting_roll';
+    pre.landing = null;
+    expect(actionRefusal(pre, { type: 'BUY_STOCK', stockId: 'tech', quantity: 1 })).toBeNull();
   });
 
   it('本回合认购的锁到下次行动；解锁后按市价卖回，钱进存款、退出股东名册', () => {
@@ -606,10 +616,15 @@ describe('CORP-14 原始股与股市互通', () => {
     g = backToFirstPlayer(passTurn(g));
     expect(lockedSharesOf(computer(g), 'p1')).toBe(0);
     expect(() => applyAction(g, { type: 'SELL_SHARES', cellId: 43, quantity: 1 })).toThrow(/例假日休市/);
-    const halted = standAt(structuredClone(g), 0, 43);
+    // 转手是股市动作 ⇒ 在掷骰前那一段问它；停牌挡得住它
+    const halted = structuredClone(g);
+    halted.phase = 'awaiting_roll';
     halted.stockHaltAllDays = 3;
     expect(() => applyAction(halted, { type: 'SELL_SHARES', cellId: 43, quantity: 1 })).toThrow(/全市场停牌/);
-    expect(actionRefusal(halted, { type: 'BUY_SHARES', cellId: 43, quantity: 1 })).toBeNull();
+    // 申购是向公司直接认购 ⇒ 踩格那一手照办，停牌挡不住一级市场
+    const atCell = standAt(structuredClone(halted), 0, 43);
+    atCell.stockHaltAllDays = 3;
+    expect(actionRefusal(atCell, { type: 'BUY_SHARES', cellId: 43, quantity: 1 })).toBeNull();
   });
 
   it('踩到公司格认购同样上锁，且只开脚下这一家', () => {

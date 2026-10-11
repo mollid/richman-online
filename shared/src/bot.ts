@@ -66,8 +66,10 @@ function auctionValueCeiling(state: GameState, cellId: number): number {
  * AI 托管决策（纯函数）：
  * - 掷骰阶段：有天使卡且状态负面先解除，否则掷骰
  * - 猜杯阶段：按注入的 rng 随机选杯
- * - 决策阶段：买地/升级保留 ¥2000 安全垫；商店随机购卡；现金告急先按面值卖回原始股（CORP-14）；
- *   银行现金充裕买最便宜股票 10 股；否则结束回合
+ * - 掷骰阶段（R4 起是**自由操作**唯一的那一段）：送神 → 现金告急先卖回原始股（CORP-14）
+ *   → 存款充裕买最便宜股票 → 掷骰
+ * - 落格决策窗：只办与脚下那一格有关的事 —— 买地/建设/研发/认购/乐透保留 ¥2000 安全垫，
+ *   商店随机购卡；都没有可办的就离开（FINISH_LANDING）
  * 返回 null 表示当前无可执行动作
  */
 export function botDecide(state: GameState, botId: string, rng: () => number): PlayerAction | null {
@@ -96,9 +98,29 @@ export function botDecide(state: GameState, botId: string, rng: () => number): P
   if (state.players[state.currentPlayerIndex]?.id !== botId) return null;
 
   if (state.phase === 'awaiting_roll') {
+    /* R4：自由操作全在这一段办完（送神 → 救急变现 → 建仓 → 掷骰）。
+       落格窗里只留与脚下那一格有关的事，所以 bot 的炒股 / 卖原始股必须挪到掷骰之前 ——
+       放在窗口里它们会被引擎以「当前不能交易股票」拒掉，于是每次都被兜底推去结束回合。 */
     // 身上有不祥神明（穷神/衰神/死神）时优先用送神卡送走
     if (me.cards.includes('send-god') && isNegativeGod(me.god?.godId)) {
       return { type: 'USE_CARD', cardId: 'send-god' };
+    }
+    // CORP-14：现金告急 ⇒ 先把原始股按市价卖回，换成「能自动扣款」的那笔存款，再谈投资
+    const liquidate = liquidateShares(state, me);
+    if (liquidate) return liquidate;
+
+    // 股票只能用**存款**买入（help[07]）。行情池现在是 17 支（6 支虚拟 + 11 家公司挂进来的
+    // `corp-*`，CORP-14），旧实现那种按 `me.cash` 推测买得起的写法每回都会撞上引擎的拒绝
+    // ——买哪只、买几只一律问注册表。
+    if (availableActions(state).canTradeStock) {
+      const sorted = [...state.stockMarket.stocks].sort((a, b) => a.price - b.price);
+      for (const stock of sorted) {
+        for (const quantity of [10, 5, 1]) {
+          if (me.deposit < stock.price * quantity + STOCK_RESERVE_DEPOSIT) continue;
+          if (actionRefusal(state, { type: 'BUY_STOCK', stockId: stock.id, quantity }) !== null) continue;
+          return { type: 'BUY_STOCK', stockId: stock.id, quantity };
+        }
+      }
     }
     return { type: 'ROLL_DICE' };
   }
@@ -168,24 +190,6 @@ export function botDecide(state: GameState, botId: string, rng: () => number): P
     if (affordableItems.length > 0) {
       const pick = affordableItems[Math.floor(rng() * affordableItems.length)]!;
       return { type: 'BUY_ITEM', itemId: pick };
-    }
-  }
-
-  // CORP-14：现金告急 ⇒ 先把原始股按市价卖回，换成「能自动扣款」的那笔存款，再谈投资
-  const liquidate = liquidateShares(state, me);
-  if (liquidate) return liquidate;
-
-  // 股票只能用**存款**买入（help[07]）。行情池现在是 17 支（6 支虚拟 + 11 家公司挂进来的
-  // `corp-*`，CORP-14），旧实现那种按 `me.cash` 推测买得起的写法每回都会撞上引擎的拒绝
-  // ——买哪只、买几只一律问注册表。
-  if (acts.canTradeStock) {
-    const sorted = [...state.stockMarket.stocks].sort((a, b) => a.price - b.price);
-    for (const stock of sorted) {
-      for (const quantity of [10, 5, 1]) {
-        if (me.deposit < stock.price * quantity + STOCK_RESERVE_DEPOSIT) continue;
-        if (actionRefusal(state, { type: 'BUY_STOCK', stockId: stock.id, quantity }) !== null) continue;
-        return { type: 'BUY_STOCK', stockId: stock.id, quantity };
-      }
     }
   }
 

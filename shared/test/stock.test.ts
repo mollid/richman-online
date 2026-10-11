@@ -83,16 +83,20 @@ describe('help[14] 随时可买卖：不绑定任何格型', () => {
     }
   });
 
-  it('银行格不再是交易的前提（回归：旧实现限定银行格）', () => {
+  it('交易不问脚下是哪一格，但只认掷骰前那一段（R4）', () => {
+    // 旧口径：不绑定银行格 ⇒ 落格决策窗里也能顺手炒股。
+    // R4 把「不绑定格型」保留下来，改掉的是「自由操作挤在进入窗口的那一帧」：
+    // 掷骰前那一整段本来就不问脚下是哪一格，每一回合都有交易机会。
+    const pre = withDeposit(newGame(43));
+    expect(pre.phase).toBe('awaiting_roll');
+    expect(availableActions(pre).canTradeStock).toBe(true);
+    expect(() => applyAction(pre, { type: 'BUY_STOCK', stockId: 'tech', quantity: 1 })).not.toThrow();
+
     const bankCell = newGame().board.find((c) => c.type === 'bank')!.id;
-    const propCell = newGame().board.find((c) => c.type === 'property')!.id;
     const atBank = applyAction(landAt(withDeposit(newGame(43)), bankCell), { type: 'ROLL_DICE' });
-    const atProp = applyAction(landAt(withDeposit(newGame(43)), propCell), { type: 'ROLL_DICE' });
-    // 两处都可交易（至少不应因为「不在银行」而被拒）
-    if (availableActions(atProp).canTradeStock) {
-      expect(() => applyAction(atProp, { type: 'BUY_STOCK', stockId: 'tech', quantity: 1 })).not.toThrow();
-    }
-    expect(availableActions(atBank).canTradeStock).toBe(true);
+    expect(atBank.landing?.venue).toBe('bank'); // 银行窗里办的是存取款与贷款
+    expect(availableActions(atBank).canTradeStock).toBe(false);
+    expect(() => applyAction(atBank, { type: 'BUY_STOCK', stockId: 'tech', quantity: 1 })).toThrow('当前不能交易股票');
   });
 });
 
@@ -108,13 +112,11 @@ describe('「每人每回合可自由购买」', () => {
     expect(bought.players[0]!.stocks.food).toBe(3);
   });
 
-  it('决策阶段（awaiting_action）交易同样不推进回合', () => {
+  it('落格决策窗里不炒股（R4：自由操作收到掷骰前）', () => {
     const g = withDeposit(newGame(53));
     g.phase = 'awaiting_action';
-    const turnBefore = g.turn;
-    const bought = applyAction(g, { type: 'BUY_STOCK', stockId: 'food', quantity: 2 });
-    expect(bought.turn).toBe(turnBefore);
-    expect(bought.phase).toBe('awaiting_action');
+    expect(availableActions(g).canTradeStock).toBe(false);
+    expect(() => applyAction(g, { type: 'BUY_STOCK', stockId: 'food', quantity: 2 })).toThrow('当前不能交易股票');
   });
 
   it('一次可买任意张（数量仅受资金约束，没有每回合上限）', () => {

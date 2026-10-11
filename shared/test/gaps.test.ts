@@ -157,7 +157,7 @@ describe('GOD-01 土地公隔月再现（help [40]）', () => {
 describe('CARD-29 同盟：联合收费 + 陷害自动解除', () => {
   it('结盟双方互不收过路费', () => {
     const g = pinIndexOne(newGame());
-    g.phase = 'awaiting_action';
+    g.phase = 'awaiting_roll'; // R4：同盟卡是自由操作，掷骰前使用
     g.players[0]!.cards = ['alliance'];
     const after = applyAction(g, { type: 'USE_CARD', cardId: 'alliance', targetPlayerId: 'p2' });
     expect(after.players[0]!.alliance?.with).toBe('p2');

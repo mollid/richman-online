@@ -294,7 +294,7 @@ describe('驻留神明的清退联动', () => {
     const me = g.players[g.currentPlayerIndex]!;
     const cellId = (me.position + 5) % BOARD_SIZE;
     putGodOnBoard(g, 'big-poverty', cellId);
-    g.phase = 'awaiting_action';
+    g.phase = 'awaiting_roll'; // R4：卡片与道具属于自由操作，收到掷骰前那一段
     me.items = { 'robot-doll': 1 };
     const used = applyAction(g, { type: 'USE_ITEM', itemId: 'robot-doll' });
     expect(boardGodAt(used, cellId)).toBeUndefined();
@@ -307,7 +307,7 @@ describe('驻留神明的清退联动', () => {
     const me = g.players[g.currentPlayerIndex]!;
     const cellId = (me.position + 4) % BOARD_SIZE;
     putGodOnBoard(g, 'devil', cellId);
-    g.phase = 'awaiting_action';
+    g.phase = 'awaiting_roll'; // R4：卡片与道具属于自由操作，收到掷骰前那一段
     me.cards = ['send-god'];
     const used = applyAction(g, { type: 'USE_CARD', cardId: 'send-god' });
     expect(boardGodAt(used, cellId)).toBeUndefined();
@@ -317,7 +317,7 @@ describe('驻留神明的清退联动', () => {
   it('前方什么都没有时，送神卡与机器娃娃都拒绝使用（不是空转一次）', () => {
     const g = game(3, true);
     const me = g.players[g.currentPlayerIndex]!;
-    g.phase = 'awaiting_action';
+    g.phase = 'awaiting_roll'; // R4：卡片与道具属于自由操作，收到掷骰前那一段
     me.cards = ['send-god'];
     me.items = { 'robot-doll': 1 };
     expect(() => applyAction(g, { type: 'USE_CARD', cardId: 'send-god' })).toThrow('身上没有神明或定时炸弹，前方也没有驻留的神明');
@@ -327,7 +327,7 @@ describe('驻留神明的清退联动', () => {
   it('请神卡只能请到在场的神明，无神可请时门控与引擎同口径拒绝', () => {
     const g = game(3, true);
     const me = g.players[g.currentPlayerIndex]!;
-    g.phase = 'awaiting_action';
+    g.phase = 'awaiting_roll'; // R4：卡片与道具属于自由操作，收到掷骰前那一段
     me.cards = ['invite-god'];
     expect(availableActions(g).usableCards).not.toContain('invite-god');
     expect(() => applyAction(g, { type: 'USE_CARD', cardId: 'invite-god' })).toThrow('棋盘上此刻没有可请的神明');

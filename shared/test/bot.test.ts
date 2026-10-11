@@ -126,6 +126,7 @@ describe('M9 AI 原始股变现（CORP-14）', () => {
 
   it('现金告急：按面值把已解锁的原始股全数卖回股市', () => {
     const g = setup(1200, { mine: false });
+    g.phase = 'awaiting_roll'; // R4：变现属于自由操作，只在掷骰前那一段问
     expect(botDecide(g, 'b1', () => 0.5)).toEqual({ type: 'SELL_SHARES', cellId: 43, quantity: 10 });
   });
 
@@ -146,6 +147,7 @@ describe('M9 AI 原始股变现（CORP-14）', () => {
 
   it('多家持股时先卖最值钱的那家', () => {
     const g = setup(1200, { mine: false }); // 电脑公司 10 张 = ¥4,000
+    g.phase = 'awaiting_roll'; // R4：同上，变现线在掷骰前
     const oil = g.companies.find((c) => c.cellId === 59)!; // 石油公司，面值 ¥420
     oil.shares.b1 = 12; // 12 张 = ¥5,040 ⇒ 更该先动
     oil.firstHeldDayIndex.b1 = 0;

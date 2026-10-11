@@ -278,7 +278,7 @@ describe('门控与引擎同源（边界局面逐条钉死）', () => {
 
   it('可用道具清单里的每一件都有效果体且真能用', () => {
     const state = structuredClone(newGame());
-    state.phase = 'awaiting_action';
+    state.phase = 'awaiting_roll'; // R4：道具清单只在掷骰前那一段有意义
     const me = state.players[state.currentPlayerIndex]!;
     me.items = Object.fromEntries(Object.keys(ITEMS).map((id) => [id, 1]));
     const acts = availableActions(state);

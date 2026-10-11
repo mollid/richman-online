@@ -321,8 +321,10 @@ describe('EVT-01 财经新闻：股市（事件 24–28）', () => {
     const r = applyAction(newsState(26), { type: 'ROLL_DICE' });
     expect(r.stockHaltAllDays).toBe(10);
 
-    const atBank = landOnBank(r);
-    expect(atBank.players[0]!.position).toBe(35);
+    // R4：炒股收到掷骰前 —— 于是「停牌」这一关要在 awaiting_roll 上问，
+    // 而不是借「停在银行格」那个已经不再附带交易权限的窗口
+    const atBank = structuredClone(r);
+    atBank.phase = 'awaiting_roll';
     expect(availableActions(atBank).canTradeStock).toBe(false);
     expect(() => applyAction(atBank, { type: 'BUY_STOCK', stockId: 'tech', quantity: 1 })).toThrow('停牌');
   });

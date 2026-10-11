@@ -39,15 +39,15 @@ function richSeller(): GameState {
   g.players[0]!.stocks.tech = 10;
   g.players[0]!.cards = ['angel'];
   g.players[0]!.items = { teleporter: 2 };
-  g.phase = 'awaiting_action';
+  g.phase = 'awaiting_roll';
   return g;
 }
 
-/** 切到指定玩家行动（公布栏买下只要求 awaiting_action） */
+/** 切到指定玩家行动（R4：挂出 / 买入 / 撤下一律只在掷骰前开放） */
 function asPlayer(g: GameState, index: number): GameState {
   const s = structuredClone(g);
   s.currentPlayerIndex = index;
-  s.phase = 'awaiting_action';
+  s.phase = 'awaiting_roll';
   return s;
 }
 
@@ -93,7 +93,7 @@ describe('UI-06 公布栏：挂出与列表', () => {
 
   it('非法挂出被拒：不持有 / 负价 / 非法标的类型', () => {
     const g = newGame();
-    g.phase = 'awaiting_action';
+    g.phase = 'awaiting_roll';
     expect(() => applyAction(g, { type: 'POST_TRADE', kind: 'card', targetId: 'angel', price: 100 })).toThrow();
     expect(() =>
       applyAction(richSeller(), { type: 'POST_TRADE', kind: 'land', targetId: '1', price: -1 }),
@@ -139,7 +139,7 @@ describe('UI-06 公布栏：买下成交', () => {
     const g = newGame();
     const land = g.board.find((c) => c.type === 'property')!;
     g.players[0]!.properties.push({ cellId: land.id, grade: 1, chain: true });
-    g.phase = 'awaiting_action';
+    g.phase = 'awaiting_roll';
     const posted = applyAction(g, { type: 'POST_TRADE', kind: 'land', targetId: String(land.id), price: 4000 });
     const r = applyAction(asPlayer(posted, 1), { type: 'BUY_TRADE', listingId: posted.trades[0]!.id });
     expect(r.players[1]!.properties.find((q) => q.cellId === land.id)!.chain).toBe(true);
@@ -178,7 +178,7 @@ describe('UI-06 公布栏：买下成交', () => {
     // 买方道具已满
     const g2 = newGame();
     g2.players[0]!.items = { teleporter: 1 };
-    g2.phase = 'awaiting_action';
+    g2.phase = 'awaiting_roll';
     const posted2 = applyAction(g2, { type: 'POST_TRADE', kind: 'item', targetId: 'teleporter', price: 10 });
     const full = asPlayer(posted2, 1);
     full.players[1]!.items = { teleporter: MAX_ITEM_COUNT };

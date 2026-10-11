@@ -298,13 +298,13 @@ describe('波 2 卡片效果', () => {
   it('停留卡可对自己使用（缺省目标=自己，原地再停留）', () => {
     const g = newGame(818);
     g.players[0]!.cards = ['hold'];
-    g.phase = 'awaiting_action';
+    g.phase = 'awaiting_roll'; // R4：`any` 类卡片收到掷骰前
     const used = applyAction(g, { type: 'USE_CARD', cardId: 'hold' });
     expect(used.players[0]!.holdTurns).toBe(1);
     expect(used.log.some((l) => l.text.includes('对自己使用「停留卡」'))).toBe(true);
     // 显式指定他人仍照常生效
     used.players[0]!.cards = ['hold'];
-    used.phase = 'awaiting_action';
+    used.phase = 'awaiting_roll';
     const again = applyAction(used, { type: 'USE_CARD', cardId: 'hold', targetPlayerId: 'p2' });
     expect(again.players[1]!.holdTurns).toBe(1);
     expect(again.players[0]!.holdTurns).toBe(1);

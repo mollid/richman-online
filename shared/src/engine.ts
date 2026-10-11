@@ -657,8 +657,15 @@ function isMarketOpen(state: GameState): boolean {
  * 交易股票所处阶段：自己回合的掷骰前或决策后都允许（不打断掷骰）。
  * `awaiting_roll` / `awaiting_action` 本身就意味着「轮到当前玩家」，故已天然满足回合归属。
  */
+/*
+ * R4：自由操作（炒股）收到**掷骰前**这一段。
+ *
+ * 落格决策窗（`awaiting_action`）从此只接受与脚下那一格有关的动作 —— 玩家踩到商店格时该看见
+ * 的是「买什么」，不是顺手把整个股市打开。原版「随时可买卖」并没有被改掉：每一回合都有一段
+ * `awaiting_roll`，那一整段都可以敞开交易，只是不再和「刚踩到某一格」挤在同一屏里。
+ */
 function canTradeStockNow(state: GameState): boolean {
-  return state.phase === 'awaiting_roll' || state.phase === 'awaiting_action';
+  return state.phase === 'awaiting_roll';
 }
 
 /** 股票市场回合波动 + 随机新闻；例假日休市（ECON-09）；红卡/黑卡期间涨跌停（CARD-24/25） */
@@ -3355,7 +3362,12 @@ function checkUseCard(state: GameState, p: Player | null, action: ActionOf<'USE_
   if (card.auto) return '该卡片为自动触发，不能主动使用';
   if (!card.available) return '该卡片尚未开放';
   if (state.phase !== 'awaiting_roll' && state.phase !== 'awaiting_action') return '当前不能使用卡片';
-  if (card.phase === 'pre_roll' && state.phase !== 'awaiting_roll') return '该卡片只能在掷骰前使用';
+  // R4：`any` 与 `pre_roll` 都收到掷骰前 —— 落格窗里不摆自由菜单。
+  // `post_roll` 是唯一留在窗口里的一类：它们本身就是「对脚下这一格的回应」
+  // （购地卡免买眼前这块地、改建卡改眼前这处设施、拍卖卡把眼前这块地拍出去……），
+  // 拿掉它们等于把这五张卡变成手里按不动的死牌，所以这一波保留其可用性，
+  // 而不是标 `available:false` 假装它们不存在（原计划的另一条路，代价见 commit 说明）。
+  if (card.phase !== 'post_roll' && state.phase !== 'awaiting_roll') return '该卡片只能在掷骰前使用';
   if (card.phase === 'post_roll' && state.phase !== 'awaiting_action') return '该卡片只能在掷骰后使用';
   if (!card.apply) return '未知卡片效果';
   // 卡片自带的棋盘前提（如请神卡要有神可请）也在这里判，门控与 apply 因此同源
@@ -3397,9 +3409,9 @@ function checkUseItem(state: GameState, p: Player | null, action: ActionOf<'USE_
   const item = ITEMS[action.itemId];
   if (!item) return '未知道具';
   if ((p.items[item.id] ?? 0) <= 0) return '没有这个道具';
-  if (state.phase !== 'awaiting_roll' && state.phase !== 'awaiting_action') return '当前不能使用道具';
-  if (item.phase === 'pre_roll' && state.phase !== 'awaiting_roll') return '该道具只能在掷骰前使用';
-  if (item.phase === 'post_roll' && state.phase !== 'awaiting_action') return '该道具只能在掷骰后使用';
+  // R4：道具全都在掷骰前（现存的 14 件里只有 1 件标 pre_roll，其余是 any；没有 post_roll 道具）
+  // R4：道具全在掷骰前 —— 现存 14 件里没有 post_roll 道具，所以不必再留那条分支
+  if (state.phase !== 'awaiting_roll') return '道具只能在掷骰前使用';
   if (!item.apply) return '未知道具效果';
   return null;
 }

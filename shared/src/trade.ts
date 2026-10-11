@@ -214,8 +214,20 @@ function assertBuyerAccepts(buyer: Player, kind: TradeKind, targetId: string): v
 }
 
 /** POST_TRADE 校验（纯函数）：门控与引擎的唯一共同来源 */
+/**
+ * R4：公布栏交易收到**掷骰前**（与炒股同一扇门）。
+ *
+ * 这条门此前根本不存在 —— 拍卖进行中和小游戏中都能挂牌、都能买挂牌：那些相位下回合不属于
+ * 任何人，交易动作却照样改写地权与现金，等于绕过回合归属动棋盘。
+ */
+function tradeWindowRefusal(state: GameState): ActionRefusal {
+  return state.phase === 'awaiting_roll' ? null : '挂牌与买入只在掷骰前进行';
+}
+
 export function postTradeRefusal(state: GameState, seller: Player | null, action: ActionOf<'POST_TRADE'>): ActionRefusal {
   if (!seller) return '当前玩家不存在';
+  const window = tradeWindowRefusal(state);
+  if (window) return window;
   const price = Math.floor(action.price);
   if (!Number.isFinite(price) || price < 0) return '价格必须是非负整数';
   return ownershipRefusal(seller, action.kind, action.targetId);
@@ -253,6 +265,8 @@ export function postTrade(
 /** BUY_TRADE 校验（纯函数）：挂牌必须仍在 `liveTrades` 视图里，与 refresh 后的状态一致 */
 export function buyTradeRefusal(state: GameState, buyer: Player | null, action: ActionOf<'BUY_TRADE'>): ActionRefusal {
   if (!buyer) return '当前玩家不存在';
+  const window = tradeWindowRefusal(state);
+  if (window) return window;
   const listing = liveTrades(state).find((t) => t.id === action.listingId);
   if (!listing) return '该挂牌不存在或已失效';
   if (listing.sellerId === buyer.id) return '不能买自己的挂牌，请先撤下';
@@ -327,6 +341,9 @@ export function buyTrade(
 /** CANCEL_TRADE 校验（纯函数） */
 export function cancelTradeRefusal(state: GameState, seller: Player | null, action: ActionOf<'CANCEL_TRADE'>): ActionRefusal {
   if (!seller) return '当前玩家不存在';
+  // 撤单也归掷骰前：否则落格窗里还能一边决策一边改挂牌，公布栏在两个回合之间反复变动
+  const window = tradeWindowRefusal(state);
+  if (window) return window;
   const listing = liveTrades(state).find((t) => t.id === action.listingId);
   if (!listing) return '该挂牌不存在或已失效';
   if (listing.sellerId !== seller.id) return '只能撤下自己的挂牌';

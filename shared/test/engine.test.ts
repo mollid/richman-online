@@ -374,10 +374,9 @@ describe('M2 股票系统', () => {
     return state;
   }
 
-  it('随时可买卖股票（不绑定银行格，help[14]）', () => {
-    const g = setupLanding(fundDeposit(newGame(119)), 35, 7); // 落到 35 号银行
-    const rolled = applyAction(g, { type: 'ROLL_DICE' });
-    expect(rolled.phase).toBe('awaiting_action');
+  it('随时可买卖股票（help[14]；R4 起这段就是「掷骰前」，仍然不问脚下哪一格）', () => {
+    const rolled = fundDeposit(newGame(119));
+    expect(rolled.phase).toBe('awaiting_roll');
     expect(availableActions(rolled).canTradeStock).toBe(true);
 
     const depositBefore = rolled.players[0]!.deposit;
@@ -395,15 +394,20 @@ describe('M2 股票系统', () => {
     expect(sold.players[0]!.stocks['tech']).toBeUndefined();
   });
 
-  it('非银行格同样可交易（help[14]「您可以隨時進行買賣」）', () => {
-    // 落在 2 号**商店**格（会话窗，回合没被终结动作推走）：炒股从来不绑定银行格
+  it('落格窗与小游戏 / 拍卖阶段都不可交易（R4：自由操作收到掷骰前）', () => {
+    // 落在 2 号商店格：会话窗开着，但窗口里不炒股 —— 商店该卖的是卡片道具，不是整个股市
     const g = setupLanding(fundDeposit(newGame(121)), 2, 7);
     const rolled = applyAction(g, { type: 'ROLL_DICE' });
     expect(rolled.landing?.venue).toBe('shop');
-    expect(availableActions(rolled).canTradeStock).toBe(true);
-    const bought = applyAction(rolled, { type: 'BUY_STOCK', stockId: 'tech', quantity: 1 });
+    expect(availableActions(rolled).canTradeStock).toBe(false);
+    expect(() => applyAction(rolled, { type: 'BUY_STOCK', stockId: 'tech', quantity: 1 })).toThrow('当前不能交易股票');
+    // 掷骰前那一段才开门（同一笔存款、同一格位置，只差一个相位）
+    const pre = structuredClone(rolled);
+    pre.phase = 'awaiting_roll';
+    pre.landing = null;
+    const bought = applyAction(pre, { type: 'BUY_STOCK', stockId: 'tech', quantity: 1 });
     expect(bought.players[0]!.stocks['tech']).toBe(1);
-    // 小游戏/拍卖等非交易阶段不可交易（回合归属由 phase 守护）
+    // 小游戏/拍卖等非交易阶段同样被 phase 守护
     const picking = structuredClone(bought);
     picking.phase = 'awaiting_pick';
     expect(() => applyAction(picking, { type: 'BUY_STOCK', stockId: 'tech', quantity: 1 })).toThrow('当前不能交易股票');
@@ -651,16 +655,18 @@ describe('M5 确定性回放（ReplayEngine）', () => {
 
 describe('M6 移动系统（路障/转向/乌龟）', () => {
   it('路障道具：他人经过被截停且路障消失', () => {
-    const g = setupLanding(newGame(201), 4, 3); // p0 落到无主成都路 → 决策阶段
-    const rolled = applyAction(g, { type: 'ROLL_DICE' });
-    rolled.players[0]!.items = { roadblock: 1 };
-    const used = applyAction(rolled, { type: 'USE_ITEM', itemId: 'roadblock', cellId: 4 });
+    const g = newGame(201);
+    g.players[0]!.items = { roadblock: 1 };
+    // R4：道具是自由操作，只能在**掷骰前**用 —— 于是旧规那句「放置不消耗回合，
+    // 仍需显式结束回合」也一并消失了：掷骰本身就是交接。
+    const used = applyAction(g, { type: 'USE_ITEM', itemId: 'roadblock', cellId: 4 });
     expect(used.roadblocks).toEqual([4]);
-    // 放置路障不消耗回合，仍需显式结束回合
-    const ended = applyAction(used, { type: 'FINISH_LANDING' });
-    expect(ended.currentPlayerIndex).toBe(1);
+    expect(used.phase).toBe('awaiting_roll');
+    expect(used.currentPlayerIndex).toBe(0);
 
     // p2 从 0 出发掷 6 点，途中经过 4 号路障 → 停在 4
+    const ended = structuredClone(used);
+    ended.currentPlayerIndex = 1;
     ended.rngState = seedForSum(6);
     ended.players[1]!.position = 0;
     const rolled2 = applyAction(ended, { type: 'ROLL_DICE' });
