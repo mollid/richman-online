@@ -282,19 +282,23 @@ describe('GOD 行进显灵', () => {
     expect(bought.players[0]!.cash).toBe(15000); // 未扣款
   });
 
-  it('GOD-08/09 衰神：买地流拍', () => {
+  it('GOD-08/09 衰神：买地流拍 ⇒ 这一格连窗都不开（R4）', () => {
     for (const godId of ['big-misfortune', 'small-misfortune']) {
       const g = landOn(pinIndexOne(newGame(7)), 6, 6);
       g.players[0]!.god = { godId, remainingDays: 3 };
       const landed = applyAction(g, { type: 'ROLL_DICE' });
-      expect(() => applyAction(landed, { type: 'BUY_LAND' })).toThrow(/买地流拍/);
+      // 流拍不是一扇「只有放弃按钮」的空窗：引擎那一句原文直接进播报，回合自动走
+      expect(landed.landing).toBeNull();
+      expect(landed.phase).toBe('awaiting_roll');
+      expect(landed.log.some((l) => l.text.includes('买地流拍'))).toBe(true);
     }
   });
 
   it('GOD-08/09 衰神：投资失败（无法加盖）', () => {
     const landed = applyAction(ownSetup('small-misfortune'), { type: 'ROLL_DICE' });
-    expect(landed.phase).toBe('awaiting_action');
-    expect(() => applyAction(landed, { type: 'UPGRADE_LAND' })).toThrow(/投资失败/);
+    expect(landed.landing).toBeNull(); // 加盖被衰神挡死 ⇒ 无事可决策，不开窗
+    expect(landed.phase).toBe('awaiting_roll');
+    expect(landed.log.some((l) => l.text.includes('投资失败'))).toBe(true);
   });
 
   it('GOD-04/05 福神：盖房投资加倍（一次加盖两层）', () => {

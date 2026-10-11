@@ -120,7 +120,7 @@ describe('商业用地与设施（EST-06..12）', () => {
     expect(used.players[0]!.properties[0]!.grade).toBe(2);
   });
 
-  it('自有商业用地可开工建设，且建设不结束回合、可继续升级', () => {
+  it('自有商业用地可开工建设，且建设即结束回合（R4 终结动作）', () => {
     // 直接授予地权，避免购地动作结束回合
     const base = landOn(newGame(1002), 40);
     base.players[0]!.properties = [{ cellId: 40, grade: 1 }];
@@ -134,13 +134,21 @@ describe('商业用地与设施（EST-06..12）', () => {
     const cost = facilityBuildCost(rolled, rolled.board[40]!, 'mall');
     expect(cost).toBe(Math.round(600 * FACILITIES.mall.buildRatio));
     const built = applyAction(rolled, { type: 'BUILD_FACILITY', facility: 'mall' });
-    expect(built.phase).toBe('awaiting_action'); // 建设不结束回合
+    // R4：建设是**终结动作** —— 选完即推进回合。于是取消了旧规里「同一次停留先建设、再加盖」
+    // 那一手（它依赖常驻的结束回合按钮）：想加盖就得再走一圈回到这一格。
+    expect(built.phase).toBe('awaiting_roll');
+    expect(built.landing).toBeNull();
+    expect(built.currentPlayerIndex).toBe(1);
     expect(built.players[0]!.properties[0]!.facility).toBe('mall');
     expect(built.players[0]!.cash).toBe(rolled.players[0]!.cash - cost);
 
-    // 已建且可升级 → 同回合继续加盖
-    expect(availableActions(built).canUpgrade).toBe(true);
-    const upgraded = applyAction(built, { type: 'UPGRADE_LAND' });
+    // 下一回合再站到这一格，才谈得上加盖
+    const back = structuredClone(built);
+    back.currentPlayerIndex = 0;
+    back.players[0]!.position = 40;
+    back.phase = 'awaiting_action';
+    expect(availableActions(back).canUpgrade).toBe(true);
+    const upgraded = applyAction(back, { type: 'UPGRADE_LAND' });
     expect(upgraded.players[0]!.properties[0]!.grade).toBe(2);
     expect(upgraded.phase).toBe('awaiting_roll');
   });
@@ -214,10 +222,12 @@ describe('商业用地与设施（EST-06..12）', () => {
     expect(acts.researchableItems).toEqual(RESEARCH_ORDER.slice(0, 3).map((r) => r.itemId));
 
     const started = applyAction(own, { type: 'START_RESEARCH', itemId: 'teleporter' });
-    expect(started.phase).toBe('awaiting_action'); // 立项不结束回合
+    expect(started.phase).toBe('awaiting_roll'); // R4：立项是终结动作，选完即结束回合
     expect(started.players[0]!.research).toEqual({ itemId: 'teleporter', remainDays: 4 });
-    // 同时只能进行一项
-    expect(() => applyAction(started, { type: 'START_RESEARCH', itemId: 'robot-worker' })).toThrow();
+    // 同时只能进行一项（在同一扇窗口里换项目，被「已有项目在进行中」挡住）
+    const busy = structuredClone(own);
+    busy.players[0]!.research = { itemId: 'robot-worker', remainDays: 2 };
+    expect(() => applyAction(busy, { type: 'START_RESEARCH', itemId: 'teleporter' })).toThrow('已有研发项目在进行中');
     // 等级不足的项目不可立项
     expect(() => applyAction(own, { type: 'START_RESEARCH', itemId: 'nuke' })).toThrow('研究所等级不足');
   });
@@ -364,22 +374,20 @@ describe('新增格型与公立银行（TILE-13..19、TILE-31、TILE-08）', () 
     expect(() => applyAction(rolled, { type: 'BUY_LOTTERY_TICKET', number: 100 })).toThrow('号码必须是 0-99 的整数');
   });
 
-  it('路过公立银行可存取款但不可贷款（TILE-08）', () => {
+  it('路过公立银行不再发临时权限（R4：那条权限活不过同一帧，是死代码）', () => {
     const base = newGame(1213);
     base.players[0]!.position = 33; // 33 + 6 = 39，途经 35 号公立银行
     const g = pinIndexOne(base);
     const rolled = applyAction(landOn(g, 39), { type: 'ROLL_DICE' });
     expect(rolled.players[0]!.position).toBe(39);
-    expect(rolled.bankAccess).toEqual({ canDeposit: true, canLoan: false, cellId: 35 });
+    // 旧规在这里发过一张「路过也能存款」的权限，但落格分派在同一帧就把回合推进了，
+    // 而 advanceTurn 正是 bankAccess 的清空点 —— 玩家从来按不到它（存档/录像里也没留下过）。
+    expect(rolled.bankAccess).toBeNull();
     const acts = availableActions(rolled);
-    expect(acts.canDeposit).toBe(true);
+    expect(acts.canDeposit).toBe(false);
     expect(acts.canWithdraw).toBe(false);
     expect(acts.canLoan).toBe(false);
-
-    const dep = applyAction(rolled, { type: 'DEPOSIT', amount: 1000 });
-    expect(dep.players[0]!.cash).toBe(rolled.players[0]!.cash - 1000);
-    expect(dep.players[0]!.deposit).toBe(1000);
-    expect(() => applyAction(rolled, { type: 'TAKE_LOAN', amount: 1000 })).toThrow('此处不能贷款');
+    expect(() => applyAction(rolled, { type: 'DEPOSIT', amount: 1000 })).toThrow(/银行/);
   });
 
   it('停在公立银行当格可存取款与贷款（TILE-08）', () => {

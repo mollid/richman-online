@@ -179,11 +179,15 @@ describe('TIME-01 日期派生与 elapsedDays 守护', () => {
 });
 
 describe('ECON-09 / TIME-02 例假休市', () => {
-  it('周六停机：股市不波动、银行关闭、可用动作位为假', () => {
+  it('周六停机：银行关着 ⇒ 这一格连窗都不开，回合自动走（R4）', () => {
     const rolled = landOnBank(SATURDAY);
-    expect(rolled.phase).toBe('awaiting_action');
+    // 例假日的银行四项业务全关 ⇒ 没有可当场办理的事 ⇒ 不钉人，直接推进到下一位
+    expect(rolled.landing).toBeNull();
+    expect(rolled.phase).toBe('awaiting_roll');
+    expect(rolled.currentPlayerIndex).toBe(1);
     expect(gameDate(rolled).isHoliday).toBe(true);
     expect(gameDate(rolled).weekdayLabel).toBe('周六');
+    expect(rolled.log.some((l) => l.text.includes('休市'))).toBe(true);
 
     const acts = availableActions(rolled);
     expect(acts.isHoliday).toBe(true);
@@ -192,13 +196,13 @@ describe('ECON-09 / TIME-02 例假休市', () => {
     expect(acts.canWithdraw).toBe(false);
     expect(acts.canLoan).toBe(false);
     expect(acts.canRepayLoan).toBe(false);
-    expect(acts.canFinishLanding).toBe(true); // FINISH_LANDING 永远可用，不会卡死
 
-    expect(() => applyAction(rolled, { type: 'DEPOSIT', amount: 100 })).toThrow('例假日银行休市');
+    // 播报里嵌的就是引擎那一句原文（门控与校验同源：拒绝理由不另写一套文案）
+    expect(rolled.log.some((l) => l.text.includes('例假日银行休市'))).toBe(true);
 
     // 日切到周日（仍为例假）→ 股价完全不变，并给出休市提示
     const prices = rolled.stockMarket.stocks.map((s) => s.price);
-    let s = applyAction(rolled, { type: 'FINISH_LANDING' });
+    let s = structuredClone(rolled);
     expect(s.calendar.elapsedDays).toBe(0);
     s.rngState = seedForSum(3);
     s.players[1]!.position = 0; // 0 + 3 = 3 号机会格 → 自动结算并绕回 p0 → 日切

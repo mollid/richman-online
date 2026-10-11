@@ -396,8 +396,10 @@ describe('M2 股票系统', () => {
   });
 
   it('非银行格同样可交易（help[14]「您可以隨時進行買賣」）', () => {
-    const g = setupLanding(fundDeposit(newGame(121)), 1, 4); // 落到 1 号地产
+    // 落在 2 号**商店**格（会话窗，回合没被终结动作推走）：炒股从来不绑定银行格
+    const g = setupLanding(fundDeposit(newGame(121)), 2, 7);
     const rolled = applyAction(g, { type: 'ROLL_DICE' });
+    expect(rolled.landing?.venue).toBe('shop');
     expect(availableActions(rolled).canTradeStock).toBe(true);
     const bought = applyAction(rolled, { type: 'BUY_STOCK', stockId: 'tech', quantity: 1 });
     expect(bought.players[0]!.stocks['tech']).toBe(1);

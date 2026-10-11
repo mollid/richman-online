@@ -2,6 +2,7 @@ import type { GodDef } from './gods.js';
 import type { FateCardDef } from './fate.js';
 import type { NewsEventDef } from './news.js';
 import type {
+  ActionRefusal,
   AuctionTrigger,
   BoardCell,
   DisasterKind,
@@ -218,12 +219,35 @@ export function landingVenueOf(cell: BoardCell): LandingVenue | null {
  * 而 UI 不知道该给什么出口」。集中在这里之后，`state.landing` 与相位必然同时成立，
  * 出口（`FINISH_LANDING`）也就必然存在。
  *
- * `venue` 默认从格子派生；只有明确要压成单步窗时才传 `null`（目前没有这种格子）。
+ * `venue` 默认从格子派生；只有明确要压成单步窗时才传 `null`。
  */
-export function holdLanding(ctx: EngineCtx, cell: BoardCell, venue: LandingVenue | null = landingVenueOf(cell)): LandingResult {
+export function holdLanding(ctx: CellLandingCtx, venue: LandingVenue | null = landingVenueOf(ctx.cell)): LandingResult {
   ctx.state.phase = 'awaiting_action';
-  ctx.state.landing = { cellId: cell.id, venue, turn: ctx.state.turn };
+  ctx.state.landing = { cellId: ctx.cell.id, venue, turn: ctx.state.turn };
   return 'hold';
+}
+
+/**
+ * 条件开窗的探路（R4）：先把相位摆成 `awaiting_action`，再逐个问注册表「这一格的候选动作里
+ * 有没有此刻合法的」。
+ *
+ * 顺序很关键：落格时相位还是掷骰前那一套，直接问注册表只会得到「当前不能购买地产」；
+ * 而探到「无事可做」时 handler 返回 `'advance'`，`rollDice` 随即 `advanceTurn`，
+ * 所以提前摆好的相位不会留残渣。
+ *
+ * 返回 `null` = 至少一项可做，应当开窗；返回字符串 = 全被拒的理由，直接写进播报 ——
+ * 玩家于是看得见「这一格为什么什么都没弹」，而不是把理由猜成 bug。
+ * 「处理完自动结束回合」的另一半正在这里：**没有可决策的事，就连窗都不该开**。
+ */
+export function landingBlocker(ctx: CellLandingCtx, options: readonly PlayerAction[]): string | null {
+  ctx.state.phase = 'awaiting_action';
+  let first: string | null = null;
+  for (const action of options) {
+    const refusal = ctx.actRefusal(ctx.state, action);
+    if (refusal === null) return null;
+    if (first === null) first = refusal;
+  }
+  return first ?? '这一格没有可当场办理的事';
 }
 
 /**
@@ -238,6 +262,12 @@ export interface CellLandingCtx extends EngineCtx {
   self: Player;
   cell: BoardCell;
   moved: number;
+  /**
+   * R4：向注册表问一句「这个动作此刻为什么不能执行」（`availableActions` 与引擎校验同源的那句，
+   * `null` = 放行）。落格 handler 用它决定要不要开窗，并把拒绝理由直接写进播报 ——
+   * 口径分开的下场是「窗口开了却一个按钮都点不动」的软锁。
+   */
+  actRefusal(state: GameState, action: PlayerAction): ActionRefusal;
   /** 免费卡（CARD-21）自动抵用：金额超限或付不起时抵掉这一次 */
   tryFreePass(state: GameState, p: Player, amount: number): boolean;
   /** 住宅地产的应收租金（含路段倍数 / 等级 / 物价指数） */

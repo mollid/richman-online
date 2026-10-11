@@ -60,6 +60,13 @@ export function normalizeGameState(state: GameState): GameState {
     delete legacyAuction.passes;
   }
 
+  // 待舍弃手牌（R4）：单槽 `pendingCard` 换成队列 `pendingCards`。老热座存档里正卡在
+  // awaiting_discard 的那一局，若不把旧的那一张搬进队列，就会停在「要舍弃却没有卡可舍」的
+  // 死角（该相位没有 FINISH_LANDING 出口），所以这里做一次形状搬运。
+  const legacyPending = state as typeof state & { pendingCard?: string | null };
+  state.pendingCards ??= legacyPending.pendingCard ? [legacyPending.pendingCard] : [];
+  delete legacyPending.pendingCard;
+
   // 老状态没有回合子阶段：按可见相位反推一个合理值（该字段不参与任何规则判定）
   if (!state.turnStage) {
     state.turnStage =

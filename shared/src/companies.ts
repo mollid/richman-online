@@ -1,10 +1,11 @@
 import { MAX_HAND_CARDS, MAX_ITEM_COUNT } from './board.js';
 import { CARDS, SHOP_CARD_IDS } from './cards.js';
 import type { CellLandingCtx, LandingResult } from './effect_ctx.js';
+import { holdLanding, landingBlocker, landingVenueOf } from './effect_ctx.js';
 import { scaled } from './economy.js';
 import { ITEMS, SHOP_ITEM_IDS } from './items.js';
 import { nextRandom } from './rng.js';
-import type { BoardCell, CompanyKind, CompanyState, GameState, Player } from './types.js';
+import type { BoardCell, CompanyKind, CompanyState, GameState, Player, PlayerAction } from './types.js';
 
 /**
  * 公司企业系统（CORP-01..13 / TILE-20..30，波 5）。
@@ -88,9 +89,9 @@ export const COMPANY_LIST: CompanyDef[] = [
  * CORP-14：11 家公司同时挂在**股市**里 —— 与那 6 支虚拟股同一套行情机器
  * （日切游走、日 K 线、冲击成本、停牌 / 涨跌停 / 休市全都吃）。
  *
- * 但它是**另一本账**：面板里买 `corp-*` 得到的是纸面持仓（`player.stocks`，只有价差与分红事件）；
- * 原始股的权益（经营权、15 号盈余分配、按面值向公司认购）只在**踩到地图上那一格**时才拿到
- * （写进 `CompanyState.shares`，见 `BUY_SHARES`）。
+ * **只有一本股东账**：不管从面板买入（`corp-*`）还是踩格认购，都记进同一张 `CompanyState.shares`
+ * 名册，因此一起吃经营权（先到先得）与 15 号盈余分配。两条渠道只剩价格与钱袋的差别 ——
+ * 面板按**当日市价、走存款**，踩到公司格按**面值、付现金**（这就是「踩点投资」的全部意义）。
  *
  * id 必须带 `corp-` 前缀：房地产公司的 kind 是 `estate`，与虚拟的「地产股」直接撞名。
  * 流通股本按「各支市值相当（约 20 万）」定标，与 STOCK_DEFS 同一口径 —— 分母决定冲击力度，
@@ -266,8 +267,29 @@ export function landOnCompany(ctx: CellLandingCtx, p: Player, c: BoardCell): Lan
     }
   }
 
-  state.phase = 'awaiting_action';
-  return 'hold';
+  // R4：公司格的窗口有两种形状。
+  // - **会话窗**：企业银行（存取款 / 贷款 / 董事长特别融资）、百货公司（买卡片道具）——
+  //   可以反复办理，只有「离开」才把行动权交给下一位；
+  // - **单步窗**：其余 9 家 —— 认购原始股（CORP-01）或房地产公司加盖（CORP-13），
+  //   选完即结束回合。用户要的正是这一条：「购买原始股后是自动结束回合，自然就锁定了这一手买的股票」。
+  const venue = landingVenueOf(c);
+  if (venue !== null) {
+    ctx.log(state, venue === 'shop' ? `可以在${def.name}购买卡片道具，买完离开结束回合` : `可以在${def.name}办理存取款，办完离开结束回合`);
+    return holdLanding(ctx);
+  }
+  const options: PlayerAction[] = [{ type: 'BUY_SHARES', cellId: c.id, quantity: 1 }];
+  if (company.kind === 'estate') {
+    // 加盖的目标是「自己名下的任一块地」，逐个问注册表，与 availableActions.estateBuildCells 同源
+    options.push(...p.properties.map((q): PlayerAction => ({ type: 'BUILD_ESTATE', cellId: q.cellId })));
+  }
+  const blocker = landingBlocker(ctx, options);
+  if (blocker !== null) {
+    // 单步窗只在真有一件事可办时才弹；理由就地播报，玩家看得见「这一格为什么什么都没弹」
+    ctx.log(state, `${def.name}：${blocker}`);
+    return 'advance';
+  }
+  ctx.log(state, `可认购${def.name}原始股（面值 ¥${company.sharePrice}，付现金），或放弃结束本回合`);
+  return holdLanding(ctx);
 }
 
 /** 公司强制服务（CORP-03/04/06）：出国旅游 / 饭店休息 / 强制投保 */

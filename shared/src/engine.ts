@@ -314,7 +314,7 @@ export function createGame(players: PlayerDef[], seed = Date.now() % 2147483647,
     boardGods: [],
     spawnGods: options.spawnGods !== false,
     godPairBanUntil: {},
-    pendingCard: null,
+    pendingCards: [],
     landing: null,
     // UI-06 公布栏：初始无挂牌、无成交记录
     trades: [],
@@ -1399,6 +1399,13 @@ function advanceTurn(state: GameState): void {
   if (isGameOver(state)) return;
   // ECON-13：倒闭清算等产生待拍卖标的时，先开拍（拍卖结束后再继续推进回合）
   if (startQueuedAuction(state)) return;
+  // R4：还有卡要收（额满抽卡挂起）时**不推进** —— 与上面「先开拍」同一处理：
+  // 流程里欠着一次必须玩家当场完成的收尾，把它压在这一帧之后就会被静默丢弃，
+  // 玩家因此白丢一张卡。留在这里，等 `DISCARD_CARD` 把它收掉再轮转。
+  if (state.pendingCards.length > 0) {
+    state.phase = 'awaiting_discard';
+    return;
+  }
   const before = state.currentPlayerIndex;
   const n = state.players.length;
   for (let step = 1; step <= n; step++) {
@@ -1412,9 +1419,16 @@ function advanceTurn(state: GameState): void {
   state.turn += 1;
   state.bankAccess = null;
   state.magic = null;
-  state.pendingCard = null;
-  // CORP-14：上一回合认购的原始股到此解锁（只有当前玩家会持有锁定，所以整表清空即可）
-  for (const company of state.companies) company.lockedShares = {};
+  // R4：回合推进 = 落格决策窗关闭。窗口里的动作是终结性的，推进与关窗必须是同一句话，
+  // 否则「上一位的商店弹层还挂在下一位的回合上」这类残留就会渗进 UI。
+  state.landing = null;
+  // CORP-14：轮到谁，谁的原始股在此刻解锁（「本回合认购的，下次行动才转手得了」）。
+  // 只清**新开这一回合的那位**：R4 之后认购自带回合推进，若还在这一句里整表清空，
+  // 锁定期就会在同一次推进里被自己抹掉 —— 等于从来没锁过。
+  const starting = state.players[state.currentPlayerIndex];
+  if (starting) {
+    for (const company of state.companies) delete company.lockedShares[starting.id];
+  }
   // UI-06：回合推进时刷新公布栏（标的被消耗/转手的挂牌自动失效）
   refreshTrades(state);
   if (state.currentPlayerIndex < before) {
@@ -1429,6 +1443,17 @@ function advanceTurn(state: GameState): void {
   // 走格子都取这一手。回合推进时掷骰与换人挤在同一个原子动作里，一清就没人知道骰了几点。
   state.phase = 'awaiting_roll';
   state.turnStage = 'start';
+}
+
+/**
+ * R4：终结性动作的收尾 —— **单步窗**（`landing.venue === null`）里做成的那一手就结束本回合；
+ * **会话窗**（商店 / 银行）里动作可以反复，只有玩家按「离开」（`FINISH_LANDING`）才推进。
+ *
+ * `landing` 为 null 也照样推进：那是「相位摆好了但没有凭据」的形态（局外摆场景的测试、
+ * 重构前存下的热座档）。没有凭据就没有场所，按单步处理才不会退化成「动完还得手动结束回合」。
+ */
+function finishIfSingleStep(state: GameState): void {
+  if (state.landing?.venue == null) advanceTurn(state);
 }
 
 function cellAt(state: GameState, position: number): BoardCell {
@@ -1468,7 +1493,10 @@ function drawChanceCard(state: GameState, p: Player, source = '机会'): void {
   state.rngState = draw.nextState;
   const cardId = CHANCE_CARD_POOL[Math.floor(draw.value * CHANCE_CARD_POOL.length)]!;
   if (p.cards.length >= MAX_HAND_CARDS) {
-    state.pendingCard = cardId;
+    // R4：这里是**队列**而不是单槽。落格推进不再抹掉它（见 `advanceTurn` 的推迟闸门），
+    // 但同一回合里连抽两张满手牌的情况仍然存在（神明先附身、随后落格又抽一张）——
+    // 单槽会被后一张覆盖，前一张白丢。
+    state.pendingCards.push(cardId);
     state.phase = 'awaiting_discard';
     log(state, `${p.name} 在${source}抽到卡片「${CARDS[cardId]!.name}」，但手牌已满（上限 ${MAX_HAND_CARDS} 张），请选择舍弃一张`);
     return;
@@ -1477,18 +1505,29 @@ function drawChanceCard(state: GameState, p: Player, source = '机会'): void {
   log(state, `${p.name} 在${source}抽到卡片「${CARDS[cardId]!.name}」`);
 }
 
-/** ECON-12：完成「选择舍弃」——把 pendingCard 入栏并清空挂起态 */
+/**
+ * ECON-12：完成「选择舍弃」。队列里还有下一张就停在 `awaiting_discard` 继续问；
+ * 收干净之后去哪一边，看**此刻还有没有落格决策窗**：
+ * - 有窗（在商店 / 银行里抽到卡，或单步窗里的事还没做完）⇒ 交回 `awaiting_action`；
+ * - 没窗 ⇒ 这一手的回合推进正被队列压在 `advanceTurn` 的推迟闸门里，在此补上那次推进。
+ *   少了这一句，玩家舍弃完就顶着一个没有窗、也没有事可做的 `awaiting_action`。
+ */
 function resolvePendingCard(state: GameState): void {
-  const cardId = state.pendingCard;
-  state.pendingCard = null;
-  const p = currentPlayer(state);
-  if (!cardId) {
-    if (state.phase === 'awaiting_discard') state.phase = 'awaiting_action';
+  const cardId = state.pendingCards.shift();
+  if (cardId) {
+    const p = currentPlayer(state);
+    p.cards.push(cardId);
+    log(state, `${p.name} 舍弃一张手牌，收下新卡「${CARDS[cardId]?.name ?? cardId}」`);
+  }
+  if (state.pendingCards.length > 0) {
+    state.phase = 'awaiting_discard';
     return;
   }
-  p.cards.push(cardId);
-  log(state, `${p.name} 舍弃一张手牌，收下新卡「${CARDS[cardId]?.name ?? cardId}」`);
-  state.phase = 'awaiting_action';
+  if (state.landing) {
+    state.phase = 'awaiting_action';
+    return;
+  }
+  advanceTurn(state);
 }
 
 
@@ -1521,7 +1560,7 @@ function surrender(state: GameState, revengeTargetId: string): void {
   // 认输者自身不走死神流程，干净退出（地产/股票随破产清算处理）
   p.cards = [];
   p.items = {};
-  state.pendingCard = null;
+  state.pendingCards = [];
   p.bankrupt = true;
   p.cash = 0;
   p.deposit = 0;
@@ -1831,7 +1870,7 @@ export function availableActions(state: GameState): AvailableActions {
       dischargeFee: dischargeFee(state),
       // 认输必须指定复仇者，因此「能不能认输」等价于「存在一个认了之后真能执行的对象」
       canSurrender: revenge.length > 0 && can({ type: 'SURRENDER', revengeTargetId: revenge[0]!.id }),
-      pendingCard: state.pendingCard,
+      pendingCards: state.pendingCards,
       tradableAssets: tradableAssets(state, p),
       tradeCash: p.cash,
       revengeCandidates: revenge,
@@ -1887,7 +1926,7 @@ function idleActions(state: GameState): AvailableActions {
     dischargeablePatients: p ? dischargeablePatients(state) : [],
     dischargeFee: dischargeFee(state),
     canSurrender: canSurrender(state),
-    pendingCard: state.pendingCard,
+    pendingCards: state.pendingCards,
     // UI-06：非本人操作阶段（如拍卖/小游戏）或空房间时不给可挂标的
     tradableAssets: [],
     tradeCash: p?.cash ?? 0,
@@ -2001,14 +2040,10 @@ function rollDice(state: GameState, action: Extract<PlayerAction, { type: 'ROLL_
   let godCell: number | null = null;
   /** EVT-04：途中遇到的原地乞讨者 */
   let beggar: Player | null = null;
-  // TILE-08 公立银行：路过开放存取款（停留当格的完整权限由落格分派给出）
-  const publicBankId = state.board.find((bc) => bc.bankKind === 'public')?.id;
-  let passedPublicBank = false;
   for (let i = 0; i < steps; i++) {
     pos = (pos + p.direction + BOARD_SIZE) % BOARD_SIZE;
     moved += 1;
     if (pos === 0) crossedStart = true;
-    if (publicBankId !== undefined && pos === publicBankId) passedPublicBank = true;
     if (state.roadblocks.includes(pos)) {
       state.roadblocks = state.roadblocks.filter((id) => id !== pos);
       const coneCell = state.board[pos]!;
@@ -2052,8 +2087,6 @@ function rollDice(state: GameState, action: Extract<PlayerAction, { type: 'ROLL_
     log(state, `${p.name} 经过起点，领取薪水 ¥${PASS_START_SALARY}`);
   }
   p.position = pos;
-  // 停在公立银行当格时，由落格分派给出完整权限，不再算「路过」
-  if (publicBankId !== undefined && pos === publicBankId) passedPublicBank = false;
 
   // EVT-04 倒闭与乞讨：路遇原地乞讨的倒闭者，施舍 1000 元（固定金额，随物价指数缩放）
   if (beggar) {
@@ -2094,12 +2127,6 @@ function rollDice(state: GameState, action: Extract<PlayerAction, { type: 'ROLL_
     return;
   }
 
-  // TILE-08 路过公立银行：开放存取款（停留当格的完整权限由 `cell_handlers.ts` 的 bank handler 给出）
-  if (passedPublicBank) {
-    state.bankAccess = { canDeposit: true, canLoan: false, cellId: publicBankId! };
-    log(state, `${p.name} 路过公立银行，可办理存取款`);
-  }
-
   // 经过即附身：神明随附身离场（这不算「清退」，不写对偶冷却），本回合直接结束。
   // 该格的落格结算被跳过 —— 神明只驻留在非必触发格，跳过是为了让这条规则没有例外分支可走。
   const godHere = godCell === null ? undefined : boardGodAt(state, godCell);
@@ -2138,7 +2165,7 @@ function buyLand(state: GameState): void {
   } else {
     log(state, `${p.name} 以 ¥${price} 购入「${c.name}」`);
   }
-  advanceTurn(state);
+  finishIfSingleStep(state);
 }
 
 function upgradeLand(state: GameState): void {
@@ -2159,7 +2186,7 @@ function upgradeLand(state: GameState): void {
   } else {
     log(state, `${p.name} 花费 ¥${cost} 将「${c.name}」升级为${gradeName(prop.grade)}（${prop.grade} 级）`);
   }
-  advanceTurn(state);
+  finishIfSingleStep(state);
 }
 
 /** EST-07 建设：在自有商业用地上选择并建成一种设施（同一次停留可继续升级） */
@@ -2176,9 +2203,10 @@ function buildFacility(state: GameState, action: Extract<PlayerAction, { type: '
     // 行进显灵·投资加倍（GOD-04/05）：可升级设施直接建成 2 级
     owned.property.grade = 2;
     log(state, `${p.name} 花费 ¥${cost} 在「${c.name}」建成${def.name}，福神显灵投资加倍直抵 ${gradeName(2)}`);
-    return;
+  } else {
+    log(state, `${p.name} 花费 ¥${cost} 在「${c.name}」建成${def.name}`);
   }
-  log(state, `${p.name} 花费 ¥${cost} 在「${c.name}」建成${def.name}`);
+  finishIfSingleStep(state);
 }
 
 /** EST-09/10 研究所立项：按所等级解锁项目，到期后由 researchTickHook 交付道具 */
@@ -2189,6 +2217,7 @@ function startResearch(state: GameState, action: Extract<PlayerAction, { type: '
   const def = researchDef(action.itemId)!;
   p.research = { itemId: def.itemId, remainDays: def.days };
   log(state, `${p.name} 在「${c.name}」立项研发「${ITEMS[def.itemId]?.name ?? def.itemId}」，预计 ${def.days} 天完成`);
+  finishIfSingleStep(state);
 }
 
 /** 小游戏猜位置统一入口（三仙归洞 / 七彩气球 / 企鹅挖宝：猜 0-2；记忆翻牌：牌下标） */
@@ -2379,6 +2408,7 @@ function buyLotteryTicket(state: GameState, action: Extract<PlayerAction, { type
   state.lotteryPool += LOTTERY_TICKET_COST;
   state.lotteryTickets.push({ playerId: p.id, number: action.number });
   log(state, `${p.name} 在「${c.name}」以 ¥${LOTTERY_TICKET_COST} 投注号码 ${action.number}，奖池累计 ¥${state.lotteryPool}`);
+  finishIfSingleStep(state);
 }
 
 // ---------------------------------------------------------------------------
@@ -2453,6 +2483,7 @@ function bailPrisoner(state: GameState, action: Extract<PlayerAction, { type: 'B
     state,
     `${p.name} 花费 ¥${fee} 保释了${villainDefOf(npc).name}，${VILLAIN_DAYS} 天内所获收益归 ${p.name}`,
   );
+  finishIfSingleStep(state);
 }
 
 /** TILE-09 办理提前出院的费用（固定 2000，随物价指数缩放；原版未明确金额，标注为推断值） */
@@ -2480,6 +2511,7 @@ function dischargePatient(state: GameState, action: Extract<PlayerAction, { type
   target.skipTurns = 0;
   target.rentBlockedTurns = 0;
   log(state, `${p.name} 在医院门外为 ${target.name} 办理出院，支付出院费 ¥${fee}`);
+  finishIfSingleStep(state);
 }
 
 /** TILE-11：女巫施法，对指定候选降下诅咒 */
@@ -2535,6 +2567,7 @@ function castMagic(state: GameState, action: Extract<PlayerAction, { type: 'CAST
       throw new Error(`未知诅咒: ${JSON.stringify(exhaustive)}`);
     }
   }
+  finishIfSingleStep(state);
 }
 
 // ---------------------------------------------------------------------------
@@ -2830,6 +2863,8 @@ const EFFECT_KIT: EffectKit = {
  */
 const LANDING_KIT: Omit<CellLandingCtx, 'state' | 'self' | 'cell' | 'moved'> = {
   ...EFFECT_KIT,
+  // R4：落格 handler 用它决定「这一格到底开不开窗」——问的就是注册表那一句，与按钮同源
+  actRefusal: (state, action) => actionRefusal(state, action),
   tryFreePass,
   propertyRent,
   bailFee,
@@ -3060,6 +3095,7 @@ function buyShares(state: GameState, action: Extract<PlayerAction, { type: 'BUY_
       `（持股 ${company.shares[p.id]}，其中 ${locked} 张要到下次行动才能转手）`,
   );
   recomputeCompanyChairman(state, company);
+  finishIfSingleStep(state);
 }
 
 /**
@@ -3130,6 +3166,8 @@ function specialFinancing(state: GameState, action: Extract<PlayerAction, { type
   p.financing += action.amount;
   p.cash += action.amount;
   log(state, `${p.name} 以${COMPANIES.bank.name}董事长身份特别融资 ¥${action.amount}（累计 ¥${p.financing}；周转期间存款不计息）`);
+  // 特别融资只发生在企业银行格 —— 那是会话窗（venue='bank'），办完还能接着存取款，所以不推进
+  finishIfSingleStep(state);
 }
 
 /** CORP-13：房地产公司任选一处自有地产加盖一层，按该地地价收取施工费 */
@@ -3145,6 +3183,7 @@ function buildEstate(state: GameState, action: Extract<PlayerAction, { type: 'BU
   const company = companyAtCell(state, c.id);
   if (company) company.surplus += cost;
   log(state, `${p.name} 通过${COMPANIES.estate.name}在「${target.name}」加盖一层（${gradeName(prop.grade)}），支付施工费 ¥${cost}`);
+  finishIfSingleStep(state);
 }
 
 /** 测试专用：强制结束对局（其余玩家全部破产），走真实破产/胜利/战绩流程 */
@@ -3484,8 +3523,8 @@ function checkMinigamePick(state: GameState, _p: Player | null, action: ActionOf
  * CORP-01 / CORP-14：认购校验。
  *
  * - **现金**按面值支付，没有现金就买不成（原始股与公司直接收付，不走存款）；
- * - 一级市场申购**不看盘口**：例假日休市、全市场停牌都挡不住认购，也不必站在公司格上
- *   —— 股市面板里的公司列表用的就是这条动作；
+ * - 一级市场申购**不看盘口**：例假日休市、全市场停牌都挡不住认购；
+ *   但只有**踩到那一格**的这一手办得成（CORP-14），股市面板里的认购走的是 BUY_STOCK；
  * - 单次上限 1000 张（CORP-01）。
  */
 function checkBuyShares(state: GameState, p: Player | null, action: ActionOf<'BUY_SHARES'>): ActionRefusal {

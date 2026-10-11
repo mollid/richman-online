@@ -108,7 +108,10 @@ describe('乐透投注（TILE-19）', () => {
     expect(bet.players[0]!.cash).toBe(15000 - 1000);
     expect(bet.lotteryPool).toBe(1000);
     expect(bet.lotteryTickets).toEqual([{ playerId: 'p1', number: 42 }]);
-    expect(bet.phase).toBe('awaiting_action'); // 投注后可继续操作或结束回合
+    // R4：买一张就是本格的终结动作 —— 没有「再干点别的」这一段，回合自动交给下一位
+    expect(bet.phase).toBe('awaiting_roll');
+    expect(bet.landing).toBeNull();
+    expect(bet.currentPlayerIndex).toBe(1);
   });
 
   it('不在乐透行不能投注，现金不足亦被拒', () => {

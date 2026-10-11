@@ -149,11 +149,17 @@ describe('CORP 公司企业：数据与经营权', () => {
 });
 
 describe('CORP-01 认购股份', () => {
-  it('按股面值现金结算；单次上限 1000 张；认购后成为董事长', () => {
+  it('按股面值现金结算；单次上限 1000 张；认购后成为董事长并自动结束回合', () => {
     let g = landOnCompany(43); // 电脑公司 ¥400
     expect(g.phase).toBe('awaiting_action');
+    // R4：单步窗 —— 公司格（非银行 / 非百货）没有会话场所，选完即走
+    expect(g.landing).toEqual({ cellId: 43, venue: null, turn: g.turn });
     expect(availableActions(g).canBuyShares).toBe(true);
     expect(availableActions(g).sharePrice).toBe(400);
+
+    // 上限 / 数量这两条校验要在**窗口还开着**的那一帧问：认购一落地，回合就不再属于这位玩家了
+    expect(() => applyAction(g, { type: 'BUY_SHARES', cellId: 43, quantity: MAX_SHARES_PER_BUY + 1 })).toThrow(/上限/);
+    expect(() => applyAction(g, { type: 'BUY_SHARES', cellId: 43, quantity: 0 })).toThrow(/正整数/);
 
     const before = g.players[0]!.cash;
     g = applyAction(g, { type: 'BUY_SHARES', cellId: 43, quantity: 10 });
@@ -162,9 +168,10 @@ describe('CORP-01 认购股份', () => {
     expect(comp.shares['p1']).toBe(10);
     expect(comp.chairmanId).toBe('p1');
     expect(comp.firstHeldDayIndex['p1']).toBe(0);
-
-    expect(() => applyAction(g, { type: 'BUY_SHARES', cellId: 43, quantity: MAX_SHARES_PER_BUY + 1 })).toThrow(/上限/);
-    expect(() => applyAction(g, { type: 'BUY_SHARES', cellId: 43, quantity: 0 })).toThrow(/正整数/);
+    // R4：玩家手上没有「结束回合」那颗按钮 —— 认购本身就是终结动作
+    expect(g.landing).toBeNull();
+    expect(g.phase).toBe('awaiting_roll');
+    expect(g.currentPlayerIndex).toBe(1);
   });
 
   it('他人持股反超后经营权自动移交（CORP-02）', () => {
@@ -178,12 +185,14 @@ describe('CORP-01 认购股份', () => {
     expect(g.log.some((l) => l.text.includes('取得电脑公司经营权'))).toBe(true);
   });
 
-  it('现金不足时无法认购', () => {
+  it('买不成时连窗都不开，理由写进播报（R4：没得选就不钉人）', () => {
     const g = landOnCompany(43, (s) => {
       s.players[0]!.cash = 100;
     });
+    expect(g.landing).toBeNull();
+    expect(g.phase).toBe('awaiting_roll'); // 没有可当场办理的事 ⇒ 本格不开窗，回合自己走
     expect(availableActions(g).canBuyShares).toBe(false);
-    expect(() => applyAction(g, { type: 'BUY_SHARES', cellId: 43, quantity: 1 })).toThrow(/现金不足/);
+    expect(g.log.some((l) => l.text.includes('现金不足'))).toBe(true);
   });
 });
 
@@ -542,9 +551,15 @@ describe('CORP-14 原始股与股市互通', () => {
   });
 
   it('本回合认购的锁到下次行动；解锁后按市价卖回，钱进存款、退出股东名册', () => {
-    let g = subscribe(newGame(), 30);
-    expect(() => applyAction(g, { type: 'SELL_SHARES', cellId: 43, quantity: 10 })).toThrow(/下次行动/);
-    g = backToFirstPlayer(passTurn(g));
+    // 锁定期只有**面板这一侧**才看得出来：市价买入不结束回合，同一回合内转手必须被拒。
+    // 踩格认购在 R4 之后自带回合推进，绕回自己行动时锁已解 —— 那正是「到下次行动才能转手」的字面口径。
+    const seeded = newGame();
+    seeded.players[0]!.deposit = 30000;
+    const byMarket = applyAction(structuredClone(seeded), { type: 'BUY_STOCK', stockId: 'corp-computer', quantity: 30 });
+    expect(lockedSharesOf(computer(byMarket), 'p1')).toBe(30);
+    expect(() => applyAction(byMarket, { type: 'SELL_SHARES', cellId: 43, quantity: 10 })).toThrow(/下次行动/);
+
+    let g = backToFirstPlayer(passTurn(subscribe(newGame(), 30)));
     expect(g.currentPlayerIndex).toBe(0);
     expect(lockedSharesOf(computer(g), 'p1')).toBe(0);
     // CORP-14 改口径：卖回走股市那侧 —— 按当日市价（含冲击）成交、收入进存款，现金一分不动
@@ -568,11 +583,17 @@ describe('CORP-14 原始股与股市互通', () => {
     expect(comp.shares.p1).toBe(30);
     expect(lockedSharesOf(comp, 'p1')).toBe(10);
     expect(sellableSharesOf(comp, 'p1')).toBe(20);
+    // 此刻轮到 p2：TA 名下无股，卖 21 被拒的是「持股不足」而不是锁定期
     expect(() => applyAction(g, { type: 'SELL_SHARES', cellId: 43, quantity: 21 })).toThrow(/持股不足/);
-    expect(actionRefusal(g, { type: 'SELL_SHARES', cellId: 43, quantity: 20 })).toBeNull();
-    const cap = maxCashShares(400, g.players[0]!.cash);
-    expect(actionRefusal(g, { type: 'BUY_SHARES', cellId: 43, quantity: cap })).toBeNull();
-    expect(actionRefusal(g, { type: 'BUY_SHARES', cellId: 43, quantity: cap + 1 })).toMatch(/现金不足/);
+    // 绕回 p1 的下一手 = 解锁时刻：10 张一起放行，30 张全部可卖
+    const mine = backToFirstPlayer(passTurn(g));
+    expect(lockedSharesOf(computer(mine), 'p1')).toBe(0);
+    expect(actionRefusal(mine, { type: 'SELL_SHARES', cellId: 43, quantity: 30 })).toBeNull();
+    // 「满额」上限问的就是引擎那一句（现金 ÷ 面值），面板不自算
+    const probe = standAt(structuredClone(mine), 0, 43);
+    const cap = maxCashShares(400, probe.players[0]!.cash);
+    expect(actionRefusal(probe, { type: 'BUY_SHARES', cellId: 43, quantity: cap })).toBeNull();
+    expect(actionRefusal(probe, { type: 'BUY_SHARES', cellId: 43, quantity: cap + 1 })).toMatch(/现金不足/);
   });
 
   it('例假日与全市场停牌：挡得住转手，挡不住申购', () => {
@@ -592,14 +613,15 @@ describe('CORP-14 原始股与股市互通', () => {
   });
 
   it('踩到公司格认购同样上锁，且只开脚下这一家', () => {
-    let g = landOnCompany(43, (s) => {
+    const landed = landOnCompany(43, (s) => {
       s.players[0]!.cash = 30000;
     });
-    expect(availableActions(g).canBuyShares).toBe(true);
-    g = applyAction(g, { type: 'BUY_SHARES', cellId: 43, quantity: 10 });
+    expect(availableActions(landed).canBuyShares).toBe(true);
+    // 脚下是电脑公司 ⇒ 别家不跟着开门：想认购另一家，得自己走到那一格（要在窗口开着时问）
+    expect(actionRefusal(landed, { type: 'BUY_SHARES', cellId: 51, quantity: 10 })).toMatch(/没走到该公司格/);
+    const g = applyAction(landed, { type: 'BUY_SHARES', cellId: 43, quantity: 10 });
     expect(lockedSharesOf(computer(g), 'p1')).toBe(10);
-    // 脚下是电脑公司 ⇒ 别家不跟着开门：想认购另一家，得自己走到那一格
-    expect(actionRefusal(g, { type: 'BUY_SHARES', cellId: 51, quantity: 10 })).toMatch(/没走到该公司格/);
+    expect(g.phase).toBe('awaiting_roll'); // R4：认购即结束回合
   });
 
   it('持股计入总资产：现金换成原始股前后一分不差，物价指数不漂移', () => {
@@ -612,6 +634,7 @@ describe('CORP-14 原始股与股市互通', () => {
     // 卖回按市价 ⇒ 不再守恒，差额就是这笔投资的盈亏（面值锚只用于持股估值）
     const unlocked = structuredClone(g);
     computer(unlocked).lockedShares = {};
+    unlocked.currentPlayerIndex = 0; // 认购自带推进（R4）已把行动权交给下一位，拨回来才是在测 p1 的持仓
     const exec = stockExecPrice(unlocked.stockMarket.stocks.find((s) => s.id === 'corp-computer')!, 20, 'sell');
     const deposit0 = unlocked.players[0]!.deposit;
     const sold = applyAction(unlocked, { type: 'SELL_SHARES', cellId: 43, quantity: 20 });
@@ -712,6 +735,7 @@ describe('CORP-14 一本账：面板买入也是股东', () => {
     const byCell = applyAction(standAt(seeded, 0, 43), { type: 'BUY_SHARES', cellId: 43, quantity: 10 });
     expect(byCell.players[0]!.cash).toBe(15000 - face * 10);
     expect(companyAtCell(byCell, 43)!.shares.p1).toBe(10);
+    byCell.currentPlayerIndex = 0; // 踩格认购自带回合推进（R4），拨回 p1 才测得到同一个人的两笔账
     const byMarket = applyAction(byCell, { type: 'BUY_STOCK', stockId: 'corp-computer', quantity: 5 });
     expect(companyAtCell(byMarket, 43)!.shares.p1).toBe(15); // 累加进同一本
   });

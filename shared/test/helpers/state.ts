@@ -1,4 +1,5 @@
 import { totalAssets } from '../../src/index.js';
+import { landingVenueOf } from '../../src/effect_ctx.js';
 import type { GameState, PlayerAction } from '../../src/index.js';
 
 /**
@@ -68,9 +69,12 @@ export function nextStepAction(state: GameState): PlayerAction {
 }
 
 /**
- * 把某位玩家摆到指定格上，并进入「落格决策」阶段。
+ * 把某位玩家摆到指定格上，并**开一扇落格决策窗**（R4）。
  *
  * 给「必须踩到那一格才做得成」的动作搭场景（如 CORP-14 的原始股认购）。
+ * 凭据走与引擎同一个的「格型 → venue」表：会话型格（商店 / 银行）摆出来的场景才是会话窗，
+ * 里面的动作不推进回合；单步型格摆出来是单步窗，动作做完回合自己走。
+ *
  * 要「走过去」也进动作日志的用例（回放类）请用真实掷骰，别拿这个抄近路 ——
  * 局外改的格子不在录像里，回放必然分叉。
  */
@@ -78,6 +82,7 @@ export function standAt(state: GameState, seat: number, cellId: number): GameSta
   state.currentPlayerIndex = seat;
   state.players[seat]!.position = cellId;
   state.phase = 'awaiting_action';
+  state.landing = { cellId, venue: landingVenueOf(state.board[cellId]!), turn: state.turn };
   return state;
 }
 

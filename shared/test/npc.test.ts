@@ -16,6 +16,7 @@ import {
   VILLAINS,
 } from '../src/index.js';
 import type { GameState, NpcUnit, PlayerDef } from '../src/index.js';
+import { standAt } from './helpers/state.js';
 
 /**
  * 波 8b 特殊单位测试（NPC-01..06，对标文档 §8.2 / help [34][38]）：
@@ -452,14 +453,18 @@ describe('TILE-11 魔法屋（NPC-06 女巫）', () => {
     const seed = seedForMagic(4, 0);
     // 初始人人无地 → 候选为空
     const none = applyAction(setupLanding(newGame(67), MAGIC_CELL, 3, seed), { type: 'ROLL_DICE' });
-    expect(none.magic?.condition).toBe('landowner');
-    expect(none.magic?.candidateIds).toEqual([]);
+    // 候选为空 ⇒ 没有可当场决策的事：不开窗，施法机会随回合推进一并清掉（R4）
+    expect(none.landing).toBeNull();
+    expect(none.magic).toBeNull();
+    expect(none.phase).toBe('awaiting_roll');
+    expect(none.log.some((l) => l.text.includes('悻悻收回水晶球'))).toBe(true);
     // p2 名下有地 → p2 成为候选
     const withLand = structuredClone(setupLanding(newGame(67), MAGIC_CELL, 3, seed));
     withLand.players[1]!.properties.push({ cellId: 1, grade: 1 });
     const landed = applyAction(withLand, { type: 'ROLL_DICE' });
     expect(landed.magic?.condition).toBe('landowner');
     expect(landed.magic?.candidateIds).toEqual(['p2']);
+    expect(landed.landing?.cellId).toBe(MAGIC_CELL); // 有候选才开窗（R4）
   });
 
   it('施法条件「vehicle」按交通工具（diceCount>1）判定', () => {
@@ -551,10 +556,14 @@ describe('TILE-11 魔法屋（NPC-06 女巫）', () => {
     const landed = applyAction(setupLanding(newGame(313), MAGIC_CELL, 3, seedForMagic(4, 0)), {
       type: 'ROLL_DICE',
     });
-    // 条件 landowner 但人人无地 → 候选空，任何目标都非法
-    expect(landed.magic?.candidateIds).toEqual([]);
-    expect(() => applyAction(landed, { type: 'CAST_MAGIC', targetPlayerId: 'p2' })).toThrow();
-    expect(() => applyAction(landed, { type: 'CAST_MAGIC', targetPlayerId: 'nobody' })).toThrow();
+    // 条件 landowner 但人人无地 → 候选空：这一格干脆不开窗，机会也被回合推进清掉（R4）
+    expect(landed.landing).toBeNull();
+    expect(landed.magic).toBeNull();
+    // 硬摆一扇窗（有相位、有机会、候选为空）时，候选外与不存在的目标仍旧双双被拒
+    const forced = standAt(structuredClone(landed), 0, MAGIC_CELL);
+    forced.magic = { condition: 'landowner', curse: 'fine', candidateIds: [], amount: 100, days: 0 };
+    expect(() => applyAction(forced, { type: 'CAST_MAGIC', targetPlayerId: 'p2' })).toThrow(/不满足施法条件/);
+    expect(() => applyAction(forced, { type: 'CAST_MAGIC', targetPlayerId: 'nobody' })).toThrow(/受罚对象不存在/);
   });
 
   it('施法后仍停留在魔法屋，可继续其他操作或结束回合', () => {

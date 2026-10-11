@@ -317,7 +317,7 @@ export function ControlPanel({
       )}
 
       {/* ECON-12 手牌额满：必须选择舍弃一张才能继续 */}
-      {actions.pendingCard && (
+      {actions.pendingCards.length > 0 && (
         <div className="discard-modal">
           <div className="discard-title">
             手牌已满（{MAX_HAND_CARDS} 张），请选择舍弃一张以容纳新卡

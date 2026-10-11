@@ -8,7 +8,7 @@ import {
   nextBidAmount,
 } from '../src/index.js';
 import type { GameState, PlayerDef } from '../src/index.js';
-import { pinIndexOne } from './helpers/state.js';
+import { pinIndexOne, standAt } from './helpers/state.js';
 
 /**
  * 波 6 拍卖器测试（ECON-13 / CARD-08 / EVT-03）+ W3 收口规则：
@@ -325,5 +325,30 @@ describe('拍卖收口（W3：加价幅度 / PASS 与 GIVE UP / 收锤）', () =
       // 地价 300 的标的：AI 的必得价封顶在 300，加价又是乘性的，实际只用几个动作
       expect(acts, `seed=${seed} 的拍卖轮询过长（${acts} 个动作）`).toBeLessThan(30);
     }
+  });
+});
+
+describe('落格决策窗与拍卖的交接（R4）', () => {
+  it('拍卖打断落格窗：收锤后回到同一扇窗，本格那件事照样能办', () => {
+    const base = newGame(2109);
+    base.players[0]!.properties = [{ cellId: 1, grade: 2 }];
+    const g = standAt(pinIndexOne(base), 0, 1);
+    g.players[0]!.cards = ['auction'];
+    expect(g.landing).toEqual({ cellId: 1, venue: null, turn: g.turn });
+
+    const opened = applyAction(g, { type: 'USE_CARD', cardId: 'auction', cellId: 1 });
+    expect(opened.phase).toBe('awaiting_auction');
+    // 凭据必须跨 beginAuction / settleAuction 留着：否则窗口被拍卖吃掉，
+    // 收锤之后这一格的决策就被静默跳过（玩家根本不知道自己漏了一手）
+    expect(opened.landing).toEqual(g.landing);
+
+    let s = opened;
+    for (let i = 0; i < 12 && s.phase === 'awaiting_auction'; i++) s = applyAction(s, { type: 'AUCTION_PASS' });
+    expect(s.phase).toBe('awaiting_action');
+    expect(s.landing?.cellId).toBe(1);
+
+    const up = applyAction(s, { type: 'UPGRADE_LAND' });
+    expect(up.players[0]!.properties[0]!.grade).toBe(3);
+    expect(up.phase).toBe('awaiting_roll'); // 回到窗口里办完 ⇒ 终结动作照常推进
   });
 });

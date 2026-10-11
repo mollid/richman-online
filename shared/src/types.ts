@@ -597,8 +597,8 @@ export interface GameState {
   spawnGods: boolean;
   /** 对偶神的再现身冷却：`godPairKey(...)` → 该 `elapsedDays` 之前不得再现身 */
   godPairBanUntil: Record<string, number>;
-  /** ECON-12：手牌额满时待玩家选择舍弃的卡片 id；null 表示无 */
-  pendingCard: string | null;
+  /** ECON-12：手牌额满时待玩家选择舍弃的卡片队列（R4 起为队列，连抽多张不会互相覆盖） */
+  pendingCards: string[];
   /**
    * R4 落格决策窗的凭据；null 表示此刻没有格子在等玩家当场决策。
    * 开窗只有 `holdLanding()` 一个入口，清空只在 `advanceTurn()` 一处。
@@ -830,8 +830,8 @@ export interface AvailableActions {
   dischargeFee: number;
   /** CORE-04：当前是否可认输投降（对局进行中且自己尚未倒闭） */
   canSurrender: boolean;
-  /** ECON-12：待舍弃的卡片 id（非 null 时 phase 为 awaiting_discard，UI 渲染舍弃弹窗） */
-  pendingCard: string | null;
+  /** ECON-12：待舍弃的卡片队列（非空时 phase 为 awaiting_discard，UI 渲染舍弃弹窗） */
+  pendingCards: string[];
   /** UI-06：当前玩家可挂出的标的（_owned 且未挂牌），UI 据此渲染「我要挂出」 */
   tradableAssets: Array<{ kind: TradeKind; targetId: string; label: string; suggestPrice: number }>;
   /** UI-06：当前玩家现金（决定能否买入） */

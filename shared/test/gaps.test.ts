@@ -12,7 +12,7 @@ import {
   type GameState,
   type PlayerDef,
 } from '../src/index.js';
-import { pinIndexOne, putGodOnBoard } from './helpers/state.js';
+import { pinIndexOne, putGodOnBoard, standAt as openLandingWindow } from './helpers/state.js';
 
 /**
  * 波 10a 缺口补齐测试（对应需求项）：
@@ -337,6 +337,27 @@ describe('TILE-08/09 医院：每日医药费 + 门外出院（help [37]）', ()
     expect(r.log.some((l) => l.text.includes('办理出院'))).toBe(true);
   });
 
+  it('踩到医院格：门外有住院病人就开出决策窗，办完自动结束回合（R4 补死路）', () => {
+    const base = pinIndexOne(newGame());
+    base.players[1]!.custody = { kind: 'hospital', daysLeft: 3 };
+    base.players[1]!.skipTurns = 3;
+    const landed = applyAction(standAt(base, HOSPITAL_CELL), { type: 'ROLL_DICE' });
+    // 旧规这一格直接 'advance'，于是 DISCHARGE_PATIENT 是一条永远打不出来的动作
+    expect(landed.landing).toEqual({ cellId: HOSPITAL_CELL, venue: null, turn: landed.turn });
+    expect(availableActions(landed).dischargeablePatients).toEqual(['p2']);
+
+    const done = applyAction(landed, { type: 'DISCHARGE_PATIENT', targetPlayerId: 'p2' });
+    expect(done.players[1]!.custody).toBeNull();
+    expect(done.landing).toBeNull();
+    expect(done.phase).toBe('awaiting_roll'); // 终结动作：办完就把行动权交出去
+  });
+
+  it('门外没人可办时医院格不开窗（R4：没得选就不钉人）', () => {
+    const landed = applyAction(standAt(pinIndexOne(newGame()), HOSPITAL_CELL), { type: 'ROLL_DICE' });
+    expect(landed.landing).toBeNull();
+    expect(landed.phase).toBe('awaiting_roll');
+  });
+
   it('非法出院被拒（不在医院门外 / 目标没住院 / 自己）', () => {
     const g = pinIndexOne(newGame());
     g.players[1]!.custody = { kind: 'hospital', daysLeft: 3 };
@@ -364,26 +385,69 @@ describe('ECON-12 手牌额满须选择舍弃', () => {
     expect(chanceCell).not.toBeNull();
   });
 
-  it('pendingCard 非空时可由 DISCARD_CARD 完成入栏并回到 awaiting_action', () => {
+  it('待舍弃队列非空时可由 DISCARD_CARD 完成入栏并回到 awaiting_action', () => {
     const g = newGame();
     const p = g.players[0]!;
     // 15 张「天使卡」，用计数断言舍弃生效
     p.cards = Array.from({ length: MAX_HAND_CARDS }, () => 'angel');
     g.phase = 'awaiting_discard';
-    g.pendingCard = 'tax-audit';
+    g.pendingCards = ['tax-audit'];
     const r = applyAction(g, { type: 'DISCARD_CARD', cardId: 'angel' });
-    expect(r.pendingCard).toBeNull();
-    expect(r.phase).toBe('awaiting_action');
+    expect(r.pendingCards).toEqual([]);
+    // 没有落格窗可回 ⇒ 舍弃完就把先前被队列压住的那次回合推进补上（R4）
+    expect(r.phase).toBe('awaiting_roll');
     expect(r.players[0]!.cards.length).toBe(MAX_HAND_CARDS);
     expect(r.players[0]!.cards.filter((c) => c === 'angel')).toHaveLength(MAX_HAND_CARDS - 1);
     expect(r.players[0]!.cards).toContain('tax-audit');
   });
 
-  it('availableActions 暴露 pendingCard', () => {
+  it('同一回合连抽两张满手牌：队列不互相覆盖，逐张舍弃才收口（R4）', () => {
+    const g = newGame();
+    g.players[0]!.cards = Array.from({ length: MAX_HAND_CARDS }, () => 'angel');
+    g.phase = 'awaiting_discard';
+    g.pendingCards = ['tax-audit', 'devil']; // 旧口径是单槽，后一张会把前一张顶掉
+    const first = applyAction(g, { type: 'DISCARD_CARD', cardId: 'angel' });
+    expect(first.pendingCards).toEqual(['devil']);
+    expect(first.phase).toBe('awaiting_discard'); // 还有第二张要继续问
+    expect(first.players[0]!.cards).toContain('tax-audit');
+    const second = applyAction(first, { type: 'DISCARD_CARD', cardId: 'angel' });
+    expect(second.pendingCards).toEqual([]);
+    expect(second.players[0]!.cards).toContain('devil');
+  });
+
+  it('额满抽卡不会被落格推进抹掉：推进推迟到队列清空（R4）', () => {
+    const base = pinIndexOne(newGame());
+    base.players[0]!.cards = Array.from({ length: MAX_HAND_CARDS }, () => 'angel');
+    const turn0 = base.turn;
+    // 42 号卡片屋：落脚即抽一张，而手牌已额满 ⇒ 挂起等待舍弃
+    const landed = applyAction(standAt(base, 42), { type: 'ROLL_DICE' });
+    expect(landed.pendingCards.length).toBe(1);
+    expect(landed.phase).toBe('awaiting_discard');
+    expect(landed.turn).toBe(turn0); // 回合推进被队列压住，一张卡都没丢
+    const after = applyAction(landed, { type: 'DISCARD_CARD', cardId: 'angel' });
+    expect(after.pendingCards).toEqual([]);
+    expect(after.turn).toBe(turn0 + 1); // 舍弃完补上那次推进
+    expect(after.phase).toBe('awaiting_roll');
+  });
+
+  it('在商店里抽到额满：舍弃完回到店里，而不是把回合交出去（R4 会话窗）', () => {
+    const g = newGame();
+    g.players[0]!.cards = Array.from({ length: MAX_HAND_CARDS }, () => 'angel');
+    g.pendingCards = ['tax-audit'];
+    // 商店会话窗开着时买卡买到手牌额满 —— 引擎就是把相位切成 awaiting_discard 而保留 landing
+    const inShop = openLandingWindow(structuredClone(g), 0, 2); // 2 号商店
+    inShop.phase = 'awaiting_discard';
+    const back = applyAction(inShop, { type: 'DISCARD_CARD', cardId: 'angel' });
+    expect(back.pendingCards).toEqual([]);
+    expect(back.landing?.venue).toBe('shop');
+    expect(back.phase).toBe('awaiting_action'); // 回到店里继续买，回合没被这一手推走
+  });
+
+  it('availableActions 暴露 pendingCards', () => {
     const g = newGame();
     g.phase = 'awaiting_discard';
-    g.pendingCard = 'devil';
-    expect(availableActions(g).pendingCard).toBe('devil');
+    g.pendingCards = ['devil'];
+    expect(availableActions(g).pendingCards).toEqual(['devil']);
   });
 });
 

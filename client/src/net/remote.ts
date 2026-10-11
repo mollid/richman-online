@@ -304,7 +304,7 @@ function emptyState(): GameState {
     npcs: [],
     magic: null,
     landGodCooldownMonth: 0,
-    pendingCard: null,
+    pendingCards: [],
     landing: null,
     trades: [],
     tradeHistory: [],

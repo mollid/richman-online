@@ -137,13 +137,17 @@ describe('SP-02 出生格站着不算落到', () => {
     return applyAction(g, { type: 'ROLL_DICE' });
   }
 
-  it('出生格正好是可购地：押着不放，门控与引擎同源拒绝', () => {
+  it('出生格正好是可购地：押着不放，连决策窗都不开（SP-02 + R4）', () => {
     const g = stuckAtSpawn(1);
     const spawn = createGame(SEATS.slice(0, 2), 1).players[0]!.position;
     expect(g.players[0]!.position).toBe(spawn); // 一步没走，还站在出生格
     expect(g.board[spawn]!.type).toBe('property');
     expect(availableActions(g).canBuy).toBe(false);
-    expect(() => applyAction(g, { type: 'BUY_LAND' })).toThrow('出生格不能直接购买');
+    // 门控与引擎同源：买不成 ⇒ 不该有一扇空窗把人钉在这里。引擎那句原文直接进播报。
+    expect(g.landing).toBeNull();
+    expect(g.phase).toBe('awaiting_roll');
+    expect(g.currentPlayerIndex).toBe(1);
+    expect(g.log.some((l) => l.text.includes('出生格不能直接购买'))).toBe(true);
   });
 
   it('出生格撒在商店格：站着不算进店，买卡买道具都关着', () => {
@@ -168,10 +172,14 @@ describe('SP-02 出生格站着不算落到', () => {
     expect(() => applyAction(back, { type: 'BUY_LAND' })).not.toThrow();
   });
 
-  it('站在出生格上只做被允许的事：掷骰、炒股、用道具都还开着', () => {
-    const acts = availableActions(stuckAtSpawn(1));
-    expect(acts.canFinishLanding).toBe(true); // 停留这一手已掷过骰，至少能收尾
-    expect(acts.canTradeStock).toBe(true);
-    expect(acts.usableItems.length).toBeGreaterThan(0);
+  it('站在出生格上不做落格决策：回合自动走，自由操作照旧', () => {
+    const g = stuckAtSpawn(1);
+    // R4：这一格没有可当场办理的事 ⇒ 不开窗 ⇒ 也就没有出口要按，回合自己交出去
+    expect(g.landing).toBeNull();
+    expect(g.phase).toBe('awaiting_roll');
+    const acts = availableActions(g);
+    expect(acts.canFinishLanding).toBe(false);
+    expect(acts.canRoll).toBe(true); // 轮到下一位掷骰
+    expect(acts.canTradeStock).toBe(true); // 炒股这类自由操作不受脚下那一格影响
   });
 });

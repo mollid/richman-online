@@ -12,13 +12,21 @@
  *
  * 协议（见 `effect_ctx.ts` 的 `LandingResult`）：
  * - `advance` 本格结算完毕，引擎统一推进回合；
- * - `hold` 本格已把相位切到 `awaiting_action` / `awaiting_pick`，等玩家当场决策；
+ * - `hold` 本格开了落格决策窗（`holdLanding`），等玩家当场决策；
  * - `stop` 不推进（对局已结束，或该格把后续交给了别的流程）。
+ *
+ * R4 的写法纪律：**没有第四种出口**。每格要么 `holdLanding(ctx)` 开窗（会话型格子可反复办理，
+ * 只有 `FINISH_LANDING` 才推进），要么先 `landingBlocker(...)` 探一下有没有事可做、
+ * 无事就 `advance` 让回合自动走。玩家手上不再有「结束回合」那颗按钮，所以
+ * 「开窗却没有任何合法动作」= 直接卡死整局；这条不变式由 `landingBlocker` 与
+ * `checkFinishLanding`（只看相位、不看凭据的逃生门）两层守住，并由 `economy.test.ts`
+ * 的属性测试每帧验证。
  */
 
 import { TREASURE_POINTS } from './board.js';
 import { landOnCompany } from './companies.js';
 import type { CellLandingCtx, LandingResult } from './effect_ctx.js';
+import { holdLanding, landingBlocker } from './effect_ctx.js';
 import { landPrice, scaled } from './economy.js';
 import { CRIME_JAIL_DAYS, FATE_MAP_IDS, fateCardById, renderFateText } from './fate.js';
 import { LOTTERY_TICKET_COST } from './lottery.js';
@@ -26,8 +34,10 @@ import { CURSES, CURSE_ORDER, MAGIC_CONDITIONS, MAGIC_CONDITION_LABEL } from './
 import { nextRandom } from './rng.js';
 import {
   FACILITIES,
+  FACILITY_ORDER,
   HOTEL_MAX_DAYS,
   MAX_GRADE,
+  RESEARCH_ORDER,
   facilitySpendBase,
   facilityUpgradeable,
   gasFee,
@@ -35,7 +45,7 @@ import {
   vehicleLabel,
   vehicleLevel,
 } from './tiles.js';
-import type { CellType, MagicOffer, MinigameState } from './types.js';
+import type { CellType, MagicOffer, MinigameState, PlayerAction, VillainKind } from './types.js';
 
 /**
  * EVT-02：机会/危险格的违法事件风险。
@@ -90,6 +100,9 @@ function onLandingTax(ctx: CellLandingCtx): LandingResult {
 /**
  * TILE-09 医院：住院不能出门且丧失收租权利，每天 1000 医药费（help [37]）。
  * 医药费按住院天数在日切钩子逐日收取；此处只办入住。
+ *
+ * R4：这一格原先无条件 `'advance'`，于是 `DISCHARGE_PATIENT` 是一条**永远打不出来**的动作
+ * —— 站在医院门外却没有任何窗口能替别人办理出院。现在门外确有别的住院病人（且办得起）时才开窗。
  */
 function onLandingHospital(ctx: CellLandingCtx): LandingResult {
   const { state, self: p } = ctx;
@@ -97,38 +110,71 @@ function onLandingHospital(ctx: CellLandingCtx): LandingResult {
   p.custody = { kind: 'hospital', daysLeft: Math.max(p.skipTurns, 1) };
   ctx.blockRent(p, 1);
   ctx.log(state, `${p.name} 办理住院（住院期间丧失收租权，每天需付医药费）`);
-  return 'advance';
+  // 只替**别人**办理：自己刚入住，立刻交出院费把自己捞出去等于没住院
+  const patients = state.players.filter((q) => q.id !== p.id && q.custody?.kind === 'hospital' && q.skipTurns > 0);
+  const blocker = landingBlocker(ctx, patients.map((q): PlayerAction => ({ type: 'DISCHARGE_PATIENT', targetPlayerId: q.id })));
+  if (blocker !== null) return 'advance';
+  ctx.log(state, `医院门外有 ${patients.length} 位住院病人，可代为办理提前出院`);
+  return holdLanding(ctx);
 }
 
 /** TILE-10 监狱：落地不停留在牢内（安全），可在监狱门外保释在押恶人（help [34]） */
 function onLandingJail(ctx: CellLandingCtx): LandingResult {
   const { state, self: p, cell: c } = ctx;
-  state.phase = 'awaiting_action';
   const jailed = state.npcs.filter((n) => n.jailed && n.kind !== 'dog');
+  const blocker = landingBlocker(
+    ctx,
+    jailed.map((n): PlayerAction => ({ type: 'BAIL_PRISONER', npcKind: n.kind as VillainKind })),
+  );
   ctx.log(
     state,
-    jailed.length > 0
-      ? `${p.name} 来到「${c.name}」门外（安全无恙），可花 ¥${ctx.bailFee(state)} 保释在押恶人`
-      : `${p.name} 来到「${c.name}」门外（安全无恙），当前没有在押恶人`,
+    `${p.name} 来到「${c.name}」门外（安全无恙）` +
+      (blocker === null
+        ? `，可花 ¥${ctx.bailFee(state)} 保释在押恶人`
+        : jailed.length === 0
+          ? '，当前没有在押恶人'
+          : `，${blocker}`),
   );
-  return 'hold';
+  return blocker === null ? holdLanding(ctx) : 'advance';
 }
 
-/** TILE-12 卡片屋 */
+/**
+ * TILE-12 卡片屋：**会话窗**（`venue='shop'`）。
+ * 买一张、再买一张、把不要的变卖给商店……买完不推进回合，只有「离开商店」（`FINISH_LANDING`）
+ * 才把行动权交给下一位 —— 这正是原版「进去买东西，买完离开」的体感。
+ */
 function onLandingShop(ctx: CellLandingCtx): LandingResult {
   const { state, self: p, cell: c } = ctx;
-  state.phase = 'awaiting_action';
-  ctx.log(state, `${p.name} 来到${c.name}，可以购买卡片道具`);
-  return 'hold';
+  ctx.state.phase = 'awaiting_action';
+  ctx.log(state, `${p.name} 来到${c.name}，可以购买卡片道具；买完点「离开商店」结束回合`);
+  return holdLanding(ctx);
 }
 
-/** TILE-08 银行（公立）/ TILE-26 银行（公司）：停留当格开放存取款、贷款与股票交易 */
+/**
+ * TILE-08 公立银行 / TILE-26 企业银行：**会话窗**（`venue='bank'`），停留当格开放存取款与贷款。
+ *
+ * 但只在「真有事可办」时才开：例假日休市且没有贷款可还的这一格，推进回合就是它的正确结算，
+ * 钉在窗口里只能靠逃生门出来。
+ */
 function onLandingBank(ctx: CellLandingCtx): LandingResult {
   const { state, self: p, cell: c } = ctx;
+  // 先授权再探路：银行四项校验读的都是 `state.bankAccess`，顺序倒了会得到「当前不能进行银行操作」，
+  // 于是每格银行都被判成「无事可做」—— 门控与引擎同源的含义就是**按引擎的口径去问**。
   state.bankAccess = { canDeposit: true, canLoan: true, cellId: c.id };
-  state.phase = 'awaiting_action';
-  ctx.log(state, `${p.name} 来到${c.name}，可以存取款、贷款与买卖股票`);
-  return 'hold';
+  const blocker = landingBlocker(ctx, [
+    { type: 'DEPOSIT', amount: 1 },
+    { type: 'WITHDRAW', amount: 1 },
+    { type: 'TAKE_LOAN', amount: 1 },
+    { type: 'REPAY_LOAN', amount: 1 },
+  ]);
+  if (blocker !== null) {
+    // 例假日休市且无贷款可还：这一格确实没事，把刚给的权限收回去（别留给下一位）
+    state.bankAccess = null;
+    ctx.log(state, `${p.name} 来到${c.name}，${blocker}`);
+    return 'advance';
+  }
+  ctx.log(state, `${p.name} 来到${c.name}，可以存取款与贷款；办完点「离开银行」结束回合`);
+  return holdLanding(ctx);
 }
 
 /** TILE 神庙：摇籤随机召唤一位神明附身 */
@@ -203,20 +249,25 @@ function onLandingProperty(ctx: CellLandingCtx): LandingResult {
   }
 
   if (!owned) {
-    state.phase = 'awaiting_action';
-    ctx.log(state, `${p.name} 来到无主地产「${c.name}」（售价 ¥${landPrice(state, c)}）`);
-    return 'hold';
+    // R4：买地是**单步窗** —— 买下或放弃都直接推进回合。买不成（钱不够 / 梦游 / 衰神 / 还站在出生格）
+    // 就根本不开窗，理由写进播报，玩家看得见「这一格为什么什么都没弹」。
+    const price = landPrice(state, c);
+    const blocker = landingBlocker(ctx, [{ type: 'BUY_LAND' }]);
+    ctx.log(state, `${p.name} 来到无主地产「${c.name}」（售价 ¥${price}${blocker === null ? '' : `，${blocker}`}）`);
+    return blocker === null ? holdLanding(ctx) : 'advance';
   }
   if (owned.player.id === p.id) {
     // EST-02 住宅可加盖至 5 级；EST-04 连锁店不能再加盖
     if (!owned.property.chain && owned.property.grade < MAX_GRADE) {
-      state.phase = 'awaiting_action';
-      ctx.log(state, `${p.name} 回到自家「${c.name}」（${gradeName(owned.property.grade)}）`);
-    } else {
-      ctx.log(state, `${p.name} 回到${owned.property.chain ? '连锁店' : '满级地产'}「${c.name}」`);
-      return 'advance';
+      const blocker = landingBlocker(ctx, [{ type: 'UPGRADE_LAND' }]);
+      ctx.log(
+        state,
+        `${p.name} 回到自家「${c.name}」（${gradeName(owned.property.grade)}）${blocker === null ? '' : `，${blocker}`}`,
+      );
+      return blocker === null ? holdLanding(ctx) : 'advance';
     }
-    return 'hold';
+    ctx.log(state, `${p.name} 回到${owned.property.chain ? '连锁店' : '满级地产'}「${c.name}」`);
+    return 'advance';
   }
 
   // 丧失收租权（坐牢/冬眠/梦游）；出国旅游期间同样不能收租（CORP-03）
@@ -289,25 +340,37 @@ function onLandingCommercial(ctx: CellLandingCtx): LandingResult {
   if (c.price === undefined) throw new Error(`未知格类型: ${c.type}`);
   const owned = ctx.cellOwner(state, c.id);
   if (!owned) {
-    state.phase = 'awaiting_action';
-    ctx.log(state, `${p.name} 来到无主商业用地「${c.name}」（购地价 ¥${landPrice(state, c)}；首次只能购地，再次抵达才可建设）`);
-    return 'hold';
+    const price = landPrice(state, c);
+    const blocker = landingBlocker(ctx, [{ type: 'BUY_LAND' }]);
+    ctx.log(
+      state,
+      `${p.name} 来到无主商业用地「${c.name}」（购地价 ¥${price}；首次只能购地，再次抵达才可建设）${blocker === null ? '' : `，${blocker}`}`,
+    );
+    return blocker === null ? holdLanding(ctx) : 'advance';
   }
   if (owned.player.id === p.id) {
+    // R4：建设 / 加盖 / 研发各自成为**单步终结动作** —— 选完即推进回合。
+    // 于是取消了旧规里「同一次停留先建设再加盖」的组合：想接着加盖就得再走一圈。
     if (!owned.property.facility) {
-      state.phase = 'awaiting_action';
-      ctx.log(state, `${p.name} 回到自有商业用地「${c.name}」，可以开工建设`);
-    } else if (facilityUpgradeable(owned.property) && owned.property.grade < MAX_GRADE) {
-      state.phase = 'awaiting_action';
-      ctx.log(state, `${p.name} 回到自己的${FACILITIES[owned.property.facility].name}「${c.name}」（${gradeName(owned.property.grade)}）`);
-    } else if (owned.property.facility === 'lab') {
-      state.phase = 'awaiting_action';
-      ctx.log(state, `${p.name} 回到自己的研究所「${c.name}」，可以立项研发`);
-    } else {
-      ctx.log(state, `${p.name} 在自己的「${c.name}」稍作停留`);
-      return 'advance';
+      const blocker = landingBlocker(ctx, FACILITY_ORDER.map((f): PlayerAction => ({ type: 'BUILD_FACILITY', facility: f })));
+      ctx.log(state, `${p.name} 回到自有商业用地「${c.name}」${blocker === null ? '，可以开工建设' : `，${blocker}`}`);
+      return blocker === null ? holdLanding(ctx) : 'advance';
     }
-    return 'hold';
+    if (facilityUpgradeable(owned.property) && owned.property.grade < MAX_GRADE) {
+      const blocker = landingBlocker(ctx, [{ type: 'UPGRADE_LAND' }]);
+      ctx.log(
+        state,
+        `${p.name} 回到自己的${FACILITIES[owned.property.facility].name}「${c.name}」（${gradeName(owned.property.grade)}）${blocker === null ? '' : `，${blocker}`}`,
+      );
+      return blocker === null ? holdLanding(ctx) : 'advance';
+    }
+    if (owned.property.facility === 'lab') {
+      const blocker = landingBlocker(ctx, RESEARCH_ORDER.map((r): PlayerAction => ({ type: 'START_RESEARCH', itemId: r.itemId })));
+      ctx.log(state, `${p.name} 回到自己的研究所「${c.name}」${blocker === null ? '，可以立项研发' : `，${blocker}`}`);
+      return blocker === null ? holdLanding(ctx) : 'advance';
+    }
+    ctx.log(state, `${p.name} 在自己的「${c.name}」稍作停留`);
+    return 'advance';
   }
 
   const prop = owned.property;
@@ -389,12 +452,15 @@ function onLandingNews(ctx: CellLandingCtx): LandingResult {
   return ctx.isGameOver(state) ? 'stop' : 'advance';
 }
 
-/** TILE-19 乐透行：自选号码投注（ECON-08），每月 15 号开奖 */
+/** TILE-19 乐透行：自选号码投注（ECON-08），每月 15 号开奖。买一张就结束本回合（R4 单步窗） */
 function onLandingLottery(ctx: CellLandingCtx): LandingResult {
   const { state, self: p, cell: c } = ctx;
-  state.phase = 'awaiting_action';
-  ctx.log(state, `${p.name} 来到「${c.name}」：可自选号码投注 ¥${LOTTERY_TICKET_COST}（每月 15 号开奖）`);
-  return 'hold';
+  const blocker = landingBlocker(ctx, [{ type: 'BUY_LOTTERY_TICKET', number: 0 }]);
+  ctx.log(
+    state,
+    `${p.name} 来到「${c.name}」：可自选号码投注 ¥${LOTTERY_TICKET_COST}（每月 15 号开奖）${blocker === null ? '' : `，${blocker}`}`,
+  );
+  return blocker === null ? holdLanding(ctx) : 'advance';
 }
 
 /** TILE-11 魔法屋（NPC-06 女巫）：水晶球给出施法条件 + 诅咒，由玩家指定受罚者 */
@@ -416,15 +482,18 @@ function onLandingMagic(ctx: CellLandingCtx): LandingResult {
     days: curseDef.days ?? 0,
   };
   state.magic = offer;
-  state.phase = 'awaiting_action';
+  // R4：单步窗 —— 施完法就结束回合。0 个候选时今天也照样开窗，玩家面对一个没有任何按钮的面板，
+  // 只能靠逃生门出来；现在直接推进，并把「悻悻收回水晶球」这条本就写好的播报留在原位。
+  const blocker = landingBlocker(ctx, candidateIds.map((id): PlayerAction => ({ type: 'CAST_MAGIC', targetPlayerId: id })));
   ctx.log(
     state,
     `${p.name} 进入「${c.name}」，女巫的水晶球亮起：${MAGIC_CONDITION_LABEL[condition]}；若施法，将降下「${curseDef.name}」`,
   );
-  if (candidateIds.length === 0) {
+  if (blocker !== null) {
     ctx.log(state, '当前没有符合条件的受罚对象，女巫悻悻收回水晶球');
+    return 'advance';
   }
-  return 'hold';
+  return holdLanding(ctx);
 }
 
 /** TILE-20..30 公司企业（CORP-01..13）：消费与服务结算见 `companies.ts` */
