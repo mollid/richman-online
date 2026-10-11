@@ -216,19 +216,57 @@ describe('经过即附身', () => {
     expect(boardGodAt(rolled, cellId)).toBeUndefined();
   });
 
-  it('附身结束本回合，且跳过该格的落格结算', () => {
-    // 神明驻在税务格上：若没有「跳过落格」这条，玩家会既被附身又被抽 10% 现金
+  /** 造一个「神明驻在指定格、我正站在它前一格、一颗骰子刚好踩上去」的局面 */
+  function godOn(godId: string, pick: (c: { type: string }) => boolean) {
     const g = game(3, true);
     const me = g.players[g.currentPlayerIndex]!;
-    const cellId = g.board.find((c) => c.type === 'tax')!.id;
+    const cellId = g.board.findIndex(pick);
     me.position = (cellId - 1 + BOARD_SIZE) % BOARD_SIZE;
     me.diceCount = 1;
     g.phase = 'awaiting_roll';
-    putGodOnBoard(g, 'big-wealth', cellId);
+    putGodOnBoard(g, godId, cellId);
+    return { g, cellId };
+  }
+
+  it('附身之后照常结算脚下那一格（R4 定死的次序：先附身、再落格）', () => {
+    // 旧规是「附身即结束回合、跳过这一格」，所以神明只能驻在不会强制结算的格子上。
+    // R4 把次序反过来之后，两件事都发生：先大财神显灵拿钱，再被税务格抽 10% 现金。
+    const { g, cellId } = godOn('big-wealth', (c) => c.type === 'tax');
+    const rolled = applyAction(g, { type: 'ROLL_DICE', diceCount: 1 });
+    expect(rolled.players[0]!.position).toBe(cellId);
+    expect(rolled.players[0]!.god?.godId).toBe('big-wealth');
+    const taxIdx = rolled.log.findIndex((l) => l.text.includes('需缴税'));
+    const attachIdx = rolled.log.findIndex((l) => l.text.includes('附身'));
+    expect(taxIdx).toBeGreaterThanOrEqual(0); // 落格没被跳过
+    expect(attachIdx).toBeLessThan(taxIdx); // 而附身排在前面
+  });
+
+  it('神明停在商店格：先附身，再进店，买完「离开商店」才结束回合', () => {
+    const { g, cellId } = godOn('big-wealth', (c) => c.type === 'shop');
     const rolled = applyAction(g, { type: 'ROLL_DICE', diceCount: 1 });
     expect(rolled.players[0]!.god?.godId).toBe('big-wealth');
-    // 大财神的附身结算只增不减；被税务格抽成会显著吃掉这笔增益，两者可分辨
-    expect(rolled.log.some((l) => l.text.includes('需缴税'))).toBe(false);
+    // 这一格从此可以是商店 —— 驻留格型开放（R4）之后，次序有答案就不必从源头排除
+    expect(rolled.landing).toEqual({ cellId, venue: 'shop', turn: rolled.turn });
+    expect(rolled.phase).toBe('awaiting_action'); // 会话窗：回合还没交出去
+    const left = applyAction(rolled, { type: 'FINISH_LANDING' });
+    expect(left.landing).toBeNull();
+    expect(left.phase).toBe('awaiting_roll');
+  });
+
+  it('神明停在无主地产：土地公当场侵占脚下这一格，落格给的是加盖而不是买地', () => {
+    // 附身先发生 ⇒ applyGodTravel 看到的是「刚请到的土地公」⇒ 脚下这格已被占为己有
+    // ⇒ 落格分派走到「自有可加盖」那条分支。这是**规则**，不是 bug（用户口径：先附身再结算）。
+    const { g, cellId } = godOn('land-god', (c) => c.type === 'property');
+    const rolled = applyAction(g, { type: 'ROLL_DICE', diceCount: 1 });
+    expect(rolled.players[0]!.god?.godId).toBe('land-god');
+    expect(rolled.players[0]!.properties.some((q) => q.cellId === cellId)).toBe(true);
+    expect(rolled.log.some((l) => l.text.includes('占为己有'))).toBe(true);
+    expect(rolled.landing).toEqual({ cellId, venue: null, turn: rolled.turn });
+    const acts = availableActions(rolled);
+    expect(acts.canBuy).toBe(false); // 已经是自己的地，没有「买」这一手
+    expect(acts.canUpgrade).toBe(true); // 加盖照旧是终结动作
+    const up = applyAction(rolled, { type: 'UPGRADE_LAND' });
+    expect(up.phase).toBe('awaiting_roll');
   });
 
   it('神明与路障同格时以路障优先（截停型效果先结算，不双触发）', () => {

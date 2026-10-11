@@ -2127,18 +2127,24 @@ function rollDice(state: GameState, action: Extract<PlayerAction, { type: 'ROLL_
     return;
   }
 
-  // 经过即附身：神明随附身离场（这不算「清退」，不写对偶冷却），本回合直接结束。
-  // 该格的落格结算被跳过 —— 神明只驻留在非必触发格，跳过是为了让这条规则没有例外分支可走。
-  const godHere = godCell === null ? undefined : boardGodAt(state, godCell);
-  if (godHere) {
-    const godId = detachGodForPossession(state, godHere.cellId);
+  const c = cellAt(state, pos);
+
+  /* 经过即附身（GOD 现身机制）：神明随附身离场，这不算「清退」，所以不写对偶冷却。
+   * R4 把次序定死了 —— **先附身，再照常结算脚下这一格**。用户的口径是「神明刚好停留在商城的
+   * 格子，那么应该先触发神明的附身，然后进商城购买道具，购买完成后自动结束回合」，
+   * 而不是「附身之后这一格就跳过」。于是两条连带结论：
+   * - `applyGodTravel` 排在附身**之后**：刚请到的土地公 / 天使连脚下这一格一起显灵；
+   * - 大 / 小穷神的附身结算能当场把人送走 ⇒ 破产者不再落格，清算交给 `advanceTurn` 的前置开拍。 */
+  if (godCell !== null && boardGodAt(state, godCell)) {
+    const godId = detachGodForPossession(state, godCell);
     const god = godId ? godDef(godId) : undefined;
     if (god) attachGod(godCtx(state), p, god);
-    advanceTurn(state);
-    return;
+    if (isGameOver(state)) return;
+    if (p.bankrupt) {
+      advanceTurn(state);
+      return;
+    }
   }
-
-  const c = cellAt(state, pos);
 
   // 行进显灵·落格类（GOD-01 土地公侵占 / GOD-10 天使加盖 / GOD-11 恶魔拆屋）
   applyGodTravel(godCtx(state), p, c);
