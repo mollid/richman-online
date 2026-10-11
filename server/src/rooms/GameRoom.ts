@@ -321,14 +321,17 @@ export class GameRoom extends Room {
       this.botRngState = draw.nextState;
       return draw.value;
     };
-    const action = botDecide(this.game, actingId, rng);
+    // R4：AI 在落格窗里可以真的「什么都不想做」（botDecide 返回 null）。
+    // 那时必须替它离开这一格 —— 窗口不会自己关，而直接 return 会让房间冻在
+    // `awaiting_action`：`maybeScheduleBotAct` 只在广播时重排，没有广播就没有下一次定时。
+    const action = botDecide(this.game, actingId, rng) ?? (availableActions(this.game).canFinishLanding ? ({ type: 'FINISH_LANDING' } as PlayerAction) : null);
     if (!action) return;
     try {
       this.game = applyAction(this.game, action);
       this.actionLog.push({ turn: this.game.turn, action });
       this.broadcastState();
     } catch (e) {
-      // 决策与规则冲突时降级为走出落格窗，避免 AI 卡死
+      // 决策与规则冲突时降级为走出落格窗，避免 AI 卡死（同上一条：窗口是唯一的出口）
       if (this.game.phase === 'awaiting_action') {
         this.game = applyAction(this.game, { type: 'FINISH_LANDING' });
         this.actionLog.push({ turn: this.game.turn, action: { type: 'FINISH_LANDING' } });

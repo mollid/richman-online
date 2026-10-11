@@ -22,6 +22,7 @@ import {
 } from './net/auth.js';
 import { ReplayScreen } from './ui/ReplayScreen.js';
 import { AcHudLayer } from './ui/AcHudLayer.js';
+import { confirmAction } from './ui/landingExit.js';
 import { useGameSfx } from './ui/useGameSfx.js';
 import { useHotkeys } from './ui/useHotkeys.js';
 import { SettingsPanel } from './ui/SettingsPanel.js';
@@ -535,7 +536,12 @@ function GameScreen({
     () => registerAction('upgrade_land', () => hotkeyAction({ type: 'UPGRADE_LAND' })),
     [registerAction, hotkeyAction],
   );
-  useEffect(() => registerAction('end_turn', () => hotkeyAction({ type: 'FINISH_LANDING' })), [registerAction, hotkeyAction]);
+  /* R4：回车 = 「只推进流程、不花钱」。落格窗里走出去品，否则掷骰。
+     绝不让回车顺手把地买了 —— 那是玩家最不想被代劳的一次支出。 */
+  useEffect(
+    () => registerAction('confirm', () => hotkeyAction(confirmAction(game))),
+    [registerAction, hotkeyAction, game],
+  );
   useEffect(() => registerAction('toggle_mute', toggleMute), [registerAction, toggleMute]);
 
   return (

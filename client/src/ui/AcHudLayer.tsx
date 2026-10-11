@@ -37,6 +37,8 @@ type AcHostApi = {
 };
 type AcHudGlobal = {
   update: (snap: unknown) => void;
+  /** 移动演出落定了吗（未挂载 / 方环示意时按「已落定」处理） */
+  isSettled?: () => boolean;
   setHost: (h: Partial<AcHostApi>) => void;
   destroy: () => void;
   toast?: (t: string, tone?: string) => void;
@@ -332,27 +334,63 @@ export function AcHudLayer({
     if (game.phase === 'lobby') setPanel(null);
   }, [game.phase]);
 
-  /* 踩到公司格就把认购窗弹出来（CORP-14：原始股只能在此刻、用现金认购，股市面板只做转手）。
-   * 签名取「回合 + 行动者 + 脚下格」：同一个落点只弹一次，玩家关掉后不再骚扰；换人/挪开即失效。
-   * 只收我们自己弹的那一次 —— dock 上「加盖 / 特别融资」也是开这个面板，不该替玩家关掉。 */
-  const companyPromptRef = useRef<string | null>(null);
+  /* R4：面板跟着**落格决策窗**开，而不是跟着相位开。
+   *
+   * 两个条件必须同时成立：
+   * ① `actions.landing` 在 —— 引擎真的把这一格交给当前玩家决策。旧的写法是看
+   *    `phase === 'awaiting_action'` + 行动者脚下格自己猜，而 R4 之后终结动作在同一帧就把
+   *    回合推进了，那一帧短到可以被整段跳过：靠相位猜会既弹错、又漏弹。
+   * ② 演出落定 —— 引擎把「掷骰 → 走 n 步 → 落格」压成一个原子动作，快照到达时棋子还在路上；
+   *    这时糊一层面板，玩家看到的是上一格的镜头配下一格的决定。所以轮询 `isSettled()`，
+   *    跳完才弹（80ms 一量，落定即停；窗一变就取消，不留悬着的定时器）。
+   *
+   * 签名取「回合 + 行动者 + 格 + 场所」：同一个落点只弹一次，玩家自己关掉后不再骚扰。
+   * 收层只收**我们自己弹开的那一种** —— dock 上「加盖 / 特别融资」开的也是公司面板，
+   * 不该替玩家关掉他主动要看的东西。 */
+  const landing = snapshot.view.actions.landing as { cellId: number; venue: string | null } | null;
+  const landingKind = useMemo(() => {
+    if (!landing) return null;
+    if (landing.venue === 'shop') return 'shop';
+    if (landing.venue === 'bank') return 'bank';
+    const cell = game.board[landing.cellId];
+    if (!cell) return null;
+    // 需要选目标 / 填金额的那几格才自动开面板；买地、加盖、保释这类 dock 上一个按钮就够
+    if (cell.type === 'company') return 'company';
+    if (cell.type === 'magic') return 'magic';
+    if (cell.type === 'lottery') return 'lottery';
+    return null;
+  }, [landing, game.board]);
+
+  const landingPromptRef = useRef<string | null>(null);
+  const autoOpenedRef = useRef<string | null>(null);
   useEffect(() => {
-    if (!ready) return;
-    const actor = game.players[game.currentPlayerIndex];
-    const cell = actor ? game.board[actor.position] : undefined;
-    if (!(game.phase === 'awaiting_action' && cell?.type === 'company')) {
-      if (companyPromptRef.current !== null) {
-        companyPromptRef.current = null;
-        if (panel === 'company') setPanel(null);
-      }
+    if (!landing || !landingKind) {
+      landingPromptRef.current = null;
+      if (autoOpenedRef.current && panel === autoOpenedRef.current) setPanel(null);
       return;
     }
-    if (!interactive) return; // 不是我方行动：别替别人弹窗
-    const sig = `${game.turn}:${actor!.id}:${cell!.id}`;
-    if (companyPromptRef.current === sig) return;
-    companyPromptRef.current = sig;
-    setPanel('company');
-  }, [ready, interactive, panel, game]);
+    if (!ready || !interactive) return; // 不是我方行动：别替别人弹窗
+    const sig = `${game.turn}:${game.currentPlayerIndex}:${landing.cellId}:${landing.venue ?? 'single'}`;
+    if (landingPromptRef.current === sig) return;
+    const kind = landingKind;
+    let cancelled = false;
+    let timer = 0;
+    const wait = () => {
+      if (cancelled) return;
+      if (window.AC_HUD?.isSettled?.() === false) {
+        timer = window.setTimeout(wait, 80);
+        return;
+      }
+      landingPromptRef.current = sig;
+      autoOpenedRef.current = kind;
+      setPanel(kind);
+    };
+    wait();
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [ready, interactive, panel, landing, landingKind, game.turn, game.currentPlayerIndex]);
 
   const active = forced ?? panel;
 

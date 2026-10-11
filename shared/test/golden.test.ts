@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { availableActions } from '../src/index.js';
 import { GOLDEN_PLAYERS, runGoldenMatch } from './helpers/golden_run.js';
 
 /**
@@ -220,5 +221,48 @@ describe('golden 逐帧基线（重构期间行为不变的唯一证明）', () 
   it('门控与引擎校验完全同源：整局不再出现「门控放行、引擎报错」', () => {
     const run = runGoldenMatch({ maxTurns: MAX_TURNS, sampleEvery: SAMPLE_EVERY });
     expect(run.errors).toBe(RECORDED_GATE_ERRORS);
+  });
+
+  /**
+   * R4 的防软锁不变式（逐帧断言，取代旧的「END_TURN 永远可用，不会卡死」）。
+   *
+   * 玩家不再手动结束回合之后，一局卡死的形状变成两种：
+   * ① 相位是 `awaiting_action` 却连「离开」都按不动 —— 由 `checkFinishLanding`
+   *    （故意只看相位、不看凭据）挡在门外，这里验它真的守住了；
+   * ② 更隐蔽的一种：窗开着、出口也在，但那**一格没有任何可办的事**，玩家面对的是一层
+   *    空面板。条件开窗（`landingBlocker`）就是为它准备的，所以这里同样逐帧查。
+   */
+  it('防软锁：整局每一帧的落格窗都必须有出口、且不是空窗', () => {
+    const run = runGoldenMatch({ maxTurns: MAX_TURNS, sampleEvery: SAMPLE_EVERY, collectStates: true });
+    const noExit: string[] = [];
+    const emptyWindow: string[] = [];
+    run.states.forEach((state, i) => {
+      if (state.phase !== 'awaiting_action') return;
+      const acts = availableActions(state);
+      const at = `#${i} turn=${state.turn} cell=${state.landing?.cellId ?? '-'}`;
+      if (!acts.canFinishLanding) noExit.push(at);
+      if (!state.landing) return; // 不是落格开的窗（舍弃收尾 / 拍卖交回），出口那条已单独验过
+      const hasBusiness =
+        state.landing.venue !== null || // 会话窗：商店 / 银行里本来就能反复办
+        acts.canShop ||
+        acts.canBuy ||
+        acts.canUpgrade ||
+        acts.canBuyShares ||
+        acts.canBuyLottery ||
+        acts.canFinancing ||
+        acts.buildableFacilities.length > 0 ||
+        acts.researchableItems.length > 0 ||
+        acts.estateBuildCells.length > 0 ||
+        acts.bailableVillains.length > 0 ||
+        acts.dischargeablePatients.length > 0 ||
+        acts.magic !== null ||
+        acts.canDeposit ||
+        acts.canWithdraw ||
+        acts.canLoan ||
+        acts.canRepayLoan;
+      if (!hasBusiness) emptyWindow.push(at);
+    });
+    expect(noExit, '存在没有出口的 awaiting_action 帧（整局将卡死）').toEqual([]);
+    expect(emptyWindow, '存在开窗却无任何可办之事的帧（玩家面对空面板）').toEqual([]);
   });
 });

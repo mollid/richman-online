@@ -173,9 +173,11 @@ globalThis.D25World.renderOnce();
 - **判据必须是「回合指针是否变化」（`lastTurnPid`），不能用 `activePid` 比对**。巡演会把 `activePid` 挪到别人身上，用 `activePid` 比对的话每次 `render()` 都会把镜头从巡演目标拽回快照里的当前玩家。
 - **`scheduleFocus` 必须排在 `Overlay.rebuild()` 之前**。金底取 `tokenAnchors().cur`，而 `tokenAnchors().cur` 优先取 `followPid` —— 先 rebuild 再换目标，金底就停在上一回合的玩家身上。只差一帧，但那一帧之后没人再 rebuild，就一直是错的（实测抓到这个错位后调整顺序，见验证表 §6）。
 
-### 5.1 为什么原型不给一个「结束回合」按钮来触发
+### 5.1 为什么原型不给一个「换人」按钮来触发
 
-需求场景是「轮到某位玩家」。理论上做个「结束回合」按钮最直观，但**做不了**：
+需求场景是「轮到某位玩家」。理论上做一个一键换人的按钮最直观，但**做不了**
+（而真游戏里也已经没有这颗按钮 —— R4 之后玩家手上不存在「结束回合」，回合是事件处理完自己走的，
+唯一由玩家按的是落格窗那个「离开 / 不做」的情境出口）：
 
 `snapshot.js` 是 `tools/dump-snapshot.mts` 跑真实引擎导出的一帧，其中 `view.actions`（动作位门控）、`view.assets`、`A.canRoll / canBuy / ...` 全部由引擎针对 `view.myPlayerId` 派生。原型里没有引擎，**重算不了**。若按钮只推进 `currentPlayerIndex`：
 

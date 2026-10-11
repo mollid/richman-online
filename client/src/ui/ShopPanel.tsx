@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { availableActions, CARDS, ITEMS, MAX_HAND_CARDS, MAX_ITEM_COUNT, SHOP_CARD_IDS, SHOP_ITEM_IDS } from '@richman/shared';
+import { landingExitAction, landingExitLabel } from './landingExit.js';
 import type { GameState, PlayerAction } from '@richman/shared';
 
 /** 商店面板：落地商店时进入卡片店，可切往道具店；两者均以【点券】结算（ECON-11）。
@@ -135,6 +136,14 @@ export function ShopPanel({ game, onAction, interactive = true }: { game: GameSt
           )}
         </>
       )}
+
+      {/* R4：商店是会话窗 —— 里面可以一笔一笔买，只有「离开」才把行动权交给下一位 */}
+      <div className="stock-qty-row">
+        <button className="primary" disabled={!interactive || !actions.canFinishLanding} onClick={() => onAction(landingExitAction())}>
+          {landingExitLabel(actions) ?? '🚪 离开商店'}
+        </button>
+        <span>买完再走；离开那一刻回合自动结束</span>
+      </div>
     </div>
   );
 }

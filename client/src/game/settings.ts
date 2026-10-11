@@ -38,7 +38,8 @@ export const DEFAULT_HOTKEYS: Record<string, string> = {
   roll_dice: 'Space',
   buy_land: 'KeyB',
   upgrade_land: 'KeyU',
-  end_turn: 'Enter',
+  /** R4：回车只做「推进流程、不花钱」这一件事（走出落格窗，否则掷骰） */
+  confirm: 'Enter',
   toggle_report: 'KeyQ',
   open_settings: 'KeyO',
   open_help: 'KeyH',
@@ -78,6 +79,15 @@ function normalize(raw: unknown): Settings {
       if (typeof code === 'string' && code) hotkeyMap[action] = code;
     }
   }
+  /* R4：`end_turn` 这个指令名已经不存在了（玩家不再手动结束回合），但它换成的是
+     `confirm` —— 同一个回车、同一族「推进流程」的语义。老存档里那条绑定必须搬过去：
+     `useHotkeys` 的 code→动作反查表是 first-wins，留着一条没人注册的 `end_turn: 'Enter'`
+     会让回车**静默失效**（按键被吃掉，动作表里查不到处理者）。 */
+  if (src.hotkeyMap && typeof src.hotkeyMap === 'object') {
+    const legacy = (src.hotkeyMap as Record<string, string>)['end_turn'];
+    if (legacy && !('confirm' in src.hotkeyMap)) hotkeyMap.confirm = legacy;
+  }
+  delete hotkeyMap.end_turn;
 
   let startDate: StartDate | null = null;
   const sd = src.startDate;
@@ -146,7 +156,7 @@ export const HOTKEY_ACTIONS: Array<{ name: string; label: string }> = [
   { name: 'roll_dice', label: '掷骰子' },
   { name: 'buy_land', label: '购买土地' },
   { name: 'upgrade_land', label: '升级建筑' },
-  { name: 'end_turn', label: '结束回合' },
+  { name: 'confirm', label: '确认 / 离开（不花钱）' },
   { name: 'toggle_report', label: '切换报表' },
   { name: 'open_settings', label: '打开设置' },
   { name: 'open_help', label: '打开帮助' },

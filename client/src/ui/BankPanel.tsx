@@ -9,6 +9,7 @@ import {
   type GameState,
   type PlayerAction,
 } from '@richman/shared';
+import { landingExitAction, landingExitLabel } from './landingExit.js';
 
 const QUICK = [1000, 5000] as const;
 
@@ -151,6 +152,14 @@ export function BankPanel({
             </div>
           </>
         )}
+      </div>
+
+      {/* R4：银行同样是会话窗 —— 存取款、贷款可以连着办，「办完离开」才推进回合 */}
+      <div className="stock-qty-row">
+        <button className="primary" disabled={!interactive || !actions.canFinishLanding} onClick={() => onAction(landingExitAction())}>
+          {landingExitLabel(actions) ?? '🚪 办完离开'}
+        </button>
+        <span>办完再走；离开那一刻回合自动结束</span>
       </div>
     </div>
   );

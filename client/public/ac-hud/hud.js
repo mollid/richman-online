@@ -666,6 +666,8 @@
       if (p.custody) chips.appendChild(el('span', 'hud-chip hud-chip--warn', `${p.custody.kind === 'jail' ? '🚔 在押' : '🏥 住院'} ${esc(p.name)} 剩 ${p.custody.daysLeft} 天`));
     }
     if (st.phase === 'awaiting_roll') chips.appendChild(el('span', 'hud-chip hud-chip--god', '🎲 等待掷骰'));
+    // 落格窗开着时把「停在哪儿、还欠不欠一个决定」写进状态条：回合是自己走的，不是玩家按的
+    if (st.phase === 'awaiting_action') chips.appendChild(el('span', 'hud-chip hud-chip--god', '📍 ' + phaseLabel()));
     bd.appendChild(chips.children.length ? chips : el('div', 'hud-foot', '此刻没有全局状态生效'));
 
     if (view.gods.length) {
@@ -755,8 +757,28 @@
     return out.join('');
   }
 
+  /* 把 `awaiting_action` 这类实现枚举直接印进页脚，等于让玩家读代码。R4 之后落格窗还分
+     「单步」与「会话（商店 / 银行）」两种出口，所以这里按 `A.landing` 说人话。 */
+  const PHASE_CN = {
+    lobby: '大厅等待开局',
+    awaiting_roll: '等待掷骰',
+    awaiting_action: '落格处理中',
+    awaiting_pick: '小游戏中',
+    awaiting_auction: '拍卖中',
+    awaiting_discard: '手牌额满',
+    game_over: '对局结束',
+  };
+  function phaseLabel() {
+    const base = PHASE_CN[st.phase] ?? st.phase;
+    if (st.phase !== 'awaiting_action' || !A.landing) return base;
+    const name = cellName(A.landing.cellId);
+    if (A.landing.venue === 'shop') return `在${name}购物`;
+    if (A.landing.venue === 'bank') return `在${name}办事`;
+    return `停在${name} · 处理完自动结束`;
+  }
+
   const snapshotFoot = () =>
-    `第 ${st.turn} 回合 · ${st.phase} · 行动者 ${esc(cur.name)} · 物价 ×${view.priceIndex.toFixed(3)}`;
+    `第 ${st.turn} 回合 · ${phaseLabel()} · 行动者 ${esc(cur.name)} · 物价 ×${view.priceIndex.toFixed(3)}`;
 
   function tabPanel() {
     const p = el('div', 'ac-panel');
@@ -987,7 +1009,7 @@
         ? `全市场停牌还剩 ${st.stockHaltAllDays} 天：上市股不能动，原始股照常认购`
         : view.date.isHoliday
           ? '例假日休市：上市股不能动，原始股照常认购'
-          : '只有自己回合（掷骰前 / 决策后）能开股市';
+          : '只有自己回合（掷骰前那一段）能开股市';
     return [
       ['🎲 掷骰', A.canRoll, 'ac-btn--green', '只有「等待掷骰」阶段能按，且必须有行动权', { type: 'ROLL_DICE' }],
       [`💰 买下「${cellName(cur.position)}」`, A.canBuy, 'ac-btn--green', '脚下是无主地产、现金够、且没在梦游（价格见左侧格块）', { type: 'BUY_LAND' }],
@@ -1005,8 +1027,31 @@
       ...(A.estateBuildCells.length ? [[`🏢 房地产公司加盖（${A.estateBuildCells.length} 处可选）`, true, 'ac-btn--orange', '董事长特权，施工费＝该地地价 ×50%', { __open: 'company' }]] : []),
       ...(A.canFinancing ? [[`💳 特别融资（剩 🔔${money(A.financingRemaining)}）`, true, 'ac-btn--orange', '企业银行董事长专属，期间存款不计息', { __open: 'company' }]] : []),
       ['🚩 认输投降', A.canSurrender, 'ac-btn--cream', '干净退出，但必须指定一人被死神附身 13 天', { __open: 'surrender' }],
-      ['✅ 结束回合', A.canFinishLanding, 'ac-btn--green', '把行动权交给下一个人', { type: 'FINISH_LANDING' }],
     ];
+  }
+
+  /* R4：玩家手上没有常驻的「结束回合」。落格窗只给一个**情境出口**：
+     - 会话型场所（商店 / 银行）⇒「离开商店 / 办完离开」，里面的动作可以反复办；
+     - 单步格 ⇒ 一句「不…」的 decline（不买这块地 / 不加盖 / 不施法…），
+       按下去 dispatch 的就是 `FINISH_LANDING` —— 什么都不做也要能把这一格交出去。
+     标题取自窗口里此刻真正可办的那件事，所以不会出现「不保释」配着一个保释面板这种错位。 */
+  function landingExit() {
+    if (!A.canFinishLanding) return null;
+    const venue = A.landing ? A.landing.venue : null;
+    if (venue === 'shop') return ['🚪 离开商店', '买完再走：离开那一刻才把行动权交给下一个人'];
+    if (venue === 'bank') return ['🚪 办完离开', '存取款与贷款可以接着办：离开那一刻才结束回合'];
+    const label =
+      A.canBuy ? '✋ 不买这块地'
+        : A.canUpgrade ? '✋ 不加盖'
+          : A.buildableFacilities.length ? '✋ 暂不建设'
+            : A.researchableItems.length ? '✋ 暂不研发'
+              : A.canBuyShares ? '✋ 不认购原始股'
+                : A.bailableVillains.length ? '✋ 不保释'
+                  : A.dischargeablePatients.length ? '✋ 不办理出院'
+                    : A.canBuyLottery ? '✋ 不买乐透'
+                      : A.magic ? '✋ 不施法'
+                        : '✋ 这一格不做处理';
+    return [label, '事件处理完就自动结束回合 —— 这一格没有别的事要办'];
   }
 
   /* 相机状态条：横向铺满 dock 顶部，把「镜头在干什么」与「现在能不能点」分开写清楚 */
@@ -1032,11 +1077,11 @@
     const spec = actionSpec();
     const first = (re) => spec.find((row) => row[1] && re.test(row[0]));
     const primary = first(/掷骰/) || first(/买下/) || first(/加盖一层/) || null;
-    const endRow = spec.find((row) => row[1] && /结束回合/.test(row[0]) && row !== primary);
+    const exit = landingExit();
     const acts = el('div', 'hud-act');
 
     const more = el('div', 'hud-act__more');
-    const secondary = spec.filter((row) => row !== primary && row !== endRow && row[1]);
+    const secondary = spec.filter((row) => row !== primary && row[1]);
 
     if (secondary.length) {
       const btn = el('button', 'ac-btn ac-btn--cream', `⚙️ 更多动作 ${secondary.length}`);
@@ -1066,11 +1111,11 @@
     } else {
       acts.append(more, el('span', 'hud-chip hud-chip--off', '此刻没有可执行的操作'));
     }
-    /* 结束回合是流程控制，不是 CTA：常驻，免得每次翻弹层 */
-    if (endRow) {
-      const e = el('button', 'ac-btn ac-btn--cream', endRow[0]);
-      e.title = endRow[3];
-      e.onclick = () => fire(endRow[4], endRow[0]);
+    /* 落格窗的那个出口：不是 CTA（它是「不做」），所以奶油色、排在主操作之后 */
+    if (exit) {
+      const e = el('button', 'ac-btn ac-btn--cream', exit[0]);
+      e.title = exit[1];
+      e.onclick = () => fire({ type: 'FINISH_LANDING' }, exit[0]);
       acts.appendChild(e);
     }
     bar.appendChild(acts);
@@ -1141,7 +1186,7 @@
       render();
       return;
     }
-    if (/结束回合/.test(label)) { toast('（原型）回合推进要发 FINISH_LANDING 给引擎，这里不跑规则。想看不同视角点右侧岛民。'); return; }
+    if (/离开|不做处理|不认购|不买|不加盖|不施法|不保释|不办理出院|暂不/.test(label)) { toast('（原型）走出落格窗要发 FINISH_LANDING 给引擎，这里不跑规则。想看不同视角点右侧岛民。'); return; }
     toast(`（原型）「${label}」只演示按钮的态与反馈，不落规则。`);
   }
 
@@ -1261,6 +1306,13 @@
         globalThis.D25World.renderOnce();
       }
     },
+    /**
+     * 移动演出是否已经落定（棋子逐格跳完、骰子停手）。
+     * 宿主用它决定**什么时候把落格面板弹出来** —— 引擎把「掷骰 → 走 n 步 → 落格」压成
+     * 一个原子动作，快照到达时棋子还在路上；这时糊一层面板，玩家看到的是上一格的镜头
+     * 配下一格的决定。方环示意 / 没有 WebGL 时恒为「已落定」。
+     */
+    isSettled: () => !(globalThis.D25World && globalThis.D25World.isHopping && globalThis.D25World.isHopping()),
     /** 注入宿主能力：{ dispatch(action), openPanel(kind) } */
     setHost(h) { hostApi = Object.assign(hostApi, h || {}); },
     toast,

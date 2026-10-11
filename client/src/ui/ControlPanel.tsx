@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { landingExitAction, landingExitLabel } from './landingExit.js';
 import {
   allAssetSummaries,
   availableActions,
@@ -48,6 +49,8 @@ export function ControlPanel({
   interactive?: boolean;
 }) {
   const actions = availableActions(game);
+  // R4：落格窗的那个出口（不在窗口里就是 null，按钮整颗不出现）
+  const exitLabel = landingExitLabel(actions);
   const current = game.players[game.currentPlayerIndex];
   const [diceChoice, setDiceChoice] = useState<number | null>(null);
   // UI-13 认输两段式：先确认认输，再指定承接死神的复仇者
@@ -261,9 +264,12 @@ export function ControlPanel({
             <button disabled={!interactive || !actions.canUpgrade} onClick={() => onAction({ type: 'UPGRADE_LAND' })}>
               升级 ¥{upgrade?.toLocaleString('zh-CN') ?? '-'}
             </button>
-            <button className="ghost" disabled={!interactive || !actions.canFinishLanding} onClick={() => onAction({ type: 'FINISH_LANDING' })}>
-              结束回合
-            </button>
+            {/* R4：没有常驻的「结束回合」—— 落格窗只给一个情境出口（离开商店 / 不买这块地…） */}
+            {exitLabel && (
+              <button className="ghost" disabled={!interactive} onClick={() => onAction(landingExitAction())}>
+                {exitLabel}
+              </button>
+            )}
           </div>
         </>
       )}
