@@ -839,7 +839,8 @@
       const box = el('div', `hud-stock ${s.lastChangePct > 0 ? 'hud-stock--up' : s.lastChangePct < 0 ? 'hud-stock--down' : ''}`);
       const arrow = s.lastChangePct > 0 ? '▲' : s.lastChangePct < 0 ? '▼' : '＝';
       /* 标的/现价/涨跌固定第一行；停牌与流通量固定第二行 —— 早前混排会各自折行，每行高度不等 */
-      box.innerHTML = `<div class="hud-stock__hd"><b>${esc(s.name)}</b><span class="p">🔔${money(s.price)}</span>
+      const corpTag = s.id.startsWith('corp-') ? '<span class="hud-chip">公司</span>' : '';
+      box.innerHTML = `<div class="hud-stock__hd"><b>${esc(s.name)}</b>${corpTag}<span class="p">🔔${money(s.price)}</span>
         <span class="c">${arrow} ${Math.abs(s.lastChangePct).toFixed(1)}%</span></div>
         <div class="hud-stock__meta">
         ${halt ? `<span class="hud-chip hud-chip--warn">${halt.kind === 'up' ? '涨停' : halt.kind === 'down' ? '跌停' : '停牌'} ${halt.daysLeft} 天</span>` : ''}
@@ -975,9 +976,10 @@
    * 门控（第 2 项）仍与引擎 availableActions 同源。 */
   function actionSpec() {
     /* 股市入口的门控口径：自己回合 + 未破产就能打开。
-       面板里除了 6 支上市股，还挂着**公司原始股**（按面值向公司申购，休市与停牌都挡不住），
-       拿 canTradeStock 当门户会让玩家在例假日彻底打不开面板、连原始股也买不了。
-       市场状态只用来决定面板内「上市股」那几个按钮的可用性。 */
+       面板里是 17 支行情（6 支虚拟股 + 11 家公司挂进来的 `corp-*`，CORP-14），另有那张
+       「原始股权益」表 —— 认购只能在地图上踩到公司格时发生（见下面的 🧾 按钮），
+       拿 canTradeStock 当门户会让玩家在例假日彻底打不开面板、连转手都做不了。
+       市场状态只用来决定面板内行情行的可用性。 */
     const stockOpenable = A.canTradeStock || !!view.canOpenStock;
     const stockWhy = A.canTradeStock
       ? '上市股只花存款'
@@ -991,7 +993,7 @@
       [`💰 买下「${cellName(cur.position)}」`, A.canBuy, 'ac-btn--green', '脚下是无主地产、现金够、且没在梦游（价格见左侧格块）', { type: 'BUY_LAND' }],
       ['🏗️ 加盖一层', A.canUpgrade, 'ac-btn--green', '脚下是自己的地，未达 5 级', { type: 'UPGRADE_LAND' }],
       ...A.buildableFacilities.map((f) => [`🏗️ 建「${view.names.facilities[f]?.name ?? f}」`, true, 'ac-btn--blue', '商业用地上可选的设施', { type: 'BUILD_FACILITY', facility: f }]),
-      ...(A.canBuyShares ? [[`🧾 认购原始股 🔔${money(A.sharePrice)} ×${A.shareQuantityLimit}`, true, 'ac-btn--orange', '一级市场按面值，当回合锁定不能卖', { type: 'BUY_SHARES', cellId: cur.position, quantity: A.shareQuantityLimit }]] : []),
+      ...(A.canBuyShares ? [[`🧾 认购原始股 🔔${money(A.sharePrice)} ×${A.shareQuantityLimit}`, true, 'ac-btn--orange', '只有踩到公司格才开这个窗口：现金按面值，当回合锁定不能卖；转手在股市面板按市价、入存款', { type: 'BUY_SHARES', cellId: cur.position, quantity: A.shareQuantityLimit }]] : []),
       ['🏦 存款 / 取款', A.canDeposit || A.canWithdraw, 'ac-btn--blue', '月末计息，取出来才能付现钱', { __open: 'bank' }],
       ['💳 贷款 / 还款', A.canLoan || A.canRepayLoan, 'ac-btn--blue', '额度上限＝开局资金，3 个月到期必须还清', { __open: 'bank' }],
       ['🛍️ 进商店', A.canShop, 'ac-btn--blue', '脚下是商店格', { __open: 'shop' }],

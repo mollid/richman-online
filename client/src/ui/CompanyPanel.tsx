@@ -115,7 +115,7 @@ export function CompanyPanel({
           </button>
           <button
             disabled={!interactive || !actions.canBuyShares}
-            title={`以现金认购 ${Math.max(1, Math.floor(quantity))} 张，本次认购的要到下次行动才能在股市卖出`}
+            title={`以现金按面值认购 ${Math.max(1, Math.floor(quantity))} 张；本次认购的要到下次行动才能在股市转手（按当日市价，收入进存款）`}
             onClick={buy}
           >
             认购 ¥{(def.sharePrice * Math.max(0, Math.floor(quantity))).toLocaleString('zh-CN')}
@@ -124,7 +124,9 @@ export function CompanyPanel({
       )}
       {!actions.canBuyShares && (
         <div className="company-hint">
-          （原始股只用<b>现金</b>按面值认购，单次上限 {MAX_SHARES_PER_BUY} 张；现金不够就先在股市卖掉手上的股票或原始股）
+          （踩到这一格才有的<b>面值认购</b>窗口：用<b>现金</b>按面值，单次上限 {MAX_SHARES_PER_BUY} 张 ——
+          比面板上的市价便宜多少，就是踩点的奖励多少。手上没现金就去股市转手（按<b>当日市价</b>卖、收入进<b>存款</b>）。
+          两边进的是<b>同一本股东名册</b>：经营权与 15 号盈余分配不分渠道，本回合到手的先进锁定期）
         </div>
       )}
 

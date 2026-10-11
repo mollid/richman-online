@@ -6,10 +6,10 @@ import {
   gameDate,
   lockedSharesOf,
   maxAffordableShares,
-  maxCashShares,
   sellableSharesOf,
   stockExecPrice,
   stockImpactPct,
+  type CompanyState,
   type GameState,
   type PlayerAction,
 } from '@richman/shared';
@@ -26,14 +26,17 @@ function fmt(n: number): string {
 /**
  * 股市面板（ECON-09 / help[14]「股票是一項不錯的投資，**您可以隨時進行買賣**」）。
  *
- * 面板里是**两档市场**：
- * - 上半：6 支上市股 —— 市价波动 + 日 K 线 + 冲击成本，只能用**存款**买卖；
- * - 下半：地图上的 11 家公司（CORP-14）—— **面值**定价、无涨跌，用**现金**买卖，
- *   踩到公司格认购与在这里申购是同一个动作；本回合认购的要到**下次行动**才能转手。
+ * 面板里是一张 17 行的行情表：6 支虚拟股 + 11 家公司股（`corp-*`，CORP-14），
+ * 同一套行情机器（日切游走、日 K 线、冲击成本、停牌 / 休市），**买卖都走存款**。
+ *
+ * 公司股是**一本账**：面板买进去的持股与踩到公司格按**面值**（现金）认购的，记在同一本
+ * 股东名册（`CompanyState.shares`）上，一起吃经营权与 15 号盈余分配。两个渠道的差别只有价格：
+ * 面板按当日市价自由买卖，踩格按原始股面值 —— 省下的那一截就是踩点的奖励。
+ * 本回合到手的（不论哪个渠道）先进锁定期，下次行动才可转手。
  *
  * - **不绑定任何格型**：玩家在自己回合的任意决策点（掷骰前 / 决策后）都能交易；
  * - 唯一限制是星期例假日休市（TIME-02）与新闻事件导致的全市场 / 个股停牌；
- *   原始股例外：**认购**是向公司申购（不看盘口，休市照买），**卖出**才需要对手盘；
+ *   原始股的**卖出**同样要对手盘（受休市与停牌约束）；认购不看盘口，但只能在地图上踩到那家公司时发生。
  * - 支持 1 / 5 / 10 / 全部 / 自定义数量买入，卖出同理；
  * - ECON-10：独立展示总市值（现值）、成本（投资成本）、经营权（控股公司数）。
  */
@@ -87,6 +90,8 @@ export function StockPanel({
   };
   const affordable = funds > 0;
   const chartStock = game.stockMarket.stocks.find((s) => s.id === chartId) ?? game.stockMarket.stocks[0]!;
+  // 行情表里的 `corp-<kind>` 行 ↔ 那家公司：持股、锁定期、转手动作都问它（CORP-14 一本账）
+  const corpOf: Map<string, CompanyState> = new Map(game.companies.map((c) => [`corp-${c.kind}`, c]));
 
   return (
     <div className="panel stock-panel">
@@ -124,7 +129,14 @@ export function StockPanel({
         </thead>
         <tbody>
           {game.stockMarket.stocks.map((s) => {
-            const holding = current.stocks[s.id] ?? 0;
+            // 公司股读股东名册（一本账）；其余读纸面持仓
+            const company = corpOf.get(s.id);
+            const holding = company ? company.shares[current.id] ?? 0 : current.stocks[s.id] ?? 0;
+            // 公司股只能卖已解锁的那部分；锁着多少由引擎那侧算，面板只复述
+            const sellable = company ? sellableSharesOf(company, current.id) : holding;
+            const locked = company ? holding - sellable : 0;
+            const sell = (n: number) =>
+              company ? onAction({ type: 'SELL_SHARES', cellId: company.cellId, quantity: n }) : trade(s.id, 'SELL_STOCK', n);
             const suspended = suspendedIds.has(s.id);
             const canTrade = interactive && actions.canTradeStock && !suspended;
             const cap = maxBuy(s.id, s.price);
@@ -141,12 +153,18 @@ export function StockPanel({
               >
                 <td>
                   {s.id === chartStock.id && <span className="chart-mark">📈</span>} {s.name}
+                  {company && (
+                    <span className="stock-tile" title="地图上的公司挂进股市：买它 = 进股东名册（经营权 + 分红）。踩到那一格还能按面值用现金认购">
+                      公司股
+                    </span>
+                  )}
                   {suspended && <span className="stock-flag">停牌</span>}
                 </td>
                 <td>¥{fmt(s.price)}</td>
                 <td className={s.lastChangePct >= 0 ? 'up' : 'down'}>{fmtPct(s.lastChangePct)}</td>
                 <td>
                   {holding > 0 ? holding : '—'}
+                  {locked > 0 && <span className="stock-lock">锁定 {fmt(locked)}</span>}
                   {holding > 0 && (
                     <span className="stock-pl">
                       市值 ¥{fmt(s.price * holding)}
@@ -182,22 +200,28 @@ export function StockPanel({
                   </button>
                   <button
                     className="mini"
-                    disabled={!canTrade || holding < 1}
-                    title={`卖出 ${Math.min(qty, holding)} 张：成交均价 ¥${fmt(sellUnit)}，抛压把盘口压低约 ${impactPctText}`}
+                    disabled={!canTrade || sellable < 1}
+                    title={
+                      sellable < 1
+                        ? locked > 0
+                          ? `本回合到手的 ${fmt(locked)} 张要等下次行动才能转手`
+                          : '无持仓'
+                        : `卖出 ${Math.min(qty, sellable)} 张：成交均价 ¥${fmt(sellUnit)}，收入进存款，抛压把盘口压低约 ${impactPctText}`
+                    }
                     onClick={(e) => {
                       e.stopPropagation();
-                      trade(s.id, 'SELL_STOCK', Math.min(qty, holding));
+                      sell(Math.min(qty, sellable));
                     }}
                   >
-                    卖{Math.min(qty, holding)}
+                    卖{Math.min(qty, sellable)}
                   </button>
                   <button
                     className="mini"
-                    disabled={!canTrade || holding < 1}
-                    title={`清仓 ${holding} 张（均价随抛压递减，一次倒完比分批卖更亏）`}
+                    disabled={!canTrade || sellable < 1}
+                    title={`清仓 ${sellable} 张（均价随抛压递减，一次倒完比分批卖更亏）`}
                     onClick={(e) => {
                       e.stopPropagation();
-                      trade(s.id, 'SELL_STOCK', holding);
+                      sell(sellable);
                     }}
                   >
                     清仓
@@ -229,21 +253,23 @@ export function StockPanel({
         />
       </div>
 
-      {/* CORP-14：地图上的公司都挂在这里 —— 面值定价、现金买卖，与上市股两档并行 */}
+      {/* CORP-14 一本账：持股与经营权都在 `CompanyState.shares` 上。
+          交易全在上方那张行情表里做（公司股就是其中 11 行），这里只把「权益」摊开看：
+          面值 vs 现价、谁当董事长、多少张还锁着。 */}
       <div className="stock-section-title">
-        <span>公司原始股 · 面值 · 现金</span>
+        <span>我的股东权益 · 面值与经营权</span>
         <span className="stock-section-note">
-          {haltAll || date.isHoliday ? '休市中：可认购，暂不能卖出' : '认购不看盘口；本回合认购的，下次行动起才能转手'}
+          持股与踩格认购记在同一本账上（买卖去上方行情表）；本回合到手的先进锁定期，下次行动起才能转手
         </span>
       </div>
       <table className="stock-table share-table">
         <thead>
           <tr>
             <th>公司</th>
-            <th>面值</th>
+            <th>面值 / 现价</th>
             <th>经营权</th>
             <th>我的持股</th>
-            <th>操作</th>
+            <th>可卖</th>
           </tr>
         </thead>
         <tbody>
@@ -252,15 +278,7 @@ export function StockPanel({
             const holding = c.shares[current.id] ?? 0;
             const locked = lockedSharesOf(c, current.id);
             const sellable = sellableSharesOf(c, current.id);
-            // 「满额」与引擎同一个口径：现金 ÷ 面值，再受单次上限截断
-            const cap = maxCashShares(c.sharePrice, current.cash);
-            const qty = Math.max(1, Math.min(customQty, Math.max(1, cap)));
-            const buyErr = actionRefusal(game, { type: 'BUY_SHARES', cellId: c.cellId, quantity: qty });
-            const sellQty = Math.min(customQty, sellable);
-            const sellErr =
-              sellQty > 0 ? actionRefusal(game, { type: 'SELL_SHARES', cellId: c.cellId, quantity: sellQty }) : '无可卖的原始股';
-            const clearErr =
-              sellable > 0 ? actionRefusal(game, { type: 'SELL_SHARES', cellId: c.cellId, quantity: sellable }) : '无可卖的原始股';
+            const market = game.stockMarket.stocks.find((x) => x.id === `corp-${c.kind}`)?.price ?? c.sharePrice;
             const chairman = c.chairmanId ? game.players.find((p) => p.id === c.chairmanId)?.name ?? '—' : '空缺';
             return (
               <tr key={c.cellId} className={locked > 0 ? 'locked' : ''}>
@@ -268,52 +286,15 @@ export function StockPanel({
                   {def.name}
                   <span className="stock-tile">{def.tile}</span>
                 </td>
-                <td>¥{fmt(c.sharePrice)}</td>
+                <td>
+                  ¥{fmt(c.sharePrice)} / <b className={market >= c.sharePrice ? 'up' : 'down'}>¥{fmt(market)}</b>
+                </td>
                 <td>{chairman}</td>
                 <td>
                   {holding > 0 ? `${fmt(holding)} 张` : '—'}
                   {locked > 0 && <span className="stock-lock">锁定 {fmt(locked)}</span>}
                 </td>
-                <td className="trade-cell">
-                  <button
-                    className="mini"
-                    disabled={!interactive || buyErr !== null}
-                    title={buyErr ?? `以现金认购 ${qty} 张（需 ¥${fmt(c.sharePrice * qty)}），下次行动后可在此卖出`}
-                    onClick={() => onAction({ type: 'BUY_SHARES', cellId: c.cellId, quantity: qty })}
-                  >
-                    买{qty}
-                  </button>
-                  <button
-                    className="mini"
-                    disabled={!interactive || cap < 1 || buyErr !== null}
-                    title={cap < 1 ? '现金不足（原始股只能用现金认购）' : `现金能吃的上限 ${cap} 张`}
-                    onClick={() => onAction({ type: 'BUY_SHARES', cellId: c.cellId, quantity: cap })}
-                  >
-                    满额
-                  </button>
-                  <button
-                    className="mini"
-                    disabled={!interactive || sellErr !== null}
-                    title={sellErr ?? `按面值卖出 ${sellQty} 张（回笼现金 ¥${fmt(c.sharePrice * sellQty)}）`}
-                    onClick={() => sellQty > 0 && onAction({ type: 'SELL_SHARES', cellId: c.cellId, quantity: sellQty })}
-                  >
-                    卖{Math.max(1, sellQty)}
-                  </button>
-                  <button
-                    className="mini"
-                    disabled={!interactive || clearErr !== null}
-                    title={
-                      sellable < 1
-                        ? locked > 0
-                          ? `待解锁 ${fmt(locked)} 张要到下次行动才能转手`
-                          : '无可卖的原始股'
-                        : `清仓 ${fmt(sellable)} 张（回笼现金 ¥${fmt(c.sharePrice * sellable)}）`
-                    }
-                    onClick={() => sellable > 0 && onAction({ type: 'SELL_SHARES', cellId: c.cellId, quantity: sellable })}
-                  >
-                    清仓
-                  </button>
-                </td>
+                <td>{sellable > 0 ? `${fmt(sellable)} 张` : '—'}</td>
               </tr>
             );
           })}
@@ -362,7 +343,7 @@ export function StockPanel({
       </div>
 
       <div className="stock-hint">
-        <b>上市股只能用存款买卖</b>，现金用于买地、升级与认购原始股。
+        <b>股票只能用存款买卖</b>（含 11 支公司股），现金用于买地、升级，以及踩到公司格时按<b>面值</b>认购。
         支付租金等支出时只会依次扣除<b>现金</b>与<b>存款</b>，<b>不会自动变卖你的股票或建筑</b>——
         若两者用尽仍付不出就会直接破产；想提前兑现，只能在股市面板主动卖出，或等随机事件（如「变卖所有股票求现」）。
         本面板在任何格型均可交易。
@@ -370,9 +351,11 @@ export function StockPanel({
         <b>成交有冲击成本</b>（仅上市股）：买盘推高、抛压压低，力度按「成交股数 ÷ 流通股本」算，结算价取冲击前后之中点
         （所以买完立刻卖不赚差价）。上方 K 线的量柱里，亮色那段是你自己打进去的成交量。
         <br />
-        <b>公司原始股走现金</b>：面值定价、不随行情涨跌，踩到公司格与在此申购是同一个动作（<b>没有现金就买不成</b>）。
-        刚认购的那些要等<b>下次行动</b>才进得了股市——持股栏里的「锁定」就是还没解锁的张数；卖光即退出股东名册，
-        再进场时经营权的「先到先得」重新起算。休市与全市场停牌期间仍可认购，但不能转手卖出。
+        <b>公司股是一本账</b>：带「公司股」标记的那 11 行就是地图上的那 11 家公司 —— 在面板里买卖走
+        <b>当日市价 + 存款</b>，踩到那一格则可用<b>现金按面值</b>认购，两者进的是<b>同一本股东名册</b>，
+        一起吃经营权与 15 号盈余分配。省下的那一截差价，就是踩点的奖励。
+        本回合到手的（不论哪个渠道）先进锁定期，<b>下次行动</b>起才可转手；卖光即退出名册，
+        再进场时经营权的「先到先得」重新起算。休市与全市场停牌期间不能转手。
       </div>
     </div>
   );

@@ -390,7 +390,8 @@ describe('M2 股票系统', () => {
 
     const sellPrice = stockExecPrice(bought.stockMarket.stocks.find((s) => s.id === 'tech')!, 10, 'sell');
     const sold = applyAction(bought, { type: 'SELL_STOCK', stockId: 'tech', quantity: 10 });
-    expect(sold.players[0]!.cash).toBe(15000 + sellPrice * 10); // 卖股收入进现金
+    expect(sold.players[0]!.cash).toBe(15000); // 卖股收入也进存款，不动现金
+    expect(sold.players[0]!.deposit).toBe(depositBefore - buyPrice * 10 + sellPrice * 10);
     expect(sold.players[0]!.stocks['tech']).toBeUndefined();
   });
 

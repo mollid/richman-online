@@ -159,7 +159,7 @@ function loadAcHud(): Promise<void> {
 const PANEL_TITLE: Record<string, string> = {
   bank: '🏦 银行 · 存款 / 取款 / 贷款',
   shop: '🛍️ 商店',
-  stock: '📈 股市 · 上市股与原始股',
+  stock: '📈 股市 · 行情与原始股权益',
   lottery: '🎰 乐透行',
   trade: '🤝 公布栏 · 挂牌与买入',
   magic: '🔮 魔法屋 · 监狱保释',
@@ -276,7 +276,14 @@ export function AcHudLayer({
   }, [fontMode, muted, isRemote, onSaveGame, onLoadGame, onToggleMute, onOpenHelp, onOpenSettings, onExit]);
 
   // 首次挂载：装样式 → 塞首个快照 → 载脚本
+  //
+  // 门槛 `hasRoster`：HUD 只在「有玩家可以画」时才挂载。联机会话的首帧是 `emptyState()`
+  // （players: []），而 hud.js 在 IIFE 里就要读 `cur.position`（选中格 = 行动者脚下）——
+  // 空名单直接抛 TypeError，脚本 onload 却照样 resolve，于是 window.AC_HUD 永远不存在，
+  // 之后真实状态到了也没人渲染：联机整屏空白，开局后依然是空白。
+  const hasRoster = game.players.length > 0;
   useEffect(() => {
+    if (!hasRoster) return;
     let cancelled = false;
     ensureHudStyles();
     window.GAME_SNAPSHOT = snapRef.current;
@@ -292,7 +299,7 @@ export function AcHudLayer({
       window.AC_HUD?.destroy();
       releaseHudStyles();
     };
-  }, []);
+  }, [hasRoster]);
 
   // 数据 / 宿主能力变更：注入并整壳重绘
   const dispatch = useCallback((a: PlayerAction) => onAction(a), [onAction]);
@@ -324,6 +331,28 @@ export function AcHudLayer({
   useEffect(() => {
     if (game.phase === 'lobby') setPanel(null);
   }, [game.phase]);
+
+  /* 踩到公司格就把认购窗弹出来（CORP-14：原始股只能在此刻、用现金认购，股市面板只做转手）。
+   * 签名取「回合 + 行动者 + 脚下格」：同一个落点只弹一次，玩家关掉后不再骚扰；换人/挪开即失效。
+   * 只收我们自己弹的那一次 —— dock 上「加盖 / 特别融资」也是开这个面板，不该替玩家关掉。 */
+  const companyPromptRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!ready) return;
+    const actor = game.players[game.currentPlayerIndex];
+    const cell = actor ? game.board[actor.position] : undefined;
+    if (!(game.phase === 'awaiting_action' && cell?.type === 'company')) {
+      if (companyPromptRef.current !== null) {
+        companyPromptRef.current = null;
+        if (panel === 'company') setPanel(null);
+      }
+      return;
+    }
+    if (!interactive) return; // 不是我方行动：别替别人弹窗
+    const sig = `${game.turn}:${actor!.id}:${cell!.id}`;
+    if (companyPromptRef.current === sig) return;
+    companyPromptRef.current = sig;
+    setPanel('company');
+  }, [ready, interactive, panel, game]);
 
   const active = forced ?? panel;
 

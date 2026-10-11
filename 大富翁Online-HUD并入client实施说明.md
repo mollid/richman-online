@@ -475,9 +475,40 @@ pnpm fonts:clean          # 重新下载源文件
 
 ---
 
-## 11. 跑法
+## 11. 联机整屏空白（本轮修）
 
-### 11.1 Docker（推荐，一条命令全栈）
+**症状**：落地页 →「联机对战」→ 建房 → 大厅只有中间那张 `ac-lobby` 卡活着，后面**什么都没有**；
+点「开始对局」之后更彻底 —— 整屏空白，连顶栏都没有。热座一切正常，所以很容易被当成样式或路由问题。
+
+**根因**：联机会话的首帧是 `emptyState()`（`players: []`、`board: []`、`phase: 'lobby'`），
+而 `hud.js` 在 IIFE 里就要读 `cur.position`（`selCell = cur.position`，选中格 = 行动者脚下）——
+`cur = st.players[st.currentPlayerIndex]` 是 undefined，直接抛 `TypeError: Cannot read properties of undefined (reading 'position')`。
+关键在于**这个异常是吞不掉的**：`<script>` 的 `onload` 照样触发，`loadAcHud()` 照样 resolve，`ready` 照样为 true，
+但 `window.AC_HUD` 从未被赋值 → 之后 `AC.setHost / AC.update` 全是 `?.` 空转。
+所以真实状态到了也不会补救：不是一帧白，是**整局白**。
+热座永远看不到这一帧，因为 `LocalHotseatSession` 的构造函数里就已经 `applyAction(START_GAME)`。
+
+**修法**（`client/src/ui/AcHudLayer.tsx`）：挂载加一道 `hasRoster = game.players.length > 0` 的门槛 ——
+HUD 是「有玩家可以画」才存在的界面，空名单不该喂给它。没有选择在 `hud.js` 里到处补 `?.`：
+那只是把「没有玩家」伪装成「有玩家但全是空值」，白屏会变成更难读的半张空界面。
+
+**顺带**：门槛一加上，大厅帧第一次真的显示出来，立刻暴露出 `priceIndex()` 的荒谬数 ——
+开局前 `initialCashPerPlayer` / `initialPlayerCount` 都还是 0（START_GAME 才冻结），
+原来的 `Math.max(1, 分母)` 把除零兜成了 **物价 ×15000.000**。改成没有分母就没有物价、按基准 1 返回
+（`shared/src/economy.ts`）。514 个测试全过，含 golden 逐帧基线，中途物价行为不变。
+
+**复验**（Docker 全套重建后，1440×900，真点）：建房 → 添加 AI → 开始对局 → **掷骰**，
+`AC_HUD=object`、顶栏 ✓、canvas ×3、dock 按钮 10、`骰子 4=4`、底注 `第 1 回合 · awaiting_action · 物价 ×1.000`，
+未捕获异常 0 条；热座回归同样干净。
+
+**大厅帧仍有的两处观感**（不是 bug，未动）：底注写「第 0 回合 · lobby · 行动者 测试君」、岛民行挂「行动中」——
+lobby 阶段 `currentPlayerIndex` 仍是 0，名义上有个行动者；顶栏那侧已经正确显示「等待开局」。
+
+---
+
+## 12. 跑法
+
+### 12.1 Docker（推荐，一条命令全栈）
 
 ```bash
 pnpm docker:up      # = docker compose up -d --build   → http://localhost:8080
@@ -493,7 +524,7 @@ pnpm docker:down    # 停掉并移除容器
 `server` 带 `/healthz` 健康检查，`client` 等 `server` healthy 才开始，所以首屏不会撞上「后端还没起来」。
 `db` / `redis` 用 `pg_isready` 与 `redis-cli ping` 探活，四个服务都是 `restart: unless-stopped`。
 
-### 11.2 本地开发
+### 12.2 本地开发
 
 ```bash
 pnpm --filter @richman/client dev     # http://localhost:5173 → 本地热座 → 开始游戏

@@ -12,6 +12,7 @@
  * 全部为纯函数只读计算，不改 `GameState`、不消耗 RNG。
  */
 import { FACILITIES, gradeName, vehicleLabel } from './tiles.js';
+import { companySharePrice } from './stocks.js';
 import { COMPANIES, lockedSharesOf, sellableSharesOf } from './companies.js';
 import { propertyValue, scaled } from './economy.js';
 import type { CompanyKind, GameState, Player } from './types.js';
@@ -145,8 +146,11 @@ export function assetSummary(state: GameState, p: Player): AssetSummary {
     const stock = state.stockMarket.stocks.find((s) => s.id === stockId);
     if (stock) stockValue += stock.price * qty;
   }
-  // CORP-14：原始股按面值计，与 totalAssets 同一个口径（报表总值不该和结算用的总资产打架）
-  const corpValue = state.companies.reduce((sum, c) => sum + (c.shares[p.id] ?? 0) * c.sharePrice, 0);
+  // CORP-14 一本账：按行情价计，与 totalAssets 同一个口径（报表总值不该和结算用的总资产打架）
+  const corpValue = state.companies.reduce(
+    (sum, c) => sum + (c.shares[p.id] ?? 0) * companySharePrice(state, c.kind, c.sharePrice),
+    0,
+  );
   const { land, house } = houseValueOf(state, p);
   const loan = p.loan ? p.loan.principal : 0;
   const total = p.cash + p.deposit + land + house + stockValue + corpValue - loan;

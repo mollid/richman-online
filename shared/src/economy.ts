@@ -1,4 +1,5 @@
 import type { BoardCell, GameState, Player, PlayerProperty } from './types.js';
+import { companySharePrice } from './stocks.js';
 
 /**
  * 经济系统（ECON-01..06）与物价指数。
@@ -40,7 +41,9 @@ export function totalAssets(state: GameState, p: Player): number {
     const stock = state.stockMarket.stocks.find((s) => s.id === stockId);
     if (stock) sum += stock.price * qty;
   }
-  for (const company of state.companies) sum += (company.shares[p.id] ?? 0) * company.sharePrice;
+  // CORP-14 一本账：持股按行情价计（面板与踩格进的是同一本股东账，转手都按市价）
+  for (const company of state.companies)
+    sum += (company.shares[p.id] ?? 0) * companySharePrice(state, company.kind, company.sharePrice);
   for (const prop of p.properties) sum += propertyValue(state, prop);
   if (p.loan) sum -= p.loan.principal;
   return sum;
@@ -53,7 +56,11 @@ const MAX_INDEX = 107374;
  * 纯函数不缓存（客户端可用 useMemo 做表现层缓存）。
  */
 export function priceIndex(state: GameState): number {
-  const denom = Math.max(1, state.initialCashPerPlayer * state.initialPlayerCount);
+  // 开局前（phase = lobby）分母还没冻结：initialCashPerPlayer / initialPlayerCount 都是 START_GAME
+  // 才写进去的 0。原来靠 Math.max(1, …) 兜除零，结果把「还没开局」算成 ×15000 的荒谬指数
+  // （联机大厅帧就挂在这一屏上）。没有分母就没有物价可言，按基准 1 返回。
+  if (!state.initialCashPerPlayer || !state.initialPlayerCount) return 1;
+  const denom = state.initialCashPerPlayer * state.initialPlayerCount;
   let total = 0;
   for (const p of state.players) {
     if (!p.bankrupt) total += totalAssets(state, p);

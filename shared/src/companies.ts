@@ -84,6 +84,27 @@ export const COMPANY_LIST: CompanyDef[] = [
   { kind: 'estate', cellId: 63, tile: 'TILE-30', name: '房地产公司', sharePrice: 600, charge: '可任选一处加盖一层房屋，按该地地价收取施工费' },
 ];
 
+/**
+ * CORP-14：11 家公司同时挂在**股市**里 —— 与那 6 支虚拟股同一套行情机器
+ * （日切游走、日 K 线、冲击成本、停牌 / 涨跌停 / 休市全都吃）。
+ *
+ * 但它是**另一本账**：面板里买 `corp-*` 得到的是纸面持仓（`player.stocks`，只有价差与分红事件）；
+ * 原始股的权益（经营权、15 号盈余分配、按面值向公司认购）只在**踩到地图上那一格**时才拿到
+ * （写进 `CompanyState.shares`，见 `BUY_SHARES`）。
+ *
+ * id 必须带 `corp-` 前缀：房地产公司的 kind 是 `estate`，与虚拟的「地产股」直接撞名。
+ * 流通股本按「各支市值相当（约 20 万）」定标，与 STOCK_DEFS 同一口径 —— 分母决定冲击力度，
+ * 公司股不该比上市股更容易被单笔推价。
+ */
+export const COMPANY_TARGET_MARKET = 200_000;
+export const companyStockId = (kind: CompanyKind): string => `corp-${kind}`;
+export const COMPANY_STOCK_DEFS = COMPANY_LIST.map((c) => ({
+  id: companyStockId(c.kind),
+  name: c.name,
+  initialPrice: c.sharePrice,
+  floatShares: Math.max(1, Math.round(COMPANY_TARGET_MARKET / c.sharePrice)),
+}));
+
 export const COMPANIES: Record<CompanyKind, CompanyDef> = COMPANY_LIST.reduce((acc, def) => {
   acc[def.kind] = def;
   return acc;

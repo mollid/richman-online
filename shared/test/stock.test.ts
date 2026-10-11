@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { nextStepAction } from './helpers/state.js';
 import {
   applyAction,
   availableActions,
@@ -189,7 +190,7 @@ describe('help[07] 收支由银行自动转扣', () => {
     expect(JSON.stringify(g)).toBe(snapshot);
   });
 
-  it('卖出所得进现金（三货币规则：收入用现金）', () => {
+  it('卖出所得进存款（股市那侧的收支一律走存款，含卖出）', () => {
     const g = withDeposit(newGame(67));
     const bought = applyAction(g, { type: 'BUY_STOCK', stockId: 'tech', quantity: 3 });
     const cashAfterBuy = bought.players[0]!.cash;
@@ -197,8 +198,8 @@ describe('help[07] 收支由银行自动转扣', () => {
     // 买盘已把盘口推高，卖单按自己那一侧的结算价成交（往返一次不赚不亏）
     const soldPrice = stockExecPrice(bought.stockMarket.stocks.find((s) => s.id === 'tech')!, 3, 'sell');
     const sold = applyAction(bought, { type: 'SELL_STOCK', stockId: 'tech', quantity: 3 });
-    expect(sold.players[0]!.cash).toBe(cashAfterBuy + soldPrice * 3);
-    expect(sold.players[0]!.deposit).toBe(depositAfterBuy); // 卖出不动存款
+    expect(sold.players[0]!.cash).toBe(cashAfterBuy); // 现金不动：它只归买地、升级与踩格认购
+    expect(sold.players[0]!.deposit).toBe(depositAfterBuy + soldPrice * 3);
   });
 
   it('买完立刻卖不赚差价（冲击成本按结算价对称，不留下可套的空子）', () => {
@@ -599,7 +600,7 @@ describe('日 K 线与成交量（自定扩展）', () => {
       return applyAction(state, action);
     };
     for (let i = 0; i < 12 && s.phase !== 'game_over'; i++) {
-      s = push(s, s.phase === 'awaiting_roll' ? { type: 'ROLL_DICE' } : { type: 'END_TURN' });
+      s = push(s, nextStepAction(s));
     }
     const record = {
       seed: 319,

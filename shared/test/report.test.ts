@@ -14,7 +14,7 @@ import {
   type GameState,
   type PlayerDef,
 } from '../src/index.js';
-import { pinIndexOne } from './helpers/state.js';
+import { pinIndexOne, standAt } from './helpers/state.js';
 
 /**
  * ECON-14 三清单报表测试（help [16]）：
@@ -100,7 +100,7 @@ describe('ECON-14 资产清单', () => {
     let g = newGame();
     const before = assetSummary(g, g.players[0]!);
     const cash = g.players[0]!.cash;
-    g = applyAction(g, { type: 'BUY_SHARES', cellId: 43, quantity: 10 }); // 电脑公司 ¥400/张
+    g = applyAction(standAt(g, 0, 43), { type: 'BUY_SHARES', cellId: 43, quantity: 10 }); // 踩到电脑公司才给认购
     const sum = assetSummary(g, g.players[0]!);
     expect(sum.corpValue).toBe(4000);
     expect(sum.rows.find((r) => r.key === 'corp')!.label).toBe('原始股');
@@ -240,7 +240,7 @@ describe('ECON-14 股票清单', () => {
   });
 
   it('原始股明细给面值、锁定 / 可卖与经营权（CORP-14）', () => {
-    let g = newGame();
+    let g = standAt(newGame(), 0, 43);
     g = applyAction(g, { type: 'BUY_SHARES', cellId: 43, quantity: 10 });
     let sum = stockSummary(g, g.players[0]!);
     expect(sum.rows).toEqual([]); // 一股上市股都没买 ⇒ 传统表为空，不至于「暂无持股」

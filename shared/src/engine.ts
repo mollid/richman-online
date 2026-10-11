@@ -77,6 +77,8 @@ import {
 import {
   COMPANIES,
   COMPANY_LIST,
+  COMPANY_STOCK_DEFS,
+  companyStockId,
   ESTATE_BUILD_RATIO,
   MAX_SHARES_PER_BUY,
   companyAtCell,
@@ -95,6 +97,7 @@ import type {
   AvailableActions,
   BankAccess,
   BoardCell,
+  CompanyKind,
   CompanyState,
   DateSerial,
   DisasterKind,
@@ -254,7 +257,8 @@ export function createGame(players: PlayerDef[], seed = Date.now() % 2147483647,
     endReason: null,
     maxDays: options.maxDays ?? null,
     stockMarket: {
-      stocks: STOCK_DEFS.map((s) => ({
+      // 6 支虚拟股 + 11 家公司股（CORP-14）：同一套行情机器，日切每支各抽一次数 ⇒ 抽数流按 17 支走
+      stocks: [...STOCK_DEFS, ...COMPANY_STOCK_DEFS].map((s) => ({
         id: s.id,
         name: s.name,
         price: s.initialPrice,
@@ -384,6 +388,17 @@ function cellOwner(state: GameState, cellId: number): { player: Player; property
     if (prop) return { player, property: prop };
   }
   return undefined;
+}
+
+/**
+ * 这只股票是不是地图上那 11 家公司挂进来的 `corp-<kind>`？是就返回它的经营状态。
+ * CORP-14 改一本账之后，买卖它 = 买卖这家公司的持股（进股东名册、吃经营权与分红），
+ * 两个渠道的差别只剩**价格与钱袋**：面板按市价走存款，踩格按面值走现金。
+ */
+function companyOfStock(state: GameState, stockId: string): CompanyState | undefined {
+  if (!stockId.startsWith('corp-')) return undefined;
+  const kind = stockId.slice('corp-'.length) as CompanyKind;
+  return state.companies.find((c) => c.kind === kind);
 }
 
 function stockById(state: GameState, stockId: string) {
@@ -2965,13 +2980,24 @@ function buyStock(state: GameState, action: Extract<PlayerAction, { type: 'BUY_S
   const { execPrice, moved } = applyTradeImpact(state, stock, action.quantity, 'buy');
   const total = execPrice * action.quantity;
   p.deposit -= total;
-  p.stocks[stock.id] = (p.stocks[stock.id] ?? 0) + action.quantity;
-  // ECON-10：记录建仓成本（累计投入），UI 用于展示浮动盈亏
-  p.stockCost = p.stockCost ?? {};
-  p.stockCost[stock.id] = (p.stockCost[stock.id] ?? 0) + total;
+  const company = companyOfStock(state, stock.id);
+  if (company) {
+    // 一本账：面板买的也是这家公司的股东 —— 持股记进 `CompanyState.shares`（与踩格认购同一本），
+    // 同样先进锁定期。否则「市价买一手 → 抢下董事长免付费 → 当场原价卖回」可以白嫖特权。
+    company.shares[p.id] = (company.shares[p.id] ?? 0) + action.quantity;
+    company.lockedShares[p.id] = lockedSharesOf(company, p.id) + action.quantity;
+    if (company.firstHeldDayIndex[p.id] === undefined) company.firstHeldDayIndex[p.id] = state.calendar.elapsedDays;
+    recomputeCompanyChairman(state, company);
+  } else {
+    p.stocks[stock.id] = (p.stocks[stock.id] ?? 0) + action.quantity;
+    // ECON-10：记录建仓成本（累计投入），UI 用于展示浮动盈亏
+    p.stockCost = p.stockCost ?? {};
+    p.stockCost[stock.id] = (p.stockCost[stock.id] ?? 0) + total;
+  }
   log(
     state,
     `${p.name} 以存款 ¥${total.toLocaleString('zh-CN')} 买入 ${stock.name} ×${action.quantity}（成交均价 ¥${execPrice}）` +
+      (company ? `，计入股东名册（持股 ${company.shares[p.id]}，本回合这批下次行动才可转手）` : '') +
       (moved ? `，买盘把盘口推高至 ¥${stock.price}` : ''),
   );
 }
@@ -2995,13 +3021,13 @@ function sellStock(state: GameState, action: Extract<PlayerAction, { type: 'SELL
   } else if (p.stockCost) {
     p.stockCost[stock.id] = costBefore - costOut;
   }
-  p.cash += total; // 收入进现金（三货币规则：收入用现金）
+  p.deposit += total; // 股市那侧的收支一律走存款（含卖出所得）
   const { moved } = applyTradeImpact(state, stock, action.quantity, 'sell');
   const profit = total - costOut;
   const profitText = profit === 0 ? '' : `（${profit >= 0 ? '赚' : '亏'} ¥${Math.abs(profit).toLocaleString('zh-CN')}）`;
   log(
     state,
-    `${p.name} 卖出 ${stock.name} ×${action.quantity} 得 ¥${total.toLocaleString('zh-CN')}（成交均价 ¥${execPrice}）${profitText}` +
+    `${p.name} 卖出 ${stock.name} ×${action.quantity} 得存款 ¥${total.toLocaleString('zh-CN')}（成交均价 ¥${execPrice}）${profitText}` +
       (moved ? `，抛压把盘口压低至 ¥${stock.price}` : ''),
   );
 }
@@ -3033,15 +3059,18 @@ function buyShares(state: GameState, action: Extract<PlayerAction, { type: 'BUY_
 }
 
 /**
- * CORP-14：把公司原始股卖回股市，按**面值**收现金（无涨跌、无冲击成本：公司股本不因玩家倒手而变价）。
+ * CORP-14：把原始股卖回股市 —— 按**当日市价**成交（吃冲击成本、进当日 K 线的量，与那 6 支虚拟股
+ * 同一套行情），收入进**存款**：面板上的股票交易一律走存款，现金只用于买地、升级与踩格认购。
  * 只能卖已解锁的部分；卖到归零即退出股东名册，再进场时「先到先得」重新起算。
  */
 function sellShares(state: GameState, action: Extract<PlayerAction, { type: 'SELL_SHARES' }>): void {
   assertLegal(state, action);
   const p = currentPlayer(state);
   const company = companyAtCell(state, action.cellId)!;
+  const stock = stockById(state, companyStockId(company.kind))!;
   const holding = company.shares[p.id] ?? 0;
-  const total = company.sharePrice * action.quantity;
+  const { execPrice } = applyTradeImpact(state, stock, action.quantity, 'sell');
+  const total = execPrice * action.quantity;
   const left = holding - action.quantity;
   if (left === 0) {
     delete company.shares[p.id];
@@ -3050,10 +3079,11 @@ function sellShares(state: GameState, action: Extract<PlayerAction, { type: 'SEL
   } else {
     company.shares[p.id] = left;
   }
-  p.cash += total; // 收入进现金（三货币规则：与公司股票相关的收付都走现金）
+  p.deposit += total; // 股市那侧的钱一律进出存款（现金只归买地、升级、踩格认购）
   log(
     state,
-    `${p.name} 按面值卖出 ${COMPANIES[company.kind].name} 原始股 ×${action.quantity}，得现金 ¥${total.toLocaleString('zh-CN')}（持股 ${left}）`,
+    `${p.name} 卖出 ${COMPANIES[company.kind].name} 原始股 ×${action.quantity}，按市价 ¥${execPrice.toLocaleString('zh-CN')} 成交，` +
+      `得存款 ¥${total.toLocaleString('zh-CN')}（持股 ${left}）`,
   );
   recomputeCompanyChairman(state, company);
 }
@@ -3418,6 +3448,8 @@ function checkBuyStock(state: GameState, p: Player | null, action: ActionOf<'BUY
 function checkSellStock(state: GameState, p: Player | null, action: ActionOf<'SELL_STOCK'>): ActionRefusal {
   const early = stockTradeRefusal(state, p, action.stockId, action.quantity);
   if (early) return early;
+  // 公司股是股东名册上的账（`CompanyState.shares`），转手走 SELL_SHARES —— 那里才看得见锁定期
+  if (companyOfStock(state, action.stockId)) return '公司股请在「我的原始股权益」里转手';
   if (action.quantity > (p!.stocks[action.stockId] ?? 0)) return '持股不足';
   return null;
 }
@@ -3446,11 +3478,16 @@ function checkMinigamePick(state: GameState, _p: Player | null, action: ActionOf
  * - 单次上限 1000 张（CORP-01）。
  */
 function checkBuyShares(state: GameState, p: Player | null, action: ActionOf<'BUY_SHARES'>): ActionRefusal {
-  if (!canTradeStockNow(state)) return '当前不能认购股份';
+  // CORP-14：原始股是**一级市场认购**，只有这一手真的踩到公司格、正站在它门口时才发生。
+  // 不在股市面板里卖 —— 面板只负责转手（SELL_SHARES），否则「踩点投资」就变成了随时随地的现金通道。
   if (!p) return NO_ACTOR_MESSAGE;
+  if (state.phase !== 'awaiting_action' || cellAt(state, p.position).type !== 'company') {
+    return '原始股只在踩到公司格的那一回合认购';
+  }
   if (p.bankrupt) return '已倒闭的玩家不能认购股份';
   const company = companyAtCell(state, action.cellId);
   if (!company) return '该公司不存在，不能认购股份';
+  if (action.cellId !== p.position) return '没走到该公司格，不能认购其原始股';
   if (!Number.isInteger(action.quantity) || action.quantity <= 0) return '股数必须为正整数';
   if (action.quantity > MAX_SHARES_PER_BUY) return `单次认购上限 ${MAX_SHARES_PER_BUY} 张`;
   const need = company.sharePrice * action.quantity;

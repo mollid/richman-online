@@ -27,6 +27,15 @@ export const STOCK_WICK_UNIT = 0.01;
 /** 股价地板（与 tickStockMarket 原有口径一致） */
 export const STOCK_MIN_PRICE = 5;
 
+/**
+ * 一家公司的持股值多少（CORP-14 一本账）：它挂在行情池里的那一支 `corp-<kind>` 的现价。
+ * 早先按**面值**估 —— 那时面板买不到公司股，面值就是唯一的锚。现在两个渠道进的是同一本账、
+ * 转手都按市价，估值也跟着走市价；踩格按面值认购省下的那一截，从此就是当场的浮盈（那正是踩点的奖励）。
+ */
+export function companySharePrice(state: GameState, kind: string, faceValue: number): number {
+  return state.stockMarket.stocks.find((x) => x.id === `corp-${kind}`)?.price ?? faceValue;
+}
+
 /** 流通股本：冲击成本与背景量的分母（原版无此项，按「各支市值相当」定标） */
 export function stockFloatShares(stockId: string): number {
   return STOCK_DEFS.find((s) => s.id === stockId)?.floatShares ?? 1200;

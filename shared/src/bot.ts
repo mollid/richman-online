@@ -6,7 +6,7 @@ import { MAX_HAND_CARDS, MAX_ITEM_COUNT } from './board.js';
 import { sellableSharesOf } from './companies.js';
 import { facilityBuildCost } from './tiles.js';
 import { isNegativeGod } from './gods.js';
-import type { FacilityType, GameState, Player, PlayerAction } from './types.js';
+import type { CompanyState, FacilityType, GameState, Player, PlayerAction } from './types.js';
 
 /** AI 建设偏好：研究所（可研发道具）优先，其次购物中心/旅馆/加油站/公园 */
 const BUILD_PREFERENCE: FacilityType[] = ['lab', 'mall', 'hotel', 'gas', 'park'];
@@ -18,7 +18,11 @@ const STOCK_RESERVE_DEPOSIT = 5000;
 const SHARES_CASH_FLOOR = 3000;
 
 /**
- * CORP-14：现金告急时把公司原始股按面值卖回股市。
+ * CORP-14：现金告急时把公司原始股卖回股市。
+ *
+ * 改口径之后这笔卖出的收入进的是**存款**（面板上的股票交易一律走存款），不是现金 ——
+ * 但它照样是救急：租金、罚款那类支出在现金用尽后会自动接着扣存款，所以把持股变成存款
+ * 仍然能把「付不出就破产」这条路堵住。真正买地、买道具那种只认现金的开销，得靠收租与事件。
  *
  * 两条自律：
  * - **不动经营权在自己手里的那家** —— 董事长免付费是每天都能兑现的实惠，卖股只换一次现金；
@@ -26,13 +30,18 @@ const SHARES_CASH_FLOOR = 3000;
  * - 只卖**已解锁**的部分，并且数量交给注册表复核（`actionRefusal`）—— 「面板/bot 算出来的数量
  *   被引擎拒绝」正是本项目反复踩过的 bug 类，门控与引擎必须同源。
  */
+/** 一家公司的原始股按**行情**值多少（`corp-*` 已进行情池；缺行时退回面值） */
+function marketValue(state: GameState, c: CompanyState): number {
+  return state.stockMarket.stocks.find((x) => x.id === `corp-${c.kind}`)?.price ?? c.sharePrice;
+}
+
 function liquidateShares(state: GameState, me: Player): PlayerAction | null {
   if (me.cash >= SHARES_CASH_FLOOR) return null;
   const best = state.companies
     .filter((c) => c.chairmanId !== me.id)
     .map((c) => ({ c, sellable: sellableSharesOf(c, me.id) }))
     .filter((x) => x.sellable > 0)
-    .sort((a, b) => b.sellable * b.c.sharePrice - a.sellable * a.c.sharePrice)[0];
+    .sort((a, b) => b.sellable * marketValue(state, b.c) - a.sellable * marketValue(state, a.c))[0];
   if (!best) return null;
   const action: PlayerAction = { type: 'SELL_SHARES', cellId: best.c.cellId, quantity: best.sellable };
   return actionRefusal(state, action) === null ? action : null;
@@ -162,12 +171,13 @@ export function botDecide(state: GameState, botId: string, rng: () => number): P
     }
   }
 
-  // CORP-14：现金告急 ⇒ 先按面值卖回原始股筹现金，再谈投资
+  // CORP-14：现金告急 ⇒ 先把原始股按市价卖回，换成「能自动扣款」的那笔存款，再谈投资
   const liquidate = liquidateShares(state, me);
   if (liquidate) return liquidate;
 
-  // 股票只能用**存款**买入（help[07]）。旧实现按 `me.cash >= 8000` 推测买得起，
-  // 于是每回撞上引擎的「现金不能用于炒股」——买哪只、买几只一律问注册表。
+  // 股票只能用**存款**买入（help[07]）。行情池现在是 17 支（6 支虚拟 + 11 家公司挂进来的
+  // `corp-*`，CORP-14），旧实现那种按 `me.cash` 推测买得起的写法每回都会撞上引擎的拒绝
+  // ——买哪只、买几只一律问注册表。
   if (acts.canTradeStock) {
     const sorted = [...state.stockMarket.stocks].sort((a, b) => a.price - b.price);
     for (const stock of sorted) {

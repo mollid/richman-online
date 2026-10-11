@@ -1,5 +1,5 @@
 import { totalAssets } from '../../src/index.js';
-import type { GameState } from '../../src/index.js';
+import type { GameState, PlayerAction } from '../../src/index.js';
 
 /**
  * 把所有人的出生点钉回 0 号起点（SP-01 之前的默认）。
@@ -42,6 +42,45 @@ export function pinIndexOne(state: GameState): GameState {
  * 测试里「附身某人」的正路是请神卡或经过附身，两者都只看**在场**的神明，
  * 所以要先造在场。
  */
+/**
+ * 当前相位下「能推进的那一手」动作 —— 把拍卖 / 小游戏 / 舍弃手牌这些强制相位一并照顾到。
+ *
+ * 只出动作、不推状态：调用方要把它记进录像再 apply。循环里只处理 awaiting_roll / awaiting_action
+ * 时，轨迹一变就会撞上「当前不能结束回合」—— 行情池从 6 支扩到 17 支之后这种撞法很常见。
+ */
+export function nextStepAction(state: GameState): PlayerAction {
+  const mg = state.minigame;
+  const open =
+    mg?.kind === 'memory'
+      ? mg.matched.map((m, idx) => (m || mg.revealed.includes(idx) ? -1 : idx)).find((idx) => idx >= 0) ?? 0
+      : 0;
+  const action =
+    state.phase === 'awaiting_roll'
+      ? { type: 'ROLL_DICE' as const }
+      : state.phase === 'awaiting_auction'
+        ? { type: 'AUCTION_PASS' as const }
+        : state.phase === 'awaiting_pick'
+          ? { type: 'MINIGAME_PICK' as const, hole: open }
+          : state.phase === 'awaiting_discard'
+            ? { type: 'DISCARD_CARD' as const, cardId: state.players[state.currentPlayerIndex]!.cards[0]! }
+            : { type: 'END_TURN' as const };
+  return action;
+}
+
+/**
+ * 把某位玩家摆到指定格上，并进入「落格决策」阶段。
+ *
+ * 给「必须踩到那一格才做得成」的动作搭场景（如 CORP-14 的原始股认购）。
+ * 要「走过去」也进动作日志的用例（回放类）请用真实掷骰，别拿这个抄近路 ——
+ * 局外改的格子不在录像里，回放必然分叉。
+ */
+export function standAt(state: GameState, seat: number, cellId: number): GameState {
+  state.currentPlayerIndex = seat;
+  state.players[seat]!.position = cellId;
+  state.phase = 'awaiting_action';
+  return state;
+}
+
 export function putGodOnBoard(state: GameState, godId: string, cellId: number, ttlDays = 3): GameState {
   state.boardGods.push({ godId, cellId, ttlDays, bornDay: state.calendar.elapsedDays });
   return state;
