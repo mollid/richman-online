@@ -261,7 +261,7 @@ export function ControlPanel({
             <button disabled={!interactive || !actions.canUpgrade} onClick={() => onAction({ type: 'UPGRADE_LAND' })}>
               升级 ¥{upgrade?.toLocaleString('zh-CN') ?? '-'}
             </button>
-            <button className="ghost" disabled={!interactive || !actions.canEnd} onClick={() => onAction({ type: 'END_TURN' })}>
+            <button className="ghost" disabled={!interactive || !actions.canFinishLanding} onClick={() => onAction({ type: 'FINISH_LANDING' })}>
               结束回合
             </button>
           </div>

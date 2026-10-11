@@ -117,7 +117,7 @@ export function runGoldenMatch(
       }
       // 对齐 GameRoom.botAct 的降级：决策与规则冲突时结束回合，避免对局卡死
       if (state.phase === 'awaiting_action') {
-        state = applyAction(state, { type: 'END_TURN' });
+        state = applyAction(state, { type: 'FINISH_LANDING' });
       }
     }
     steps += 1;
@@ -159,7 +159,7 @@ export function runGoldenMatch(
       }
       // bot 无决策时推进回合，避免空转
       if (state.phase === 'awaiting_action') {
-        act({ type: 'END_TURN' });
+        act({ type: 'FINISH_LANDING' });
       } else if (state.phase === 'awaiting_roll') {
         act({ type: 'ROLL_DICE' });
       } else {

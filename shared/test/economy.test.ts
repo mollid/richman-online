@@ -131,7 +131,7 @@ describe('TIME-01 日期派生与 elapsedDays 守护', () => {
         s.phase === 'awaiting_roll'
           ? { type: 'ROLL_DICE' }
           : s.phase === 'awaiting_action'
-            ? { type: 'END_TURN' }
+            ? { type: 'FINISH_LANDING' }
             : { type: 'MINIGAME_PICK', hole };
       s = applyAction(s, action);
       if (s.phase === 'game_over') break;
@@ -192,13 +192,13 @@ describe('ECON-09 / TIME-02 例假休市', () => {
     expect(acts.canWithdraw).toBe(false);
     expect(acts.canLoan).toBe(false);
     expect(acts.canRepayLoan).toBe(false);
-    expect(acts.canEnd).toBe(true); // END_TURN 永远可用，不会卡死
+    expect(acts.canFinishLanding).toBe(true); // FINISH_LANDING 永远可用，不会卡死
 
     expect(() => applyAction(rolled, { type: 'DEPOSIT', amount: 100 })).toThrow('例假日银行休市');
 
     // 日切到周日（仍为例假）→ 股价完全不变，并给出休市提示
     const prices = rolled.stockMarket.stocks.map((s) => s.price);
-    let s = applyAction(rolled, { type: 'END_TURN' });
+    let s = applyAction(rolled, { type: 'FINISH_LANDING' });
     expect(s.calendar.elapsedDays).toBe(0);
     s.rngState = seedForSum(3);
     s.players[1]!.position = 0; // 0 + 3 = 3 号机会格 → 自动结算并绕回 p0 → 日切
@@ -417,7 +417,7 @@ describe('TIME-06 确定性：同 seed + startDate + actions 完整复现', () =
         s.phase === 'awaiting_roll'
           ? { type: 'ROLL_DICE' }
           : s.phase === 'awaiting_action'
-            ? { type: 'END_TURN' }
+            ? { type: 'FINISH_LANDING' }
             : { type: 'MINIGAME_PICK', hole: nextPick(s) };
       s = applyAction(s, action);
       actions.push(action);

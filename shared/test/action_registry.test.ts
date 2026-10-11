@@ -40,7 +40,7 @@ function obligations(
   if (acts.canRoll) push({ type: 'ROLL_DICE' });
   if (acts.canBuy) push({ type: 'BUY_LAND' });
   if (acts.canUpgrade) push({ type: 'UPGRADE_LAND' });
-  if (acts.canEnd) push({ type: 'END_TURN' });
+  if (acts.canFinishLanding) push({ type: 'FINISH_LANDING' });
   if (acts.canDeposit) push({ type: 'DEPOSIT', amount: me.cash });
   if (acts.canWithdraw) push({ type: 'WITHDRAW', amount: me.deposit });
   if (acts.canLoan) push({ type: 'TAKE_LOAN', amount: 1 });
@@ -91,7 +91,7 @@ function assertNoHiddenCapability(state: GameState, label: string): void {
     [acts.canRoll, { type: 'ROLL_DICE' }],
     [acts.canBuy, { type: 'BUY_LAND' }],
     [acts.canUpgrade, { type: 'UPGRADE_LAND' }],
-    [acts.canEnd, { type: 'END_TURN' }],
+    [acts.canFinishLanding, { type: 'FINISH_LANDING' }],
     [acts.canBuyLottery, { type: 'BUY_LOTTERY_TICKET', number: 0 }],
     [acts.canLoan, { type: 'TAKE_LOAN', amount: 1 }],
     [acts.canDeposit, { type: 'DEPOSIT', amount: 1 }],

@@ -1,4 +1,5 @@
 import { stockFloatShares } from './stocks.js';
+import { landingVenueOf } from './effect_ctx.js';
 import type { GameState } from './types.js';
 
 /**
@@ -36,6 +37,15 @@ export function normalizeGameState(state: GameState): GameState {
 
   // 原始股锁定期（CORP-14）：缺键当作「没有待解锁的股份」，不凭空锁住玩家的持股
   for (const company of state.companies ?? []) company.lockedShares ??= {};
+
+  // 落格决策窗（R4）：老存档没有这个键。若正停在 awaiting_action，就按「格型 → venue」那张
+  // 唯一的表**就地补一扇窗** —— 凭据的 cellId 取行动者脚下格，与开窗时的写法一致。
+  // 补成 null 也能跑（`checkFinishLanding` 不看它），但商店/银行弹层就认不出自己该给哪颗出口。
+  if (state.landing === undefined) {
+    const actor = state.players?.[state.currentPlayerIndex ?? -1];
+    const held = state.phase === 'awaiting_action' ? state.board?.[actor?.position ?? -1] : undefined;
+    state.landing = held ? { cellId: held.id, venue: landingVenueOf(held), turn: state.turn } : null;
+  }
 
   // 结束条件（W4）：缺键按「不限天数」补 —— 上限是一种限制，旧局面没有它就继续按原规则跑
   state.maxDays ??= null;

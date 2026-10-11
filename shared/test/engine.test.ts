@@ -71,7 +71,7 @@ function setupLanding(state: GameState, targetCell: number, sum: number): GameSt
 function step(state: GameState): GameState {
   if (state.phase === 'awaiting_roll') return applyAction(state, { type: 'ROLL_DICE' });
   if (state.phase === 'awaiting_pick') return applyAction(state, { type: 'MINIGAME_PICK', hole: 0 });
-  return applyAction(state, { type: 'END_TURN' });
+  return applyAction(state, { type: 'FINISH_LANDING' });
 }
 
 /** 一直推进到跨过一天（触发日切钩子：神明计时递减/转化） */
@@ -142,7 +142,7 @@ describe('回合流转', () => {
     expect(rolled.phase).toBe('awaiting_action');
     const acts = availableActions(rolled);
     expect(acts.canBuy).toBe(true);
-    expect(acts.canEnd).toBe(true);
+    expect(acts.canFinishLanding).toBe(true);
 
     const bought = applyAction(rolled, { type: 'BUY_LAND' });
     const p = bought.players[0]!;
@@ -245,7 +245,7 @@ describe('回合流转', () => {
     expect(() => applyAction(lobby, { type: 'ROLL_DICE' })).toThrow();
     const g = newGame(29);
     expect(() => applyAction(g, { type: 'BUY_LAND' })).toThrow();
-    expect(() => applyAction(g, { type: 'END_TURN' })).toThrow();
+    expect(() => applyAction(g, { type: 'FINISH_LANDING' })).toThrow();
   });
 });
 
@@ -498,7 +498,7 @@ describe('M2 股票系统', () => {
         }
       }
       if (s.phase === 'awaiting_roll') s = applyAction(s, { type: 'ROLL_DICE' });
-      else if (s.phase === 'awaiting_action') s = applyAction(s, { type: 'END_TURN' });
+      else if (s.phase === 'awaiting_action') s = applyAction(s, { type: 'FINISH_LANDING' });
       else if (s.phase === 'awaiting_pick') s = applyAction(s, { type: 'MINIGAME_PICK', hole: 0 });
       else if (s.phase === 'awaiting_auction') s = applyAction(s, { type: 'AUCTION_PASS' });
       else if (s.phase === 'awaiting_discard') s = applyAction(s, { type: 'DISCARD_CARD', cardId: s.players[s.currentPlayerIndex]!.cards[0]! });
@@ -515,7 +515,7 @@ describe('M2 股票系统', () => {
         blockedByFlow += 1;
       }
       if (s.phase === 'awaiting_roll') s = applyAction(s, { type: 'ROLL_DICE' });
-      else if (s.phase === 'awaiting_action') s = applyAction(s, { type: 'END_TURN' });
+      else if (s.phase === 'awaiting_action') s = applyAction(s, { type: 'FINISH_LANDING' });
       else if (s.phase === 'awaiting_pick') s = applyAction(s, { type: 'MINIGAME_PICK', hole: 0 });
       else if (s.phase === 'awaiting_auction') s = applyAction(s, { type: 'AUCTION_PASS' });
       else if (s.phase === 'awaiting_discard') s = applyAction(s, { type: 'DISCARD_CARD', cardId: s.players[s.currentPlayerIndex]!.cards[0]! });
@@ -609,8 +609,8 @@ describe('M5 确定性回放（ReplayEngine）', () => {
     state = applyAction(state, { type: 'ROLL_DICE' });
     actions.push({ turn: state.turn, action: { type: 'ROLL_DICE' } });
     if (state.phase === 'awaiting_action') {
-      state = applyAction(state, { type: 'END_TURN' });
-      actions.push({ turn: state.turn, action: { type: 'END_TURN' } });
+      state = applyAction(state, { type: 'FINISH_LANDING' });
+      actions.push({ turn: state.turn, action: { type: 'FINISH_LANDING' } });
     }
     state = applyAction(state, { type: 'ROLL_DICE' });
     actions.push({ turn: state.turn, action: { type: 'ROLL_DICE' } });
@@ -655,7 +655,7 @@ describe('M6 移动系统（路障/转向/乌龟）', () => {
     const used = applyAction(rolled, { type: 'USE_ITEM', itemId: 'roadblock', cellId: 4 });
     expect(used.roadblocks).toEqual([4]);
     // 放置路障不消耗回合，仍需显式结束回合
-    const ended = applyAction(used, { type: 'END_TURN' });
+    const ended = applyAction(used, { type: 'FINISH_LANDING' });
     expect(ended.currentPlayerIndex).toBe(1);
 
     // p2 从 0 出发掷 6 点，途中经过 4 号路障 → 停在 4
@@ -816,7 +816,7 @@ describe('M8 新闻事件扩充', () => {
       // 双方自动掷骰推进 12 轮（落地游戏厅/决策时结束回合）
       for (let i = 0; i < 120 && g.round <= 12 && g.phase !== 'game_over'; i++) {
         if (g.phase === 'awaiting_action') {
-          g = applyAction(g, { type: 'END_TURN' });
+          g = applyAction(g, { type: 'FINISH_LANDING' });
         } else if (g.phase === 'awaiting_pick') {
           g = applyAction(g, { type: 'MINIGAME_PICK', hole: 0 });
         } else if (g.phase === 'awaiting_roll') {

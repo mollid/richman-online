@@ -499,7 +499,7 @@ describe('CORP-14 原始股与股市互通', () => {
   function passTurn(state: GameState): GameState {
     const s = structuredClone(state);
     s.phase = 'awaiting_action';
-    return applyAction(s, { type: 'END_TURN' });
+    return applyAction(s, { type: 'FINISH_LANDING' });
   }
 
   /** 两人局要连过两手才轮回到 p1 */

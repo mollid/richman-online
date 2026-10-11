@@ -144,7 +144,7 @@ describe('倒闭清算与待拍队列（ECON-13 / EVT-03）', () => {
     base.currentPlayerIndex = 0; // 不绕回（避免带动日切与随机新闻，断言可精确）
     base.phase = 'awaiting_action';
 
-    const opened = applyAction(base, { type: 'END_TURN' });
+    const opened = applyAction(base, { type: 'FINISH_LANDING' });
     expect(opened.phase).toBe('awaiting_auction');
     expect(opened.currentPlayerIndex).toBe(0); // 回合尚未推进，让位于拍卖
     expect(opened.auction!.trigger).toBe('bankrupt');
@@ -168,7 +168,7 @@ describe('倒闭清算与待拍队列（ECON-13 / EVT-03）', () => {
     base.currentPlayerIndex = 0;
     base.phase = 'awaiting_action';
 
-    let s = applyAction(base, { type: 'END_TURN' });
+    let s = applyAction(base, { type: 'FINISH_LANDING' });
     const minBid = s.auction!.minBid;
     s = applyAction(s, { type: 'AUCTION_BID', amount: minBid }); // p1 以起拍价应价
     expect(s.auction!.highestBidderId).toBe('p1');
@@ -201,7 +201,7 @@ function openBankAuction(seed: number, grade: 1 | 2 | 3 | 4 | 5 = 1): GameState 
   base.auctionQueue = [{ cellId: 1, sellerId: null, trigger: 'bankrupt' }];
   base.currentPlayerIndex = 0;
   base.phase = 'awaiting_action';
-  return applyAction(pinIndexOne(base), { type: 'END_TURN' });
+  return applyAction(pinIndexOne(base), { type: 'FINISH_LANDING' });
 }
 
 describe('拍卖收口（W3：加价幅度 / PASS 与 GIVE UP / 收锤）', () => {

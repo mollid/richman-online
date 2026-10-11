@@ -70,7 +70,7 @@ function toNextDay(state: GameState): GameState {
     } else if (s.phase === 'awaiting_roll') {
       s = applyAction(s, { type: 'ROLL_DICE' });
     } else {
-      s = applyAction(s, { type: 'END_TURN' });
+      s = applyAction(s, { type: 'FINISH_LANDING' });
     }
   }
   expect(s.calendar.elapsedDays).toBeGreaterThan(day); // 别把「没推进」当成通过

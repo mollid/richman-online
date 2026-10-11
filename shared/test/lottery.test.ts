@@ -68,7 +68,7 @@ function nextDay(state: GameState): GameState {
   g.currentPlayerIndex = g.players.length - 1;
   g.phase = 'awaiting_action';
   g.bankAccess = null;
-  return applyAction(g, { type: 'END_TURN' });
+  return applyAction(g, { type: 'FINISH_LANDING' });
 }
 
 describe('乐透号码与单注价（TILE-19 / ECON-08）', () => {

@@ -59,7 +59,7 @@ function landOn(state: GameState, targetCell: number, sum = 6): GameState {
 function step(state: GameState): GameState {
   if (state.phase === 'awaiting_roll') return applyAction(state, { type: 'ROLL_DICE' });
   if (state.phase === 'awaiting_pick') return applyAction(state, { type: 'MINIGAME_PICK', hole: 0 });
-  return applyAction(state, { type: 'END_TURN' });
+  return applyAction(state, { type: 'FINISH_LANDING' });
 }
 
 /** 一直推进到跨过一天（触发日切钩子：神明计时递减/转化/消失） */

@@ -33,6 +33,7 @@ import { CARDS, CHANCE_CARD_POOL, SHOP_CARD_IDS } from './cards.js';
 import { resolveLanding } from './cell_handlers.js';
 import { ITEMS, SHOP_ITEM_IDS, STARTING_ITEMS } from './items.js';
 import type { CellLandingCtx, EffectKit, GodEffectCtx } from './effect_ctx.js';
+import { landingVenueOf } from './effect_ctx.js';
 import { nextRandom, rollDie } from './rng.js';
 import { drawWinningNumber, isValidLotteryNumber, LOTTERY_TICKET_COST } from './lottery.js';
 import {
@@ -314,6 +315,7 @@ export function createGame(players: PlayerDef[], seed = Date.now() % 2147483647,
     spawnGods: options.spawnGods !== false,
     godPairBanUntil: {},
     pendingCard: null,
+    landing: null,
     // UI-06 公布栏：初始无挂牌、无成交记录
     trades: [],
     tradeHistory: [],
@@ -1792,7 +1794,8 @@ export function availableActions(state: GameState): AvailableActions {
       canRoll: can({ type: 'ROLL_DICE' }),
       canBuy: can({ type: 'BUY_LAND' }),
       canUpgrade: can({ type: 'UPGRADE_LAND' }),
-      canEnd: can({ type: 'END_TURN' }),
+      canFinishLanding: can({ type: 'FINISH_LANDING' }),
+      landing: state.landing,
       // 商店没有「进入商店」这个动作：这一位只表示「脚下是商店格」，
       // 具体能不能买、能不能卖由 BUY_CARD / SELL_CARD 等动作各自的校验决定。
       canShop: state.phase === 'awaiting_action' && inShop(state, p),
@@ -1851,7 +1854,8 @@ function idleActions(state: GameState): AvailableActions {
     canRoll: false,
     canBuy: false,
     canUpgrade: false,
-    canEnd: false,
+    canFinishLanding: false,
+    landing: state.landing,
     canShop: false,
     canTradeStock: false,
     canPick: false,
@@ -2359,8 +2363,8 @@ function memoryFlip(state: GameState, index: number): void {
   }
 }
 
-function endTurn(state: GameState): void {
-  assertLegal(state, { type: 'END_TURN' });
+function finishLanding(state: GameState): void {
+  assertLegal(state, { type: 'FINISH_LANDING' });
   const p = currentPlayer(state);
   log(state, `${p.name} 选择不操作，结束回合`);
   advanceTurn(state);
@@ -2956,12 +2960,12 @@ function useItem(state: GameState, action: Extract<PlayerAction, { type: 'USE_IT
 
 /** 银行/证交所格（含 TILE-26 企业银行，CORP-09「功能与公立银行相同」） */
 function isBankCell(c: BoardCell): boolean {
-  return c.type === 'bank' || (c.type === 'company' && c.companyKind === 'bank');
+  return landingVenueOf(c) === 'bank';
 }
 
 /** 商店格（含 TILE-29 百货公司，CORP-12「同公立百货」） */
 function isShopCell(c: BoardCell): boolean {
-  return c.type === 'shop' || (c.type === 'company' && c.companyKind === 'department');
+  return landingVenueOf(c) === 'shop';
 }
 
 /**
@@ -3216,8 +3220,15 @@ function checkRollDice(state: GameState, p: Player | null, action: ActionOf<'ROL
   return null;
 }
 
-function checkEndTurn(state: GameState, _p: Player | null, _action: ActionOf<'END_TURN'>): ActionRefusal {
-  if (state.phase !== 'awaiting_action') return '当前不能结束回合';
+/**
+ * R4：走出落格决策窗。
+ *
+ * **故意只看相位，不看 `state.landing`** —— 这是防软锁的逃生门：`awaiting_action` 有三个
+ * 不是落格开窗的写入点（额满舍弃收尾、施法机会、拍卖结算交回回合），那些格子上没有可做的
+ * 动作。若这里要求 `landing` 非空，玩家就会顶着一个没有出口的相位。
+ */
+function checkFinishLanding(state: GameState, _p: Player | null, _action: ActionOf<'FINISH_LANDING'>): ActionRefusal {
+  if (state.phase !== 'awaiting_action') return '当前不在落格决策中';
   return null;
 }
 
@@ -3655,7 +3666,7 @@ const ACTION_SPECS: ActionSpecMap = {
   UPGRADE_LAND: { check: checkUpgradeLand, apply: (s) => upgradeLand(s) },
   BUILD_FACILITY: { check: checkBuildFacility, apply: (s, a) => buildFacility(s, a) },
   START_RESEARCH: { check: checkStartResearch, apply: (s, a) => startResearch(s, a) },
-  END_TURN: { check: checkEndTurn, apply: (s) => endTurn(s) },
+  FINISH_LANDING: { check: checkFinishLanding, apply: (s) => finishLanding(s) },
   USE_CARD: { check: checkUseCard, apply: (s, a) => useCard(s, a) },
   BUY_CARD: { check: checkBuyCard, apply: (s, a) => buyCard(s, a) },
   DISCARD_CARD: { check: checkDiscardCard, apply: (s, a) => discardCard(s, a) },

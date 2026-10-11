@@ -23,7 +23,7 @@ describe('M9 AI 托管决策', () => {
     g.players[0]!.cash = 2000; // 350+2000 安垫不够
     g.phase = 'awaiting_action';
     const action = botDecide(g, 'b1', () => 0.5);
-    expect(action).toEqual({ type: 'END_TURN' });
+    expect(action).toEqual({ type: 'FINISH_LANDING' });
   });
 
   it('自家地产现金充裕时升级', () => {
@@ -131,17 +131,17 @@ describe('M9 AI 原始股变现（CORP-14）', () => {
 
   it('经营权还在自己手里就不卖：董事长免付费比一次性现金值钱', () => {
     const g = setup(1200, { mine: true });
-    expect(botDecide(g, 'b1', () => 0.5)).toEqual({ type: 'END_TURN' });
+    expect(botDecide(g, 'b1', () => 0.5)).toEqual({ type: 'FINISH_LANDING' });
   });
 
   it('还在锁定期的持股不会产出必然被拒的动作', () => {
     const g = setup(1200, { locked: 10, mine: false });
-    expect(botDecide(g, 'b1', () => 0.5)).toEqual({ type: 'END_TURN' });
+    expect(botDecide(g, 'b1', () => 0.5)).toEqual({ type: 'FINISH_LANDING' });
   });
 
   it('现金充裕时不变现（那是救急线，不是理财策略）', () => {
     const g = setup(15000, { mine: false });
-    expect(botDecide(g, 'b1', () => 0.5)).toEqual({ type: 'END_TURN' });
+    expect(botDecide(g, 'b1', () => 0.5)).toEqual({ type: 'FINISH_LANDING' });
   });
 
   it('多家持股时先卖最值钱的那家', () => {

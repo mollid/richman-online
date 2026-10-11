@@ -355,12 +355,34 @@ export interface NpcUnit {
 
 export type Phase =
   | 'lobby'        // 等待玩家加入/开始
-  | 'awaiting_roll'    // 等待当前玩家掷骰
-  | 'awaiting_action'  // 等待当前玩家决策（买地/卡片/股票/结束）
+  | 'awaiting_roll'    // 等待当前玩家掷骰（炒股、用卡片道具、挂牌都只在这一段做）
+  | 'awaiting_action'  // 落格决策窗：脚下那一格还容许当场决策（见 `LandingContext`）
   | 'awaiting_pick'    // 小游戏进行中：等待猜杯
   | 'awaiting_auction' // 拍卖会进行中：等待当前竞买人出价/放弃
   | 'awaiting_discard'  // ECON-12：手牌额满，等待玩家选择舍弃哪一张
   | 'game_over';
+
+/** 落格决策窗里的**会话型**场所：进去可以反复买卖 / 存取，只有「离开」才推进回合 */
+export type LandingVenue = 'shop' | 'bank';
+
+/**
+ * 落格决策窗的凭据（R4）。玩家停在某一格、那一格还容许当场决策时挂在状态上。
+ *
+ * 三件事的唯一来源：
+ * 1. 哪些动作是**终结性**的 —— `venue` 为 null 时选完即推进回合，非 null 时动作可重复，
+ *    只有「离开商店 / 办完离开」（`FINISH_LANDING`）才推进；
+ * 2. UI 该给哪个出口（单步的「不买 / 不施法」还是会话的「离开」）；
+ * 3. 演出凭什么知道「这一格还在决策，先别把镜头交给下一位」。
+ *
+ * 只在 `advanceTurn` 里清空 —— 拍卖打断窗口时它必须留着，否则窗口被拍卖吃掉，
+ * 回来后静默跳过本格决策。
+ */
+export interface LandingContext {
+  cellId: number;
+  venue: LandingVenue | null;
+  /** 开窗时的回合号：跨回合的陈旧凭据一眼可辨 */
+  turn: number;
+}
 
 /**
  * 回合内子阶段（CORE-02 相位机的「回合流」那一半），与 `Phase` 正交：
@@ -577,6 +599,11 @@ export interface GameState {
   godPairBanUntil: Record<string, number>;
   /** ECON-12：手牌额满时待玩家选择舍弃的卡片 id；null 表示无 */
   pendingCard: string | null;
+  /**
+   * R4 落格决策窗的凭据；null 表示此刻没有格子在等玩家当场决策。
+   * 开窗只有 `holdLanding()` 一个入口，清空只在 `advanceTurn()` 一处。
+   */
+  landing: LandingContext | null;
   /** UI-06 公布栏：当前所有公开挂牌 */
   trades: TradeListing[];
   /** UI-06 成交记录（保留最近 50 条） */
@@ -629,7 +656,12 @@ export type PlayerAction =
   | { type: 'ROLL_DICE'; diceCount?: number }
   | { type: 'BUY_LAND' }
   | { type: 'UPGRADE_LAND' }
-  | { type: 'END_TURN' }
+  /**
+   * R4：走出落格决策窗（原版的「处理完就结束回合」里唯一由玩家按的那一颗）。
+   * 会话型场所（商店 / 银行）靠它离开；单步型格子由自己的终结动作推进，不需要它 ——
+   * 但它**始终是该相位的合法出口**，这是防软锁的逃生门。
+   */
+  | { type: 'FINISH_LANDING' }
   | { type: 'USE_CARD'; cardId: string; targetPlayerId?: string; stockId?: string; diceValue?: number; cellId?: number; facility?: FacilityType }
   | { type: 'BUY_CARD'; cardId: string }
   | { type: 'DISCARD_CARD'; cardId: string }
@@ -727,7 +759,10 @@ export interface AvailableActions {
   canRoll: boolean;
   canBuy: boolean;
   canUpgrade: boolean;
-  canEnd: boolean;
+  /** R4：当前相位存在「离开 / 放弃」出口（落格决策窗永不为零出口） */
+  canFinishLanding: boolean;
+  /** R4：脚下这格的决策窗凭据；UI 据此决定出口形态（单步 decline 还是「离开」） */
+  landing: LandingContext | null;
   canShop: boolean;
   canTradeStock: boolean;
   /** 小游戏猜杯可用 */

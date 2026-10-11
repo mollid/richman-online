@@ -130,7 +130,7 @@ describe('GOD-12 霉运的实效', () => {
     for (let i = 0; i < 13 * 3 + 20; i++) {
       if (s.phase === 'game_over') break;
       if (s.phase === 'awaiting_roll') s = applyAction(s, { type: 'ROLL_DICE' });
-      else if (s.phase === 'awaiting_action') s = applyAction(s, { type: 'END_TURN' });
+      else if (s.phase === 'awaiting_action') s = applyAction(s, { type: 'FINISH_LANDING' });
       else if (s.phase === 'awaiting_pick') s = applyAction(s, { type: 'MINIGAME_PICK', hole: 0 });
       else if (s.phase === 'awaiting_discard') s = applyAction(s, { type: 'DISCARD_CARD', cardId: s.players[s.currentPlayerIndex]!.cards[0]! });
       else break;

@@ -105,7 +105,7 @@ describe('SP-01 随机出生点', () => {
               ? { type: 'MINIGAME_PICK', hole: 0 }
               : s.phase === 'awaiting_discard'
                 ? { type: 'DISCARD_CARD', cardId: s.players[s.currentPlayerIndex]!.cards[0]! }
-                : { type: 'END_TURN' };
+                : { type: 'FINISH_LANDING' };
       s = applyAction(s, action);
       actions.push(action);
     }
@@ -170,7 +170,7 @@ describe('SP-02 出生格站着不算落到', () => {
 
   it('站在出生格上只做被允许的事：掷骰、炒股、用道具都还开着', () => {
     const acts = availableActions(stuckAtSpawn(1));
-    expect(acts.canEnd).toBe(true); // 停留这一手已掷过骰，至少能收尾
+    expect(acts.canFinishLanding).toBe(true); // 停留这一手已掷过骰，至少能收尾
     expect(acts.canTradeStock).toBe(true);
     expect(acts.usableItems.length).toBeGreaterThan(0);
   });

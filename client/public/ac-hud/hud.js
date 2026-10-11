@@ -1005,7 +1005,7 @@
       ...(A.estateBuildCells.length ? [[`🏢 房地产公司加盖（${A.estateBuildCells.length} 处可选）`, true, 'ac-btn--orange', '董事长特权，施工费＝该地地价 ×50%', { __open: 'company' }]] : []),
       ...(A.canFinancing ? [[`💳 特别融资（剩 🔔${money(A.financingRemaining)}）`, true, 'ac-btn--orange', '企业银行董事长专属，期间存款不计息', { __open: 'company' }]] : []),
       ['🚩 认输投降', A.canSurrender, 'ac-btn--cream', '干净退出，但必须指定一人被死神附身 13 天', { __open: 'surrender' }],
-      ['✅ 结束回合', A.canEnd, 'ac-btn--green', '把行动权交给下一个人', { type: 'END_TURN' }],
+      ['✅ 结束回合', A.canFinishLanding, 'ac-btn--green', '把行动权交给下一个人', { type: 'FINISH_LANDING' }],
     ];
   }
 
@@ -1141,7 +1141,7 @@
       render();
       return;
     }
-    if (/结束回合/.test(label)) { toast('（原型）回合推进要发 END_TURN 给引擎，这里不跑规则。想看不同视角点右侧岛民。'); return; }
+    if (/结束回合/.test(label)) { toast('（原型）回合推进要发 FINISH_LANDING 给引擎，这里不跑规则。想看不同视角点右侧岛民。'); return; }
     toast(`（原型）「${label}」只演示按钮的态与反馈，不落规则。`);
   }
 

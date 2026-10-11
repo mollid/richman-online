@@ -495,7 +495,7 @@ describe('日 K 线与成交量（自定扩展）', () => {
     if (s.phase === 'game_over') return s;
     s.currentPlayerIndex = s.players.length - 1;
     s.phase = 'awaiting_action';
-    return applyAction(s, { type: 'END_TURN' });
+    return applyAction(s, { type: 'FINISH_LANDING' });
   }
 
   const candlesOf = (s: GameState, id = 'tech') => s.stockMarket.stocks.find((x) => x.id === id)!.candles;

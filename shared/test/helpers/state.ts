@@ -63,7 +63,7 @@ export function nextStepAction(state: GameState): PlayerAction {
           ? { type: 'MINIGAME_PICK' as const, hole: open }
           : state.phase === 'awaiting_discard'
             ? { type: 'DISCARD_CARD' as const, cardId: state.players[state.currentPlayerIndex]!.cards[0]! }
-            : { type: 'END_TURN' as const };
+            : { type: 'FINISH_LANDING' as const };
   return action;
 }
 

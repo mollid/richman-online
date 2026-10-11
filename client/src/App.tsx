@@ -535,7 +535,7 @@ function GameScreen({
     () => registerAction('upgrade_land', () => hotkeyAction({ type: 'UPGRADE_LAND' })),
     [registerAction, hotkeyAction],
   );
-  useEffect(() => registerAction('end_turn', () => hotkeyAction({ type: 'END_TURN' })), [registerAction, hotkeyAction]);
+  useEffect(() => registerAction('end_turn', () => hotkeyAction({ type: 'FINISH_LANDING' })), [registerAction, hotkeyAction]);
   useEffect(() => registerAction('toggle_mute', toggleMute), [registerAction, toggleMute]);
 
   return (

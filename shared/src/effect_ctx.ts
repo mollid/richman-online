@@ -6,6 +6,7 @@ import type {
   BoardCell,
   DisasterKind,
   GameState,
+  LandingVenue,
   MagicCondition,
   PayReason,
   Player,
@@ -195,6 +196,35 @@ export type GodEffectCtx = EngineCtx;
  * - `stop`：什么都不做 —— 对局已结束，或该格已自行安排后续（拍卖会接管回合）。
  */
 export type LandingResult = 'advance' | 'hold' | 'stop';
+
+/**
+ * 格型 → 会话型场所。商店格与百货公司同为 `shop`，公立银行与企业银行同为 `bank`，
+ * 其余格子当场决策一次即走（`null`）。
+ *
+ * 这张表是**唯一的**一份：引擎的 `isShopCell` / `isBankCell` 由它派生，
+ * `normalizeGameState` 给老存档回填 `landing` 也读它 —— 两处各写一遍就会出现
+ * 「面板按一套口径给出口、引擎按另一套口径放行」的老 bug 类。
+ */
+export function landingVenueOf(cell: BoardCell): LandingVenue | null {
+  if (cell.type === 'shop' || (cell.type === 'company' && cell.companyKind === 'department')) return 'shop';
+  if (cell.type === 'bank' || (cell.type === 'company' && cell.companyKind === 'bank')) return 'bank';
+  return null;
+}
+
+/**
+ * 开一扇落格决策窗（R4）：**唯一**的开窗入口。
+ *
+ * 为什么只留一个门：软锁的形状就是「相位切到了 `awaiting_action`，但那格没有任何合法动作，
+ * 而 UI 不知道该给什么出口」。集中在这里之后，`state.landing` 与相位必然同时成立，
+ * 出口（`FINISH_LANDING`）也就必然存在。
+ *
+ * `venue` 默认从格子派生；只有明确要压成单步窗时才传 `null`（目前没有这种格子）。
+ */
+export function holdLanding(ctx: EngineCtx, cell: BoardCell, venue: LandingVenue | null = landingVenueOf(cell)): LandingResult {
+  ctx.state.phase = 'awaiting_action';
+  ctx.state.landing = { cellId: cell.id, venue, turn: ctx.state.turn };
+  return 'hold';
+}
 
 /**
  * 落格结算上下文（`cell_handlers.ts`）：`self` 为落格玩家，`cell` 为落脚格，

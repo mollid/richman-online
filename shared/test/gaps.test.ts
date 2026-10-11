@@ -58,7 +58,7 @@ function step(state: GameState): GameState {
   if (state.phase === 'awaiting_roll') return applyAction(state, { type: 'ROLL_DICE' });
   if (state.phase === 'awaiting_pick') return applyAction(state, { type: 'MINIGAME_PICK', hole: 0 });
   if (state.phase === 'awaiting_discard') return applyAction(state, { type: 'DISCARD_CARD', cardId: state.players[state.currentPlayerIndex]!.cards[0]! });
-  return applyAction(state, { type: 'END_TURN' });
+  return applyAction(state, { type: 'FINISH_LANDING' });
 }
 
 function advanceOneDay(state: GameState): GameState {

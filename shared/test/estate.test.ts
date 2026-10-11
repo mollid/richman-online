@@ -232,7 +232,7 @@ describe('商业用地与设施（EST-06..12）', () => {
       s.rngState = seedForSum(6);
       s.players[s.currentPlayerIndex]!.position = 60; // 60 + 6 = 2（商店）
       let r = applyAction(s, { type: 'ROLL_DICE' });
-      if (r.phase === 'awaiting_action') r = applyAction(r, { type: 'END_TURN' });
+      if (r.phase === 'awaiting_action') r = applyAction(r, { type: 'FINISH_LANDING' });
       g = r;
       if (g.turn > 40) throw new Error('研发未按预期推进');
     }

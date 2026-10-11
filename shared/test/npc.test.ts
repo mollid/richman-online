@@ -86,7 +86,7 @@ function bailForTest(state: GameState, kind: string, ownerId = 'p1'): GameState 
 function step(state: GameState): GameState {
   if (state.phase === 'awaiting_roll') return applyAction(state, { type: 'ROLL_DICE' });
   if (state.phase === 'awaiting_pick') return applyAction(state, { type: 'MINIGAME_PICK', hole: 0 });
-  return applyAction(state, { type: 'END_TURN' });
+  return applyAction(state, { type: 'FINISH_LANDING' });
 }
 
 /** 推进到跨过一天（触发日切钩子） */
@@ -540,7 +540,7 @@ describe('TILE-11 魔法屋（NPC-06 女巫）', () => {
       type: 'ROLL_DICE',
     });
     expect(landed.magic).not.toBeNull();
-    const next = applyAction(landed, { type: 'END_TURN' });
+    const next = applyAction(landed, { type: 'FINISH_LANDING' });
     expect(next.magic).toBeNull();
   });
 
@@ -562,9 +562,9 @@ describe('TILE-11 魔法屋（NPC-06 女巫）', () => {
       type: 'ROLL_DICE',
     });
     expect(landed.phase).toBe('awaiting_action');
-    expect(availableActions(landed).canEnd).toBe(true);
+    expect(availableActions(landed).canFinishLanding).toBe(true);
     // 放弃施法 → 结束回合
-    const next = applyAction(landed, { type: 'END_TURN' });
+    const next = applyAction(landed, { type: 'FINISH_LANDING' });
     expect(next.magic).toBeNull();
   });
 });

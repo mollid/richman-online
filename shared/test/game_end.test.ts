@@ -46,7 +46,7 @@ function toDayBoundary(state: GameState): GameState {
   if (s.phase === 'game_over') return s;
   s.currentPlayerIndex = s.players.length - 1;
   s.phase = 'awaiting_action';
-  return applyAction(s, { type: 'END_TURN' });
+  return applyAction(s, { type: 'FINISH_LANDING' });
 }
 
 /** 连过 n 个日切 */
@@ -161,7 +161,7 @@ describe('天数上限收场（W4）', () => {
               ? { type: 'MINIGAME_PICK', hole: open }
               : s.phase === 'awaiting_discard'
                 ? { type: 'DISCARD_CARD', cardId: s.players[s.currentPlayerIndex]!.cards[0]! }
-                : { type: 'END_TURN' };
+                : { type: 'FINISH_LANDING' };
       s = applyAction(s, action);
       actions.push(action);
     }

@@ -272,7 +272,7 @@ export class GameRoom extends Room {
       if (this.game.phase === 'awaiting_action') {
         const still = this.game.players[this.game.currentPlayerIndex];
         if (still && !still.online) {
-          this.game = applyAction(this.game, { type: 'END_TURN' });
+          this.game = applyAction(this.game, { type: 'FINISH_LANDING' });
         }
       }
       this.broadcastState();
@@ -328,10 +328,10 @@ export class GameRoom extends Room {
       this.actionLog.push({ turn: this.game.turn, action });
       this.broadcastState();
     } catch (e) {
-      // 决策与规则冲突时降级为结束回合，避免 AI 卡死
+      // 决策与规则冲突时降级为走出落格窗，避免 AI 卡死
       if (this.game.phase === 'awaiting_action') {
-        this.game = applyAction(this.game, { type: 'END_TURN' });
-        this.actionLog.push({ turn: this.game.turn, action: { type: 'END_TURN' } });
+        this.game = applyAction(this.game, { type: 'FINISH_LANDING' });
+        this.actionLog.push({ turn: this.game.turn, action: { type: 'FINISH_LANDING' } });
         this.broadcastState();
       } else {
         console.warn('[bot] 决策执行失败:', e instanceof Error ? e.message : e);

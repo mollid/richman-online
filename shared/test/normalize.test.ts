@@ -20,7 +20,7 @@ function midGame(steps = 12): GameState {
   for (let i = 0; i < steps; i++) {
     const mover = state.players[state.currentPlayerIndex]!;
     if (state.phase === 'awaiting_roll') state = applyAction(state, { type: 'ROLL_DICE' });
-    else if (state.phase === 'awaiting_action') state = applyAction(state, { type: 'END_TURN' });
+    else if (state.phase === 'awaiting_action') state = applyAction(state, { type: 'FINISH_LANDING' });
     else if (state.phase === 'awaiting_discard') {
       state = applyAction(state, { type: 'DISCARD_CARD', cardId: mover.cards[0]! });
     } else break;
@@ -56,7 +56,7 @@ describe('normalizeGameState：老存档 / 老录像的字段兜底', () => {
     const restored = normalizeGameState(legacy);
     expect(restored.turnStage).toBeDefined();
     // 回合内子阶段不参与规则判定：老存档补完之后的下一步落格，必须与本来就有该键的状态一致
-    const next = restored.phase === 'awaiting_roll' ? { type: 'ROLL_DICE' as const } : { type: 'END_TURN' as const };
+    const next = restored.phase === 'awaiting_roll' ? { type: 'ROLL_DICE' as const } : { type: 'FINISH_LANDING' as const };
     const strip = (state: GameState) => {
       const copy = structuredClone(state) as unknown as Record<string, unknown>;
       delete copy.turnStage;
@@ -75,5 +75,41 @@ describe('normalizeGameState：老存档 / 老录像的字段兜底', () => {
     const over = structuredClone(midGame(2));
     over.phase = 'game_over';
     expect(normalizeGameState(asLegacySave(over)).turnStage).toBe('end');
+  });
+
+  /** 模拟「还没有落格决策窗（R4）时存下的档」 */
+  function withoutLanding(state: GameState): GameState {
+    delete (state as unknown as Record<string, unknown>).landing;
+    return state;
+  }
+
+  it('缺失 landing：停在决策相位时按「格型 → venue」表就地补窗，其余补 null', () => {
+    const base = createGame(structuredClone(GOLDEN_PLAYERS), 1, { startDate: { ...MONDAY } });
+    const shopId = base.board.findIndex((c) => c.type === 'shop');
+    const bankId = base.board.findIndex((c) => c.type === 'bank');
+
+    // 商店格 → 会话型窗（弹层要认得出该给「离开商店」还是「办完离开」）
+    const atShop = withoutLanding(structuredClone(base));
+    atShop.phase = 'awaiting_action';
+    atShop.currentPlayerIndex = 0;
+    atShop.players[0]!.position = shopId;
+    expect(normalizeGameState(atShop).landing).toEqual({ cellId: shopId, venue: 'shop', turn: atShop.turn });
+
+    const atBank = withoutLanding(structuredClone(base));
+    atBank.phase = 'awaiting_action';
+    atBank.currentPlayerIndex = 0;
+    atBank.players[0]!.position = bankId;
+    expect(normalizeGameState(atBank).landing?.venue).toBe('bank');
+
+    // 无主地产格：单步窗（venue 为 null，选完即推进）
+    const lotId = base.board.findIndex((c) => c.type === 'property');
+    const atLot = withoutLanding(structuredClone(base));
+    atLot.phase = 'awaiting_action';
+    atLot.currentPlayerIndex = 0;
+    atLot.players[0]!.position = lotId;
+    expect(normalizeGameState(atLot).landing).toEqual({ cellId: lotId, venue: null, turn: atLot.turn });
+
+    // 掷骰前没有窗：补 null，UI 不会凭空画出一个出口
+    expect(normalizeGameState(withoutLanding(structuredClone(base))).landing).toBeNull();
   });
 });
