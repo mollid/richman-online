@@ -773,14 +773,14 @@ describe('流通股可买光 + 地价定锚（反汇编实证第二波）', () =
     expect(() => applyAction(g, { type: 'BUY_STOCK', stockId: 'tech', quantity: 1 })).toThrow('流通股只剩 0 张');
   });
 
-  it('锚 = 建仓价 × 今日街价 ÷ 开局街价（街价翻倍则锚翻倍，读不到就退回原锚）', () => {
+  it('本地股的锚 = 面值 × 今日地价水平 ÷ 开局地价水平（地价翻倍则锚翻倍，读不到就退回面值）', () => {
     const g = newGame(225);
-    const stock = { ...stockOf(g, 'tech'), cityName: '台北', cityPriceBase: 1000, anchorPrice: 200 };
+    const stock = { ...stockOf(g, 'tech'), landPriceBase: 1000, anchorPrice: 200 };
     expect(stockAnchor(stock, 1000)).toBe(200);
     expect(stockAnchor(stock, 2000)).toBe(400);
     expect(stockAnchor(stock, 500)).toBe(100);
     expect(stockAnchor(stock, 0)).toBe(200);
-    const unbound = { ...stock, cityName: undefined, cityPriceBase: undefined };
+    const unbound = { ...stock, landPriceBase: undefined };
     expect(stockAnchor(unbound, 5000)).toBe(200);
   });
 

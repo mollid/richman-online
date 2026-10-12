@@ -1,4 +1,4 @@
-import type { BoardCell, Stock } from './types.js';
+import type { BoardCell, StockPoolDef } from './types.js';
 
 /**
  * 64 格环形棋盘（17x17 网格外圈，顺时针行走；波 3 由 40 格扩至 64 格）。
@@ -265,7 +265,7 @@ export function graphDistance(board: BoardCell[], a: number, b: number): number 
  * `floatShares` 是流通股本，只用作冲击成本与背景成交量的分母：按「各支市值相当」定标，
  * 于是高价股（金融）股数少、同样一笔成交推动更大，低价股（食品）反之。
  */
-export const STOCK_DEFS: Array<Pick<Stock, 'id' | 'name'> & { initialPrice: number; floatShares: number }> = [
+export const STOCK_DEFS: StockPoolDef[] = [
   { id: 'tech', name: '科技股', initialPrice: 120, floatShares: 1600 },
   { id: 'food', name: '食品股', initialPrice: 80, floatShares: 2400 },
   { id: 'estate', name: '地产股', initialPrice: 200, floatShares: 1000 },

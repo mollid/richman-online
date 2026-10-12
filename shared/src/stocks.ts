@@ -71,19 +71,21 @@ export function companySharePrice(state: GameState, kind: string, faceValue: num
 /**
  * 这支股票今天的均值回归锚。
  *
- * 原版的锚 = **绑定城市的地价**（`股票表+0x04` → `城市表+0x24`，每天现读），所以地价一动，
- * 股价就有了新的去处 —— 这是「炒地皮」和「炒股」之间那条被大多数人漏掉的通道。
- * 我们的地价量级与原版 `/10000` 那套单位不是一回事（直接除会把锚压到 0.05 这种没意义的数），
- * 所以按**比值**接：锚 = 建仓价 × 今日街价 ÷ 开局街价。开局两者相等 ⇒ 锚恒等于建仓价，
- * 不会第一天就被回归力拽飞；街上涨价卡 / 地价事件把街价抬起来，锚才跟着抬。
+ * 原版 `FUN_004291d6` 在这里分两条支路：本地股（股票表 `+0x04` = 1）的基准 = **绑定城市的地价 / 10000**，
+ * 每天现读；非本地股的基准 = 表 `+0x0c` 那个常数，也就是面值本身。所以我们 dump 出来 anchor == par。
  *
- * `cityPriceToday` 由调用方用 `economy.cityLandPrice` 现算传进来 —— 读棋盘与街道乘数是
- * 那一头的事，本模块不碰棋盘（反手 import economy 会跟 `economy → stocks` 撞成环）。
- * 没有城市绑定的股票（我们自造的 6 支虚拟股 = 原版 `+0x04 = 0`）用 `anchorPrice` 原值。
+ * 地价那条支路我们按**比值**接（而不是原版的 `/10000`）：本作地价量级 500~4000，直接除会把锚压到
+ * 0.05 这种没意义的数。开局两者相等 ⇒ 锚恒等于面值，不会第一天就被回归力拽飞；地价事件把街价抬起来，
+ * 锚才跟着抬 —— 于是「炒地皮」和「炒股」之间多了一条通道。
+ *
+ * `landPriceToday` 由调用方用 `economy.mapLandPriceLevel` 现算传进来 —— 读棋盘与街道乘数是那一头的事，
+ * 本模块不碰棋盘（反手 import economy 会跟 `economy → stocks` 撞成环）。
+ * 表里的绑定标志只有本地 / 非本地（`+0x04` 是 1/0，不是城市号），所以传进来的水平是**整张图**的，
+ * 不是某座城的。非本地股没有 `landPriceBase`，用 `anchorPrice` 原值。
  */
-export function stockAnchor(stock: Stock, cityPriceToday: number): number {
-  if (!stock.cityName || !stock.cityPriceBase || cityPriceToday <= 0) return stock.anchorPrice;
-  return Math.max(1, Math.round((stock.anchorPrice * cityPriceToday) / stock.cityPriceBase));
+export function stockAnchor(stock: Stock, landPriceToday: number): number {
+  if (!stock.landPriceBase || landPriceToday <= 0) return stock.anchorPrice;
+  return Math.max(1, Math.round((stock.anchorPrice * landPriceToday) / stock.landPriceBase));
 }
 
 /** 流通股本：冲击成本与背景量的分母（原版无此项，按「各支市值相当」定标） */

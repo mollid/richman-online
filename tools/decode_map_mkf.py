@@ -87,6 +87,21 @@ def big5(b: bytes) -> str:
         return ''
 
 
+# 机构名以 EXE 股票表为准（用户 2026-10-12 拍的）。
+# 这不是解码 bug，是原盘两处自己打架：中國图 sid 6004 在 mkf 里的字节是
+#   a5 c9 | a4 ab | a9 b2 | a6 ca | b3 66  →  玉 井 府 百 貨
+# 而「王府井百貨」的 BIG5 是
+#   a4 fd | a9 b2 | a4 ab | a6 ca | b3 66  →  王 府 井 百 貨
+# 後两字相同，前三字是同字重组外加 王→玉；错位一字节解出来是「氻咿畢妘f」这种乱码，
+# 所以顺序与对齐都对，两处数据就是不一致。同一张图上的「上海銀行」两边逐字相同，
+# 可见这套名字本来就同源，只这一处偏了。
+NAME_FIXES = {'玉井府百貨': '王府井百貨'}
+
+
+def fix_name(s: str) -> str:
+    return NAME_FIXES.get(s, s)
+
+
 def svg_graph(map_no: int):
     txt = (SVG_DIR / f'map{map_no}.svg').read_text(encoding='utf-8')
     circles = [(float(m[0]), float(m[1])) for m in re.findall(r'<circle cx="([\d.]+)" cy="([\d.]+)"', txt)]
@@ -147,14 +162,19 @@ def decode(map_no: int, blk: int):
             # 企业子表这一行的字段（19 条记录逐列对拍出来的，判据钉在 shared/test/maps.test.ts）：
             #   row[13] 低字节 = 原版企业种类枚举（1 航空 / 3 电脑 / 4 保险 / 5 汽车 / 6 石油 /
             #                    7 银行 / 10 百货 / 11 建设），高字节是另一条内部分组，不是钱；
-            #   raw[3] = 股价（面值）—— 只有真公司为非 0，銀行与百货公司恒 0；
+            #   raw[3] = 企业子表的一列钱，**不是面值**：面值在 EXE 的股票表里（见
+            #            shared/src/maps/stocks.json 的 _note —— 拿 par 去除下面那个资本额得到 8000
+            #            这类像总股本的数，拿这列去除只得到 48~790）。它的分布是「上得了市的公司非 0、
+            #            銀行与百货公司恒 0」，所以只当「走不走公司格」的旗标；
             #   raw[2] = 建筑图块号；raw[4] | raw[5]<<16 = 资本额（一律整千）。
             cell['companyId'] = row[13] & 0xFF
             cell['companyPrice'] = raw[3]
             cell['buildingId'] = raw[2]
             cell['capital'] = raw[4] | (raw[5] << 16)
-            # 节点自带的 kind 决定它是哪一种：0 = 真公司（占相邻两格、发股票），
-            # 14 / 15 = 銀行 / 百货公司 —— 那是功能格，不发股，按格型落。
+            cell['sidName'] = fix_name(cell['sidName'])
+            # 节点自带的 kind 决定它是哪一种：0 = 上得了市的公司（占相邻两格），
+            # 14 / 15 = 銀行 / 百货公司 —— 走功能格，不进公司表；但它们在 EXE 的股票表里
+            # 照样有行（富士銀行、三越百貨…），所以「不发股」只是这一列为 0，不是没上市。
             cell['type'] = 'company' if t == 0 else (TYPES[t] or 'shop')
         else:
             cell['type'] = TYPES.get(t, 'blank') if t != 17 or name == '' else 'blank'

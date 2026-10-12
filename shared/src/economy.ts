@@ -89,21 +89,34 @@ export function landPrice(state: GameState, cell: BoardCell): number {
 }
 
 /**
- * 一座城的当前地价 = 城里最贵那块地的**街价**（标价 × 街道乘数，不含全局物价指数）。
+ * 一张图当前的地价水平 = 图上所有有价地产格（住宅 + 商业）**街价**的均值（标价 × 街道乘数，
+ * **不含**全局物价指数）。
  *
- * 股票的那根锚读的是这个数（见 `stocks.stockAnchor`）：地价公告调涨 / 闹鬼下跌这类事件
- * 改的是街道乘数，于是这座城里那家绑定公司的股价锚跟着抬或压 —— 指数不进来看，
- * 否则全图一起通胀，锚就等于没锚。
- * 同名格在原版图上就是同一座城（地产格与那家的公司格同名）；一座城也没有时返回 0，调用方按「无绑定」处理。
+ * 本地股的均值回归锚读的是这个数（见 `stocks.stockAnchor`）：地价公告调涨 / 闹鬼下跌这类事件
+ * 改的是街道乘数，于是这张图的地价一动，本地股就有了新的去处 —— 这是「炒地皮」和「炒股」之间
+ * 那条被大多数人漏掉的通道。指数不进来看，否则全图一起通胀，锚就等于没锚。
+ *
+ * EXE 股票表给的绑定标志只有「本地 / 非本地」（`+0x04` 是 1/0，不是城市号），所以这里按**整张图**
+ * 算水平，而不是按某座城 —— 图与格子的名字都对不上「城市」那一层，硬编一个城市号就是假数据。
+ *
+ * 街道乘数收进来当参数而不是接 `state`：建局时只有棋盘数组、还没有状态，两处必须走同一段代码，
+ * 否则开局基准与日切现读会算成两个口径。
  */
-export function cityLandPrice(state: GameState, cityName?: string): number {
-  if (!cityName) return 0;
-  let best = 0;
-  for (const cell of state.board) {
-    if (cell.name !== cityName || !cell.price) continue;
-    best = Math.max(best, Math.round(cell.price * streetFactor(state, cell)));
+export function landPriceLevel(board: readonly BoardCell[], streetPriceFactors: Record<string, number> = {}): number {
+  let sum = 0;
+  let count = 0;
+  for (const cell of board) {
+    if (!cell.price || (cell.type !== 'property' && cell.type !== 'commercial')) continue;
+    const factor = cell.street ? streetPriceFactors[cell.street] ?? 1 : 1;
+    sum += Math.round(cell.price * factor);
+    count++;
   }
-  return best;
+  return count === 0 ? 0 : Math.round(sum / count);
+}
+
+/** 日切那一头读的同一份：状态里带街道乘数，棋盘就是 `state.board` */
+export function mapLandPriceLevel(state: GameState): number {
+  return landPriceLevel(state.board, state.streetPriceFactors);
 }
 
 /** 升级价（含指数） */

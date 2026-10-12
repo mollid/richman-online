@@ -927,7 +927,9 @@
         <span class="c">${arrow} ${Math.abs(s.lastChangePct).toFixed(1)}%</span></div>
         <div class="hud-stock__meta">
         ${halt ? `<span class="hud-chip hud-chip--warn">${halt.kind === 'up' ? '涨停' : halt.kind === 'down' ? '跌停' : '停牌'} ${halt.daysLeft} 天</span>` : ''}
-        <span class="hud-chip">${s.candles.length} 根</span><span class="hud-chip" title="流通股本 ${money(s.floatShares)} 张，还没被买走的 ${money(s.remainingShares ?? s.floatShares)} 张 —— 可以被买光">可买 ${money(s.remainingShares ?? s.floatShares)}/${money(s.floatShares)}</span></div>${sparkline(s)}`;
+        <span class="hud-chip">${s.candles.length} 根</span>${s.floatShares > 0
+          ? `<span class="hud-chip" title="流通股本 ${money(s.floatShares)} 张，还没被买走的 ${money(s.remainingShares ?? s.floatShares)} 张 —— 可以被买光">可买 ${money(s.remainingShares ?? s.floatShares)}/${money(s.floatShares)}</span>`
+          : '<span class="hud-chip hud-chip--warn" title="股票表里这张票的流通量本来就是 0（中國石油）：行情与公司格两条渠道都拿不到它，不是被人买光了">无流通量</span>'}</div>${sparkline(s)}`;
       box.title = `开 ${s.price}｜当日成交含玩家 ${s.candles.at(-1)?.playerVolume ?? 0} 股\n吃单会把价格推离盘口（冲击成本），买得越多均价越高。`;
       bd.appendChild(box);
     }

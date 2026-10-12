@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   applyAction,
+  landPriceLevel,
+  stockAnchor,
   boardFromMap,
   boardLayout,
   companyAtCell,
@@ -80,23 +82,31 @@ describe('原版地图数据', () => {
 });
 
 describe('按地图建局', () => {
-  it('mapId 记进状态，公司表与行情池跟着这张图走', () => {
+  it('mapId 记进状态，公司表跟着这张图走，行情池是这张图那 12 支', () => {
     const g = createGame(GOLDEN_PLAYERS, 7, { startDate: MONDAY, mapId: 0 });
     expect(g.mapId).toBe(0);
     expect(g.board).toHaveLength(103);
-    // 潮汕在 mkf 里只有一家发股票的公司：汕頭人壽（保险类、面值 750、占 50·51 相邻两格）。
-    // 图上另外两个企业节点是 百貨公司 与 銀行 —— 股价列恒 0，不发股，落成 shop / bank 功能格。
+    // 潮汕在 mkf 里只有一家上得了市的公司：汕頭人壽（保险类、占 50·51 相邻两格）。
+    // 图上另外两个企业节点是 百貨公司 与 銀行 —— mkf 那一列恒 0，落成 shop / bank 功能格；
+    // 但它们在 EXE 股票表里照样有行（潮商百貨 / 汕頭信託），所以进行情池、不进公司表。
     expect(g.companies).toHaveLength(1);
     expect(g.companies[0]).toMatchObject({
       kind: 'insurance',
       name: '汕頭人壽',
-      sharePrice: 750,
+      // 面值 = 股票表的 par。mkf 企业行那一列（这里是 750）**不是**面值 —— 拿 par 去除
+      // mkf 的资本额得到 8000 这类像总股本的数，拿 750 去除只得到 533，见 stocks.json 的 _note
+      sharePrice: 40,
       cellId: 50,
       footprint: [50, 51],
     });
-    // 行情池 = **只挂这张图有出处的公司**：那 6 支自造行业股属于自建图，原版图上一支都不该有
-    expect(g.stockMarket.stocks).toHaveLength(1);
-    expect(g.stockMarket.stocks.map((s) => s.id)).toEqual(['corp-insurance']);
+    // 行情池 = 股票表那 12 支，按表序；棋盘上那家公司就是同名的第 2 支，id 仍按 kind 走
+    expect(g.stockMarket.stocks).toHaveLength(12);
+    expect(g.stockMarket.stocks.map((s) => s.id)).toEqual([
+      's0-0', 'corp-insurance', 's0-2', 's0-3', 's0-4', 's0-5',
+      's0-6', 's0-7', 's0-8', 's0-9', 's0-10', 's0-11',
+    ]);
+    expect(g.stockMarket.stocks.map((s) => s.name)[0]).toBe('汕頭信託');
+    expect(g.stockMarket.stocks.map((s) => s.price)).toEqual([100, 40, 25, 180, 80, 60, 60, 27, 310, 66, 171, 280]);
   });
 
   it('四张图的公司都落在自己那两格上，且同一张图里种类不重复', () => {
@@ -105,7 +115,10 @@ describe('按地图建局', () => {
       expect(g.companies.length).toBeGreaterThan(0);
       // 种类重复会让 `corp-<kind>` 这个行情 id 撞名，建局时就该挡住
       expect(new Set(g.companies.map((c) => c.kind)).size).toBe(g.companies.length);
-      expect(g.stockMarket.stocks).toHaveLength(g.companies.length);
+      // 每张图都是股票表那 12 支（棋盘上的公司占用其中同名的一支，不多开一行）
+      expect(g.stockMarket.stocks).toHaveLength(12);
+      // 每家公司都得在行情池里有自己那一支，否则「一本股东账」断成两条
+      for (const company of g.companies) expect(g.stockMarket.stocks.some((s) => s.id === `corp-${company.kind}`)).toBe(true);
       for (const company of g.companies) {
         expect(company.footprint.length).toBe(2);
         for (const cellId of company.footprint) {
@@ -264,25 +277,78 @@ describe('原版图没有薪水', () => {
 });
 
 /**
- * 股票 ↔ 城市绑定（反汇编实证第二波，`docs/玩法拆解_股票系统.md` §1）：
- * 原版 `股票表+0x04` 是「绑定城市 ID」，锚 = 该城地价 —— 这里钉的是「绑定关系接对了没有」，
- * 锚本身怎么算由 `stock.test.ts` 那条纯函数用例管。
+ * 名字口径：mkf 与 EXE 股票表打架的那一处按股票表走（用户 2026-10-12 拍的）。
+ * 原盘 mkf 的字节确实写着「玉井府百貨」，不是解码顺序错 —— 证据与对照字节在
+ * `tools/decode_map_mkf.py` 的 `NAME_FIXES` 注释里。
  */
-describe('原版图的公司股绑到同城地价', () => {
-  it('一家公司绑它脚下那座城，虚拟股不绑（对应原版绑定 ID = 0）', () => {
+describe('机构名以股票表为准', () => {
+  it('中国图上的百货节点叫「王府井百貨」，行情池里也是同一支', () => {
+    const cn = ORIGINAL_MAPS.find((m) => m.mapId === 1)!;
+    expect(JSON.stringify(cn).includes('玉井府')).toBe(false);
+    expect(cn.cells.some((c) => c.sidName === '王府井百貨')).toBe(true);
+    const g = createGame(GOLDEN_PLAYERS, 7, { startDate: MONDAY, mapId: 1 });
+    expect(g.stockMarket.stocks.some((s) => s.name === '王府井百貨')).toBe(true);
+  });
+});
+
+/**
+ * 本地股定锚（反汇编实证第三波，`docs/玩法拆解_股票系统.md` §1 + 股票表 dump）：
+ * 原版 `股票表+0x04` 只有「本地 / 非本地」两条，本地股的基准每天读这张图的地价，
+ * 非本地股的基准就是面值本身。这里钉的是「绑定关系接对了没有」，锚本身怎么算由
+ * `stock.test.ts` 那条纯函数用例管。
+ */
+describe('本地股绑地价，非本地股绑面值', () => {
+  it('表里 local=1 的那几支才有 landPriceBase，且开局基准等于这张图的地价水平', () => {
     const jp = createGame(GOLDEN_PLAYERS, 7, { startDate: MONDAY, mapId: 2 });
+    // 日本这图前 6 支是本地股（富士銀行 / 三井生命 / 三越百貨 / 日產建設 / ＳＥＧＡ / 豐田汽車）
+    expect(jp.stockMarket.stocks.map((s) => (s.landPriceBase ? 1 : 0).toString()).join('')).toBe('111111000000');
     const sega = jp.stockMarket.stocks.find((s) => s.id === 'corp-computer')!;
-    expect(sega.cityName).toBe('東京');
-    expect(sega.cityPriceBase).toBe(2500);
-    const toyota = jp.stockMarket.stocks.find((s) => s.id === 'corp-car')!;
-    expect(toyota.cityName).toBe('松本');
-    expect(toyota.cityPriceBase).toBe(1500);
-    // 这座图上四家公司 ⇒ 四支公司股各有其城；那 6 支自造虚拟股一个都不绑
-    expect(jp.stockMarket.stocks.filter((s) => s.cityName).length).toBe(jp.companies.length);
-    // 默认图的公司格叫「电脑公司」这类名字，与任何地产都不同名 ⇒ 天然不绑，锚就是面值；
-    // 而它的行情池是 6 支自造行业股 + 11 家公司股，一支不落
+    expect(sega.name).toBe('ＳＥＧＡ');
+    expect(sega.landPriceBase).toBe(landPriceLevel(jp.board));
+    // 基准与开盘相等 ⇒ 开局锚 == 面值，回归力第一天不介入（比值口径的意义就在这里）
+    expect(stockAnchor(sega, sega.landPriceBase!)).toBe(sega.anchorPrice);
+    const sony = jp.stockMarket.stocks.find((s) => s.name === 'ＳＯＮＹ')!;
+    expect(sony.landPriceBase).toBeUndefined();
+    // 非本地股：地价翻十倍也拽不动它的锚
+    expect(stockAnchor(sony, landPriceLevel(jp.board) * 10)).toBe(sony.anchorPrice);
+    // 默认图一张都不绑：那 6 支行业股与 11 家公司股是我们自造的设计，没有本地股这个身份
     const home = createGame(GOLDEN_PLAYERS, 7, { startDate: MONDAY });
-    expect(home.stockMarket.stocks.every((s) => s.cityName === undefined)).toBe(true);
+    expect(home.stockMarket.stocks.every((s) => s.landPriceBase === undefined)).toBe(true);
     expect(home.stockMarket.stocks).toHaveLength(17);
+  });
+
+  it('每支的波动系数与流通量都取自表，不再一律 1.0 / 按市值定标', () => {
+    const jp = createGame(GOLDEN_PLAYERS, 7, { startDate: MONDAY, mapId: 2 });
+    const byName = new Map(jp.stockMarket.stocks.map((s) => [s.name, s]));
+    expect(byName.get('三越百貨')!.volatility).toBe(2);
+    expect(byName.get('富士銀行')!.volatility).toBe(0.8);
+    expect(byName.get('任天堂')!.volatility).toBe(1);
+    expect(byName.get('三越百貨')!.floatShares).toBe(10000);   // 本地股不必然 5000，表里这支给的是 10000
+    expect(byName.get('ＳＥＧＡ')!.floatShares).toBe(5000);
+    // 中國石油那行表里就是 0 张流通（用户 2026-10-12 确认是原值，不是没初始化）—— 代码不替它垫数
+    const cn = createGame(GOLDEN_PLAYERS, 7, { startDate: MONDAY, mapId: 1 });
+    const oil = cn.stockMarket.stocks.find((s) => s.name === '中國石油')!;
+    expect(oil.floatShares).toBe(0);
+    expect(oil.remainingShares).toBe(0);
+  });
+
+  it('没有流通量的那张票：行情与公司格两条渠道都被引擎拒掉，理由各说各的', () => {
+    const g = applyAction(createGame(GOLDEN_PLAYERS, 9, { startDate: MONDAY, mapId: 1 }), { type: 'START_GAME' });
+    const oil = g.stockMarket.stocks.find((s) => s.name === '中國石油')!;
+    const me = g.players[g.currentPlayerIndex]!;
+    me.deposit = 9_999_999;
+    me.cash = 9_999_999;
+    expect(() => applyAction(g, { type: 'BUY_STOCK', stockId: oil.id, quantity: 1 })).toThrow('没有流通量，行情池里买不到这张票');
+    // 踩到它家门口也一样：认购吃的是同一个流通池
+    const company = g.companies.find((c) => c.name === '中國石油')!;
+    const atDoor = { ...g, phase: 'awaiting_action' as const, landing: { cellId: company.cellId, venue: null, turn: g.turn } };
+    atDoor.players = atDoor.players.map((p) => (p.id === me.id ? { ...p, position: company.cellId, cash: 9_999_999 } : p));
+    expect(() => applyAction(atDoor, { type: 'BUY_SHARES', cellId: company.cellId, quantity: 10 })).toThrow(
+      '没有流通量，行情与公司格两条渠道都拿不到它',
+    );
+    // 而同图其他支照常能买 —— 别把这一条写坏成整张图都拒
+    const bank = g.stockMarket.stocks.find((s) => s.name === '上海銀行')!;
+    expect(applyAction(g, { type: 'BUY_STOCK', stockId: bank.id, quantity: 10 }).stockMarket.stocks.find((s) => s.id === bank.id)!.remainingShares)
+      .toBe(bank.remainingShares - 10);
   });
 });

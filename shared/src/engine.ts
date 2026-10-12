@@ -15,7 +15,7 @@ import {
   STOCK_DEFS,
   walkWindow,
 } from './board.js';
-import { boardFromMap, companiesFromMap } from './maps/index.js';
+import { boardFromMap, companiesFromMap, mapStockPool } from './maps/index.js';
 import {
   applyGodRentModifier,
   applyGodTravel,
@@ -31,7 +31,7 @@ import {
   summonGod,
 } from './gods.js';
 import { addMonths, DEFAULT_START_DATE, gameDate, toSerial } from './calendar.js';
-import { cityLandPrice, landPrice, landRent, landUpgradeCost, scaled, totalAssets } from './economy.js';
+import { landPrice, landRent, landPriceLevel, landUpgradeCost, mapLandPriceLevel, scaled, totalAssets } from './economy.js';
 import { boardGodAt, clearBoardGodsOnCells, detachGodForPossession, godSpawnHook, godSummonRefusal } from './godspawn.js';
 import {
   applyTradeImpact,
@@ -127,6 +127,7 @@ import type {
   PayReason,
   Player,
   PlayerAction,
+  StockPoolDef,
   PlayerDef,
   PlayerProperty,
   RoundSnapshot,
@@ -270,22 +271,15 @@ export function createGame(players: PlayerDef[], seed = Date.now() % 2147483647,
   if (!jailCell) throw new Error('棋盘缺少监狱格');
   // 公司表按图给：自建图是那 11 家，原版图用 mkf 自带的 1~4 家（一家占相邻两格、名字是原名）
   const companyDefs = mapId == null ? COMPANY_LIST : companiesFromMap(mapId);
-  const corpStockDefs = companyStockDefs(companyDefs);
-  // 行情池：自建图 = 6 支自造行业股 + 11 家公司股；原版图 = **只挂这张图有出处的公司**。
-  // 那 6 支行业股（科技/食品/地产…）是我们的占位设计、与地图无关，挂在原版图上就是假数据
-  // （用户 2026-10-12 拍的）。原版图那 12 支里剩下的价格与城市绑定在 EXE 的股票表里，拿到再补。
-  const stockDefs = mapId == null ? [...STOCK_DEFS, ...corpStockDefs] : corpStockDefs;
+  // 行情池按图给：自建图 = 6 支自造行业股 + 11 家公司股；原版图 = EXE 股票表 `0x47f072` 那 12 支。
+  // 原版图上的公司**不另开行**（它的名字本来就在这 12 支里，id 仍是 `corp-<kind>`），
+  // 而那 6 支行业股（科技/食品/地产…）是与地图无关的自造设计，挂在原版图上就是假数据。
+  const stockDefs: StockPoolDef[] =
+    mapId == null ? [...STOCK_DEFS, ...companyStockDefs(companyDefs)] : mapStockPool(mapId, companyDefs);
   const spawns = spawnCells(seed >>> 0, players.length, board);
-  // 股票 ↔ 城市绑定（原版 `股票表+0x04`）：公司格与同城地产同名，所以拿格名当绑定键。
-  // 自建图的公司格叫「电脑公司」这类名字，与任何地产都不同名 ⇒ 天然「无绑定」，
-  // 锚就停在面值本身 —— 于是这一波改动对默认图逐位无影响。
-  const cityOf = new Map<string, string>();
-  for (const def of companyDefs) {
-    const city = board[def.cellId]?.name;
-    if (city) cityOf.set(companyStockId(def.kind), city);
-  }
-  const cityPriceAtStart = (name?: string): number =>
-    name ? Math.max(0, ...board.filter((c) => c.name === name && c.price).map((c) => c.price!)) : 0;
+  // 本地股的锚挂这张图的地价水平（原版 `股票表+0x04` 只有本地 / 非本地，没有城市号）。
+  // 开局基准就在这一块算，日切那头走 `economy.mapLandPriceLevel` —— 同一段代码，两个入口。
+  const landPriceBase = landPriceLevel(board);
   return {
     players: players.map((p, i) => basePlayer(p, spawns[i] ?? 0)),
     board,
@@ -306,25 +300,21 @@ export function createGame(players: PlayerDef[], seed = Date.now() % 2147483647,
     maxDays: options.maxDays ?? null,
     stockMarket: {
       // 同一套行情机器：日切每支各抽一次数 ⇒ 抽数流按这张图的支数走
-      stocks: stockDefs.map((s) => {
-        const city = cityOf.get(s.id);
-        const cityPriceBase = cityPriceAtStart(city);
-        return {
+      stocks: stockDefs.map((s) => ({
           id: s.id,
           name: s.name,
           price: s.initialPrice,
           // 开盘 = 锚 = 建仓价：第一个交易日之前没有「昨收」，闸门因此判平盘；
-          // 锚是均值回归的那根桩，原版挂在绑定城市的地价上（每天现读），我们按比值接过去
+          // 锚是均值回归的那根桩，本地股每天跟着这张图的地价走
           openPrice: s.initialPrice,
           anchorPrice: s.initialPrice,
-          volatility: 1,
+          volatility: s.volatility ?? 1,
           lastChangePct: 0,
           floatShares: s.floatShares,
           remainingShares: s.floatShares,   // 还没被买走的量：买入扣、卖出回补，可以买光
-          ...(city && cityPriceBase > 0 ? { cityName: city, cityPriceBase } : {}),
+          ...(s.followsLandPrice && landPriceBase > 0 ? { landPriceBase } : {}),
           candles: [],
-        };
-      }),
+        })),
     },
     pendingFixedDice: null,
     roadblocks: [],
@@ -749,6 +739,8 @@ function tickStockMarket(state: GameState): void {
   // （W2 的神明现身就是这种量级的代价），而漂移只是行情层的数，与恶犬/恶人/宝箱同一类，
   // 按日做 salt ⇒ 逐日不同、跨日不重演，且不扰动确定性回放。
   const drift = (derivedValue(state, state.calendar.elapsedDays * 8 + 7) * 2 - 1) * MARKET_DRIFT_PCT;
+  // 本地股那根锚今天挂在什么地价上（一天一算：街道乘数当天不会自己变，抽数也不该被它扰动）
+  const landToday = mapLandPriceLevel(state);
   // 每支当日已消耗的那个随机数，稍后借去决定上影长还是下影长（不再多抽一次）
   const bias = new Array<number>(stocks.length).fill(0.5);
   const traded = new Array<boolean>(stocks.length).fill(true);
@@ -778,7 +770,7 @@ function tickStockMarket(state: GameState): void {
       const noise = (draw.value * 2 - 1) * STOCK_NOISE_PCT;
       pct = noise * stock.volatility + stock.lastChangePct + drift;
       // 均值回归：偏离锚越远越被往回拉（腰斩时涨得快、跌得慢；过热时对称反过来）
-      const anchor = stockAnchor(stock, cityLandPrice(state, stock.cityName));
+      const anchor = stockAnchor(stock, landToday);
       if (anchor > 0 && stock.price < anchor * STOCK_REVERSION_LOW) {
         pct = pct > 0 ? pct * 2 : pct * 0.5;
       } else if (anchor > 0 && stock.price > anchor * STOCK_REVERSION_HIGH) {
@@ -3698,6 +3690,9 @@ function checkBuyStock(state: GameState, p: Player | null, action: ActionOf<'BUY
   const total = stockExecPrice(stock, action.quantity, 'buy') * action.quantity;
   // 股票**只能用存款买入**（help[07]：买股票的收支由银行自动转、扣帐，走存款账户）；
   // 现金不能用于炒股——现金只够买地与升级建筑。
+  // 股票表里有一支的流通量本来就是 0（中國石油，见 `maps/stocks.json` 的 `_note`）：那不是
+  // 「被人买光了」，是这张票根本没投放市场。两句话得分开说，否则玩家以为有人在跟它抢筹。
+  if (stock.floatShares <= 0) return `${stock.name} 没有流通量，行情池里买不到这张票`;
   if (action.quantity > stock.remainingShares) {
     return `${stock.name} 的流通股只剩 ${stock.remainingShares} 张，买不到 ${action.quantity} 张（有人已经把它买光了）`;
   }
@@ -3753,6 +3748,9 @@ function checkBuyShares(state: GameState, p: Player | null, action: ActionOf<'BU
   if (!Number.isInteger(action.quantity) || action.quantity <= 0) return '股数必须为正整数';
   if (action.quantity > MAX_SHARES_PER_BUY) return `单次认购上限 ${MAX_SHARES_PER_BUY} 张`;
   const listed = stockById(state, companyStockId(company.kind));
+  if (listed && listed.floatShares <= 0) {
+    return `${company.name} 这只票没有流通量，行情与公司格两条渠道都拿不到它`;
+  }
   if (listed && action.quantity > listed.remainingShares) {
     return `${company.name} 的流通股只剩 ${listed.remainingShares} 张，认购不到 ${action.quantity} 张`;
   }
