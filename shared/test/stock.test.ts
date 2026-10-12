@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { nextStepAction } from './helpers/state.js';
+import { nextStepAction, standAt } from './helpers/state.js';
 import {
   applyAction,
   availableActions,
@@ -10,8 +10,11 @@ import {
   gameDate,
   maxAffordableShares,
   ReplayEngine,
+  stockAnchor,
   stockExecPrice,
   stockImpactPct,
+  stockLimitPrice,
+  stockLimitState,
   totalAssets,
   type GameState,
   type PlayerAction,
@@ -120,7 +123,8 @@ describe('「每人每回合可自由购买」', () => {
   });
 
   it('一次可买任意张（数量仅受资金约束，没有每回合上限）', () => {
-    const g = withDeposit(newGame(55));
+    // 存款压到 5000：再大一笔的冲击成本会把价格自己推上涨停板，那就变成闸门拦人而不是钱拦人
+    const g = withDeposit(newGame(55), 5000);
     const stock = g.stockMarket.stocks.find((s) => s.id === 'tech')!;
     // 含冲击的最大可买数：买得越多均价越高，所以不再是 `存款 ÷ 单价`
     const afford = maxAffordableShares(stock, g.players[0]!.deposit);
@@ -230,9 +234,9 @@ describe('help[06] 总市值 / 成本 / 经营权', () => {
     const bought = applyAction(g, { type: 'BUY_STOCK', stockId: 'media', quantity: 10 });
     expect(bought.players[0]!.stockCost?.media).toBe(cost);
 
-    // 股价涨到 150 后全卖 → 盈亏 +500
+    // 股价涨到 150 后全卖 → 盈亏 +500（顺带把当日行情摆平：只改价格会被读成涨停/跌停，闸门先拦下）
     const up = structuredClone(bought);
-    up.stockMarket.stocks.find((s) => s.id === 'media')!.price = 150;
+    Object.assign(up.stockMarket.stocks.find((s) => s.id === 'media')!, { price: 150, openPrice: 150, lastChangePct: 0 });
     const sold = applyAction(up, { type: 'SELL_STOCK', stockId: 'media', quantity: 10 });
     expect(sold.players[0]!.stocks.media).toBeUndefined();
     expect(sold.players[0]!.stockCost?.media).toBeUndefined();
@@ -240,7 +244,7 @@ describe('help[06] 总市值 / 成本 / 经营权', () => {
 
     // 股价跌到 50 → 亏500
     const down = structuredClone(bought);
-    down.stockMarket.stocks.find((s) => s.id === 'media')!.price = 50;
+    Object.assign(down.stockMarket.stocks.find((s) => s.id === 'media')!, { price: 50, openPrice: 50, lastChangePct: 0 });
     const soldDown = applyAction(down, { type: 'SELL_STOCK', stockId: 'media', quantity: 10 });
     expect(soldDown.log.some((l) => l.text.includes('亏'))).toBe(true);
   });
@@ -617,5 +621,183 @@ describe('日 K 线与成交量（自定扩展）', () => {
       expect(twin.candles).toEqual(stock.candles);
       expect(twin.candles.length).toBeGreaterThan(0);
     }
+  });
+});
+
+/**
+ * 反汇编实证第一波（`docs/玩法拆解_股票系统.md` §2 / §3）：
+ * 涨跌停的**非对称**闸门、游走的趋势惯性与均值回归、单日 ±10% 的硬边界。
+ */
+describe('涨跌停闸门与价格游走（反汇编实证第一波）', () => {
+  const stockOf = (s: GameState, id = 'tech') => s.stockMarket.stocks.find((x) => x.id === id)!;
+
+  /** 立刻推过一个交易日：回合交给最后一位玩家再结束 ⇒ 绕回 0 号、跑日切钩子（含行情） */
+  function toTradingDay(state: GameState): GameState {
+    const s = structuredClone(state);
+    if (s.phase === 'game_over') return s;
+    s.currentPlayerIndex = s.players.length - 1;
+    s.phase = 'awaiting_action';
+    return applyAction(s, { type: 'FINISH_LANDING' });
+  }
+
+  /** 当日这支被新闻改过价 ⇒ 这一档比较作废（新闻也按板钉价，会盖掉游走的读数） */
+  const newsHit = (s: GameState): boolean => s.log.some((e) => /【新闻】科技股/.test(e.text));
+
+  it('涨停只能卖不能买、跌停只能买不能卖、平盘双向（FUN_004295ea）', () => {
+    const flat = withDeposit(newGame(201));
+    expect(stockLimitState(stockOf(flat))).toBe('flat');
+    expect(() => applyAction(flat, { type: 'BUY_STOCK', stockId: 'tech', quantity: 1 })).not.toThrow();
+
+    const pinned = (pct: number, held = 0): GameState => {
+      const s = structuredClone(flat);
+      const t = stockOf(s);
+      t.openPrice = t.price;
+      t.lastChangePct = pct;
+      if (held) s.players[0]!.stocks.tech = held;
+      return s;
+    };
+    expect(() => applyAction(pinned(10), { type: 'BUY_STOCK', stockId: 'tech', quantity: 1 })).toThrow('涨停中，无法买进');
+    expect(() => applyAction(pinned(10, 3), { type: 'SELL_STOCK', stockId: 'tech', quantity: 1 })).not.toThrow();
+    expect(() => applyAction(pinned(-10), { type: 'SELL_STOCK', stockId: 'tech', quantity: 1 })).toThrow('跌停中，无法卖出');
+    expect(() => applyAction(pinned(-10), { type: 'BUY_STOCK', stockId: 'tech', quantity: 1 })).not.toThrow();
+    // 板是「当日」的状态，+9% 不算被钉住
+    expect(stockLimitState({ ...stockOf(flat), lastChangePct: 9 })).toBe('flat');
+  });
+
+  it('踩格按面值申购走一级市场、不吃闸门；同一支在二级转手照样吃跌停', () => {
+    const g = newGame(203);
+    const cellId = g.board.find((c) => c.companyKind === 'computer')!.id;
+    const s = standAt(g, 0, cellId);
+    s.players[0]!.cash = 100_000;
+    stockOf(s, 'corp-computer').lastChangePct = -10;
+    const bought = applyAction(s, { type: 'BUY_SHARES', cellId, quantity: 1 });
+    expect(bought.log.some((e) => e.text.includes('认购'))).toBe(true);
+
+    const sell = structuredClone(bought);
+    sell.currentPlayerIndex = 0;
+    sell.phase = 'awaiting_roll';
+    const company = sell.companies.find((c) => c.cellId === cellId)!;
+    company.shares[sell.players[0]!.id] = 5;
+    expect(() => applyAction(sell, { type: 'SELL_SHARES', cellId, quantity: 1 })).toThrow('跌停中，无法卖出原始股');
+  });
+
+  it('游走读昨日涨跌（趋势惯性）：同一手随机数下，昨日涨的那支只会更贵或持平', () => {
+    let compared = 0;
+    let differs = 0;
+    for (let seed = 1; seed <= 24; seed++) {
+      const base = newGame(seed * 61);
+      const run = (prev: number): GameState => {
+        const s = structuredClone(base);
+        stockOf(s).lastChangePct = prev;
+        return toTradingDay(s);
+      };
+      const up = run(8);
+      const down = run(-8);
+      if (newsHit(up) || newsHit(down)) continue;
+      compared += 1;
+      expect(stockOf(up).lastChangePct).toBeGreaterThanOrEqual(stockOf(down).lastChangePct);
+      if (stockOf(up).lastChangePct > stockOf(down).lastChangePct) differs += 1;
+    }
+    // 若公式里根本没读昨日涨跌，两档会逐位相同 ⇒ 必须至少有一档拉开
+    expect(compared).toBeGreaterThan(0);
+    expect(differs).toBeGreaterThan(0);
+  });
+
+  it('跌破锚的一半被往回拉、涨过 8 倍被压住（均值回归）', () => {
+    const base = newGame(211);
+    const anchor = stockOf(base).anchorPrice;
+    const run = (price: number): GameState => {
+      const s = structuredClone(base);
+      Object.assign(stockOf(s), { price, openPrice: price, lastChangePct: 0 });
+      return toTradingDay(s);
+    };
+    let compared = 0;
+    let pulled = 0;
+    for (let seed = 1; seed <= 24; seed++) {
+      const low = run(Math.max(6, Math.round(anchor * 0.4)));
+      const mid = run(anchor);
+      if (newsHit(low) || newsHit(mid)) continue;
+      compared += 1;
+      expect(stockOf(low).lastChangePct).toBeGreaterThanOrEqual(stockOf(mid).lastChangePct);
+      if (stockOf(low).lastChangePct > stockOf(mid).lastChangePct) pulled += 1;
+    }
+    expect(compared).toBeGreaterThan(0);
+    expect(pulled).toBeGreaterThan(0);
+  });
+
+  it('单日行情不会越过 ±10%（游走与新闻共用同一块板）', () => {
+    let s = newGame(213);
+    let days = 0;
+    for (let i = 0; i < 40 && s.phase !== 'game_over'; i++) {
+      const before = s.calendar.elapsedDays;
+      s = toTradingDay(s);
+      if (s.calendar.elapsedDays === before) continue;
+      days += 1;
+      for (const stock of s.stockMarket.stocks) {
+        if (!stock.openPrice) continue;
+        expect(stock.price).toBeLessThanOrEqual(stockLimitPrice(stock.openPrice, 1));
+        expect(stock.price).toBeGreaterThanOrEqual(Math.max(5, stockLimitPrice(stock.openPrice, -1)));
+      }
+    }
+    expect(days).toBeGreaterThan(20); // 别空跑
+  });
+});
+
+/**
+ * 反汇编实证第二波（`docs/玩法拆解_股票系统.md` §1 / §6）：
+ * 流通股可以被买光、锚跟着绑定城市的地价走、全市场涨跌新闻按开盘钉板。
+ */
+describe('流通股可买光 + 地价定锚（反汇编实证第二波）', () => {
+  const stockOf = (s: GameState, id: string) => s.stockMarket.stocks.find((x) => x.id === id)!;
+
+  it('流通股可以被买光：买光即拒，卖回来才有货', () => {
+    const g = withDeposit(newGame(221));
+    stockOf(g, 'tech').remainingShares = 5;
+    const bought = applyAction(g, { type: 'BUY_STOCK', stockId: 'tech', quantity: 5 });
+    expect(stockOf(bought, 'tech').remainingShares).toBe(0);
+    expect(() => applyAction(bought, { type: 'BUY_STOCK', stockId: 'tech', quantity: 1 })).toThrow('流通股只剩 0 张');
+
+    // 卖回 2 张 ⇒ 流通盘回补，下一位才买得到（回补的上限就是总股本：手里有多少才卖得回多少）
+    const sold = applyAction(bought, { type: 'SELL_STOCK', stockId: 'tech', quantity: 2 });
+    expect(stockOf(sold, 'tech').remainingShares).toBe(2);
+    expect(() => applyAction(sold, { type: 'BUY_STOCK', stockId: 'tech', quantity: 2 })).not.toThrow();
+  });
+
+  it('门控与引擎同源：最多可买数不会超过还没被买走的量', () => {
+    const g = withDeposit(newGame(223), 10_000_000);
+    const tech = stockOf(g, 'tech');
+    tech.remainingShares = 7;
+    expect(maxAffordableShares(tech, 10_000_000)).toBe(7);
+    tech.remainingShares = 0;
+    expect(maxAffordableShares(tech, 10_000_000)).toBe(0);
+    expect(() => applyAction(g, { type: 'BUY_STOCK', stockId: 'tech', quantity: 1 })).toThrow('流通股只剩 0 张');
+  });
+
+  it('锚 = 建仓价 × 今日街价 ÷ 开局街价（街价翻倍则锚翻倍，读不到就退回原锚）', () => {
+    const g = newGame(225);
+    const stock = { ...stockOf(g, 'tech'), cityName: '台北', cityPriceBase: 1000, anchorPrice: 200 };
+    expect(stockAnchor(stock, 1000)).toBe(200);
+    expect(stockAnchor(stock, 2000)).toBe(400);
+    expect(stockAnchor(stock, 500)).toBe(100);
+    expect(stockAnchor(stock, 0)).toBe(200);
+    const unbound = { ...stock, cityName: undefined, cityPriceBase: undefined };
+    expect(stockAnchor(unbound, 5000)).toBe(200);
+  });
+
+  it('全市场上涨新闻按开盘钉板：当天已在板上的票不会被再推一层', () => {
+    const g = newGame(227);
+    g.newsCursor = 25;                       // 游标正好指向「股市气势如虹，全面上涨」
+    const s = landAt(withDeposit(g), 44, 4); // 44 号是报社
+    const media = stockOf(s, 'media');
+    Object.assign(media, { openPrice: 100, price: 110, lastChangePct: 10 });
+    const food = stockOf(s, 'food');
+    food.openPrice = 80;
+    const landed = applyAction(s, { type: 'ROLL_DICE' });
+    expect(landed.log.some((e) => /全市场上涨 10%/.test(e.text))).toBe(true);
+    // 已经 +10% 的那支停在板上（乘在现价上会变成 121 = 一天 +21%）
+    expect(stockOf(landed, 'media').price).toBe(110);
+    expect(stockOf(landed, 'media').lastChangePct).toBe(10);
+    // 没涨过的那支从开盘推上去：80 → 88
+    expect(stockOf(landed, 'food').price).toBe(88);
   });
 });

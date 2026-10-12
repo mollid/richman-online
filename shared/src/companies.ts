@@ -1,7 +1,7 @@
 import { MAX_HAND_CARDS, MAX_ITEM_COUNT } from './board.js';
 import { CARDS, SHOP_CARD_IDS } from './cards.js';
 import type { CellLandingCtx, LandingResult } from './effect_ctx.js';
-import { holdLanding, landingBlocker, landingVenueOf } from './effect_ctx.js';
+import { holdLanding, landingBlocker, landingVenueOf, openBankWindow } from './effect_ctx.js';
 import { scaled } from './economy.js';
 import { ITEMS, SHOP_ITEM_IDS } from './items.js';
 import { nextRandom } from './rng.js';
@@ -62,6 +62,10 @@ export interface CompanyDef {
   kind: CompanyKind;
   /** 棋盘格 id（须与 board.ts 中 companyKind 一致） */
   cellId: number;
+  /**
+   * 这家公司占的全部格子。自建图一格；原版图一家公司占相邻两格（缺省就是 `[cellId]`）。
+   */
+  footprint?: number[];
   /** 文档对标编号 */
   tile: string;
   name: string;
@@ -99,12 +103,19 @@ export const COMPANY_LIST: CompanyDef[] = [
  */
 export const COMPANY_TARGET_MARKET = 200_000;
 export const companyStockId = (kind: CompanyKind): string => `corp-${kind}`;
-export const COMPANY_STOCK_DEFS = COMPANY_LIST.map((c) => ({
-  id: companyStockId(c.kind),
-  name: c.name,
-  initialPrice: c.sharePrice,
-  floatShares: Math.max(1, Math.round(COMPANY_TARGET_MARKET / c.sharePrice)),
-}));
+/**
+ * 一批公司定义 → 股市里的 `corp-*` 行。自建图与原版图共用这一条口径：
+ * 流通股本按「各支市值相当」定标，面值只决定股数（面值越高，同样市值的股数越少）。
+ */
+export function companyStockDefs(defs: readonly CompanyDef[]) {
+  return defs.map((c) => ({
+    id: companyStockId(c.kind),
+    name: c.name,
+    initialPrice: c.sharePrice,
+    floatShares: Math.max(1, Math.round(COMPANY_TARGET_MARKET / c.sharePrice)),
+  }));
+}
+export const COMPANY_STOCK_DEFS = companyStockDefs(COMPANY_LIST);
 
 export const COMPANIES: Record<CompanyKind, CompanyDef> = COMPANY_LIST.reduce((acc, def) => {
   acc[def.kind] = def;
@@ -118,9 +129,9 @@ export function companyDef(kind: CompanyKind): CompanyDef {
   return COMPANIES[kind];
 }
 
-/** 查找某格对应的公司经营状态 */
+/** 查找某格对应的公司经营状态（原版一家公司占两格 ⇒ 按 footprint 找，不是按 cellId） */
 export function companyAtCell(state: GameState, cellId: number): CompanyState | undefined {
-  return state.companies.find((c) => c.cellId === cellId);
+  return state.companies.find((c) => c.footprint.includes(cellId));
 }
 
 /**
@@ -225,8 +236,7 @@ export function companyFee(state: GameState, kind: CompanyKind, payer: Player, r
 export function landOnCompany(ctx: CellLandingCtx, p: Player, c: BoardCell): LandingResult {
   const { state } = ctx;
   const company = c.companyKind ? companyAtCell(state, c.id) : undefined;
-  const def = company ? COMPANIES[company.kind] : undefined;
-  if (!company || !def) {
+  if (!company) {
     ctx.log(state, `${p.name} 来到「${c.name}」`);
     return 'advance';
   }
@@ -236,15 +246,12 @@ export function landOnCompany(ctx: CellLandingCtx, p: Player, c: BoardCell): Lan
   const chairmanName = chairmanId ? state.players.find((q) => q.id === chairmanId)?.name ?? chairmanId : null;
   ctx.log(
     state,
-    `${p.name} 来到「${def.name}」${isChairman ? '（董事长）' : chairmanName ? `（董事长：${chairmanName}）` : '（经营权空缺）'}`,
+    `${p.name} 来到「${company.name}」${isChairman ? '（董事长）' : chairmanName ? `（董事长：${chairmanName}）` : '（经营权空缺）'}`,
   );
 
-  // CORP-09 / CORP-12：银行与百货无论经营权归属，任何人都可使用公共服务
-  if (company.kind === 'bank') {
-    state.bankAccess = { canDeposit: true, canLoan: true, cellId: c.id };
-  }
+  // CORP-12：百货无论经营权归属，董事长都能就地送礼（存取款的授权在下面的开窗判据里给）
   if (isChairman && company.kind === 'department') {
-    grantDepartmentGift(ctx, p, def.name);
+    grantDepartmentGift(ctx, p, company.name);
   }
 
   // CORP-01：经营权属他人时按消费方式缴费，费用计入累积盈余
@@ -259,11 +266,11 @@ export function landOnCompany(ctx: CellLandingCtx, p: Player, c: BoardCell): Lan
     if (fee > 0) {
       const paid = ctx.pay(state, p, fee, null, { reason: 'company' });
       company.surplus += paid;
-      ctx.log(state, `${p.name} 在「${def.name}」缴费 ¥${paid}（计入累积盈余 ¥${company.surplus}）`);
+      ctx.log(state, `${p.name} 在「${company.name}」缴费 ¥${paid}（计入累积盈余 ¥${company.surplus}）`);
       if (p.bankrupt || ctx.isGameOver(state)) return 'stop';
       applyCompanyService(ctx, p, company.kind, roll);
     } else {
-      ctx.log(state, `${p.name} 在「${def.name}」无需缴费`);
+      ctx.log(state, `${p.name} 在「${company.name}」无需缴费`);
     }
   }
 
@@ -273,8 +280,21 @@ export function landOnCompany(ctx: CellLandingCtx, p: Player, c: BoardCell): Lan
   // - **单步窗**：其余 9 家 —— 认购原始股（CORP-01）或房地产公司加盖（CORP-13），
   //   选完即结束回合。用户要的正是这一条：「购买原始股后是自动结束回合，自然就锁定了这一手买的股票」。
   const venue = landingVenueOf(c);
-  if (venue !== null) {
-    ctx.log(state, venue === 'shop' ? `可以在${def.name}购买卡片道具，买完离开结束回合` : `可以在${def.name}办理存取款，办完离开结束回合`);
+  if (venue === 'bank') {
+    // CORP-09：企业银行的公共服务不分经营权归属，任何人都能在此存取款与贷款。
+    // 开窗判据与公立银行共用 `openBankWindow`：先授权再按引擎口径探路，全被拒就不开窗 ——
+    // 否则例假日休市时会钉着一扇只有「关闭」的银行窗。特别融资是企业银行多出来的那一件
+    // （董事长专属、不看休市），它可办就说明这扇窗确实有事。
+    const blocker = openBankWindow(ctx, [{ type: 'SPECIAL_FINANCING', amount: 1 }]);
+    if (blocker !== null) {
+      ctx.log(state, `${company.name}：${blocker}`);
+      return 'advance';
+    }
+    ctx.log(state, `可以在${company.name}办理存取款，办完离开结束回合`);
+    return holdLanding(ctx);
+  }
+  if (venue === 'shop') {
+    ctx.log(state, `可以在${company.name}购买卡片道具，买完离开结束回合`);
     return holdLanding(ctx);
   }
   const options: PlayerAction[] = [{ type: 'BUY_SHARES', cellId: c.id, quantity: 1 }];
@@ -285,10 +305,10 @@ export function landOnCompany(ctx: CellLandingCtx, p: Player, c: BoardCell): Lan
   const blocker = landingBlocker(ctx, options);
   if (blocker !== null) {
     // 单步窗只在真有一件事可办时才弹；理由就地播报，玩家看得见「这一格为什么什么都没弹」
-    ctx.log(state, `${def.name}：${blocker}`);
+    ctx.log(state, `${company.name}：${blocker}`);
     return 'advance';
   }
-  ctx.log(state, `可认购${def.name}原始股（面值 ¥${company.sharePrice}，付现金），或放弃结束本回合`);
+  ctx.log(state, `可认购${company.name}原始股（面值 ¥${company.sharePrice}，付现金），或放弃结束本回合`);
   return holdLanding(ctx);
 }
 

@@ -11,9 +11,10 @@ import {
   fateCardById,
   nextRandom,
   renderFateText,
+  rollDie,
+  totalAssets,
 } from '../src/index.js';
 import type { GameState, PlayerDef } from '../src/index.js';
-import { pinIndexOne } from './helpers/state.js';
 
 /**
  * 波 8 命运卡池 / 乞讨 / 恶犬测试
@@ -22,7 +23,7 @@ import { pinIndexOne } from './helpers/state.js';
  * - 机会格 TILE-17 改抽命运卡（原「抽卡」为 V0 权宜）；
  * - 代表效果：捡钱 / 罚款入乐透池 / 银行拒往 / 拆房 / 坐牢可被免罪卡抵消；
  * - EVT-04 倒闭乞讨：路人施舍 1000 元；
- * - NPC-05 恶犬：步行者被咬住院 3 天，驾车者撞跑恶犬。
+ * - NPC-05 恶犬：步行者被咬住院 3 天，驾车者撞跑恶犬；两者都只认**踩中**那一格（路过不算）。
  */
 
 const PLAYERS: PlayerDef[] = [
@@ -38,6 +39,17 @@ function newGame(seed = 42): GameState {
   const g = applyAction(createGame(PLAYERS, seed, { startDate: { ...MONDAY } }), { type: 'START_GAME' });
   for (const p of g.players) p.diceCount = 2;
   return g;
+}
+
+/** 冻结物价指数为 1（分母对齐为当前总资产） */
+function pinIndexOne(state: GameState): GameState {
+  let total = 0;
+  for (const p of state.players) {
+    if (!p.bankrupt) total += totalAssets(state, p);
+  }
+  state.initialCashPerPlayer = Math.max(1, total);
+  state.initialPlayerCount = 1;
+  return state;
 }
 
 /** 找种子使「下一次 nextRandom」的取值落在指定命运卡下标（公共池 33 张）内 */
@@ -193,6 +205,16 @@ describe('EVT-04 倒闭者原地乞讨', () => {
   });
 });
 
+/** 找一个种子，使「连掷两颗骰子之和」正好是 target（与 `drawDice` 同一套取数：rollDie 串两次） */
+function seedForSum(target: number): number {
+  for (let s = 1; s <= 200_000; s++) {
+    const a = rollDie(s);
+    const b = rollDie(a.nextState);
+    if (a.value + b.value === target) return s;
+  }
+  throw new Error(`找不到和为 ${target} 的种子`);
+}
+
 describe('NPC-05 恶犬（TILE 随机出没）', () => {
   it('步行者（1 颗骰子）被咬伤，住院 3 天并丧失收租权', () => {
     const g = newGame(37);
@@ -211,24 +233,39 @@ describe('NPC-05 恶犬（TILE 随机出没）', () => {
     expect(landed.rngState).toBe(before); // 恶犬判定不消耗抽数
   });
 
-  it('驾车者（≥2 颗骰子）撞跑恶犬，不受伤害', () => {
+  it('驾车者（≥2 颗骰子）踩中恶犬：把它撞跑，不受伤害', () => {
     const g = newGame(41);
-    // 恶犬在 3 号格；p1 从 2 号出发（首骰固定 1），途经 3 号时以车辆撞跑恶犬
-    g.npcs = [{ kind: 'dog', position: 3, ownerId: null, daysLeft: 1, jailed: false }];
+    // 恶犬在 8 号格；p1 从 2 号出发，两骰之和固定为 6 ⇒ 正好**落**在那一格。
+    // 用户规则：恶犬与宝箱都只认踩中，路过不算撞上（所以不能像旧实现那样拿途经格做用例）。
+    g.npcs = [{ kind: 'dog', position: 8, ownerId: null, daysLeft: 1, jailed: false }];
     const s = structuredClone(g);
     s.players[0]!.position = 2;
     s.players[0]!.diceCount = 2;
-    s.pendingFixedDice = 1; // 第一颗骰子固定 1 点，必定先经过 3 号格
+    s.rngState = seedForSum(6);
     const landed = applyAction(s, { type: 'ROLL_DICE' });
+    expect(landed.players[0]!.position).toBe(8);
     expect(landed.players[0]!.custody).toBeNull();
     expect(landed.npcs.some((n) => n.kind === 'dog')).toBe(false);
     expect(landed.log.some((l) => l.text.includes('撞跑了恶犬'))).toBe(true);
   });
 
+  it('驾车者从恶犬那一格路过：不撞跑它，也不被咬', () => {
+    const g = newGame(43);
+    g.npcs = [{ kind: 'dog', position: 5, ownerId: null, daysLeft: 1, jailed: false }];
+    const s = structuredClone(g);
+    s.players[0]!.position = 2;
+    s.players[0]!.diceCount = 2;
+    s.rngState = seedForSum(6); // 2 → 8：5 号格只是路过
+    const landed = applyAction(s, { type: 'ROLL_DICE' });
+    expect(landed.players[0]!.position).toBe(8);
+    expect(landed.npcs.some((n) => n.kind === 'dog')).toBe(true);
+    expect(landed.log.some((l) => l.text.includes('恶犬'))).toBe(false);
+  });
+
   it('createGame 初始化四大恶人在押于监狱、magic 为空', () => {
     const g = createGame(PLAYERS, 1, { startDate: { ...MONDAY } });
     expect(g.magic).toBeNull();
-    // NPC-01..04 四大恶人初始在押于监狱格（26），无主、刑期 0
+    // NPC-01..04 四大恶人初始在押于监狱格（26），无主、刑期 0；恶犬是日切才随机出没的，开局没有
     expect(g.npcs).toEqual([
       { kind: 'thief', position: 26, ownerId: null, daysLeft: 0, jailed: true },
       { kind: 'protection', position: 26, ownerId: null, daysLeft: 0, jailed: true },

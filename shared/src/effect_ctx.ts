@@ -76,8 +76,6 @@ export interface EffectKit {
    * 因此不写对偶冷却 —— 它只是换了个在场方式，对偶仍由「同对不共现」挡着。
    */
   claimBoardGod(state: GameState, godId: string): boolean;
-  /** 行进方向上前方 n 步的格号（机器娃娃 / 送神卡的「前方 9 步」同源口径） */
-  cellsAhead(state: GameState, from: number, dir: 1 | -1, steps: number): number[];
   /** 神庙摇籤：随机召唤一位神明附身（走 RNG） */
   summonGod(state: GameState, p: Player): void;
   /** 行进显灵·租金类（GOD-02/03/06/07）：返回调整后的应付过路费，0 表示完全抵赖 */
@@ -248,6 +246,33 @@ export function landingBlocker(ctx: CellLandingCtx, options: readonly PlayerActi
     if (first === null) first = refusal;
   }
   return first ?? '这一格没有可当场办理的事';
+}
+
+/** 银行会话窗探路时先问的四件事（存取款 + 贷款还贷） */
+const BANK_WINDOW_OPTIONS: readonly PlayerAction[] = [
+  { type: 'DEPOSIT', amount: 1 },
+  { type: 'WITHDRAW', amount: 1 },
+  { type: 'TAKE_LOAN', amount: 1 },
+  { type: 'REPAY_LOAN', amount: 1 },
+];
+
+/**
+ * 开一扇银行会话窗（TILE-08 公立银行 / TILE-26 企业银行**同一口径**）。
+ *
+ * 先授权再探路：银行四项校验读的都是 `state.bankAccess`，顺序倒了会得到「当前不能进行银行操作」，
+ * 于是每格银行都被判成「无事可做」—— 门控与引擎同源的含义就是**按引擎的口径去问**。
+ * 探到全被拒（例假日休市且无款可还）时把刚给的权限收回去，返回理由让调用方播报并 `'advance'`：
+ * 银行休市这一格确实没事，钉在窗口里只能靠逃生门出来，而 UI 会照着 `venue='bank'` 弹出一层空壳。
+ *
+ * `extraOptions` 是企业银行多出来的那一件（董事长特别融资）：公立银行没有它，传了也只会被
+ * `checkSpecialFinancing` 以「不在企业银行」拒掉，不影响公立银行的判据。
+ */
+export function openBankWindow(ctx: CellLandingCtx, extraOptions: readonly PlayerAction[] = []): string | null {
+  const { state, cell: c } = ctx;
+  state.bankAccess = { canDeposit: true, canLoan: true, cellId: c.id };
+  const blocker = landingBlocker(ctx, [...BANK_WINDOW_OPTIONS, ...extraOptions]);
+  if (blocker !== null) state.bankAccess = null;
+  return blocker;
 }
 
 /**

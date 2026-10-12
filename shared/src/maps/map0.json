@@ -1,0 +1,2220 @@
+{
+ "mapId": 0,
+ "name": "潮汕",
+ "source": "map.mkf 块 #1",
+ "nodeCount": 103,
+ "startCellId": 0,
+ "subTables": {
+  "residential": {
+   "count": 50,
+   "offset": 4200,
+   "rowBytes": 52
+  },
+  "commercial": {
+   "count": 4,
+   "offset": 6852,
+   "rowBytes": 56
+  },
+  "company": {
+   "count": 3,
+   "offset": 7132,
+   "rowBytes": 52
+  },
+  "scenery": {
+   "count": 21,
+   "offset": 7340,
+   "rowBytes": 28
+  }
+ },
+ "companies": [
+  {
+   "sid": 6001,
+   "name": "汕頭人壽",
+   "companyId": 4,
+   "sharePrice": 750,
+   "buildingId": 49,
+   "capital": 400000,
+   "cells": [
+    50,
+    51
+   ]
+  }
+ ],
+ "cells": [
+  {
+   "id": 0,
+   "name": "",
+   "x": 1752,
+   "y": 1871,
+   "neighbors": [
+    1
+   ],
+   "sid": 8002,
+   "kind": 17,
+   "flags": 32768,
+   "type": "blank",
+   "scenery": true
+  },
+  {
+   "id": 1,
+   "name": "",
+   "x": 1704,
+   "y": 1823,
+   "neighbors": [
+    33,
+    0
+   ],
+   "sid": 0,
+   "kind": 17,
+   "flags": 32768,
+   "type": "blank"
+  },
+  {
+   "id": 2,
+   "name": "",
+   "x": 1512,
+   "y": 1630,
+   "neighbors": [
+    31,
+    32
+   ],
+   "sid": 0,
+   "kind": 17,
+   "flags": 32768,
+   "type": "blank"
+  },
+  {
+   "id": 3,
+   "name": "",
+   "x": 1608,
+   "y": 1726,
+   "neighbors": [
+    32,
+    33
+   ],
+   "sid": 0,
+   "kind": 17,
+   "flags": 32768,
+   "type": "blank"
+  },
+  {
+   "id": 4,
+   "name": "卡片",
+   "x": 1247,
+   "y": 240,
+   "neighbors": [
+    42,
+    41
+   ],
+   "sid": 0,
+   "kind": 13,
+   "flags": 0,
+   "type": "free-card"
+  },
+  {
+   "id": 5,
+   "name": "命運",
+   "x": 1536,
+   "y": 239,
+   "neighbors": [
+    38,
+    97
+   ],
+   "sid": 0,
+   "kind": 3,
+   "flags": 0,
+   "type": "chance"
+  },
+  {
+   "id": 6,
+   "name": "魔法屋",
+   "x": 1679,
+   "y": 383,
+   "neighbors": [
+    96,
+    95
+   ],
+   "sid": 0,
+   "kind": 16,
+   "flags": 0,
+   "type": "magic"
+  },
+  {
+   "id": 7,
+   "name": "百貨公司",
+   "x": 1487,
+   "y": 576,
+   "neighbors": [
+    92,
+    89
+   ],
+   "sid": 6002,
+   "kind": 15,
+   "flags": 0,
+   "sidName": "潮商百貨",
+   "flag": 512,
+   "companyId": 10,
+   "companyPrice": 0,
+   "buildingId": 54,
+   "capital": 200000,
+   "type": "shop"
+  },
+  {
+   "id": 8,
+   "name": "命運",
+   "x": 1487,
+   "y": 816,
+   "neighbors": [
+    91,
+    88
+   ],
+   "sid": 0,
+   "kind": 3,
+   "flags": 0,
+   "type": "chance"
+  },
+  {
+   "id": 9,
+   "name": "公園",
+   "x": 1248,
+   "y": 1055,
+   "neighbors": [
+    84,
+    81
+   ],
+   "sid": 0,
+   "kind": 1,
+   "flags": 0,
+   "type": "blank"
+  },
+  {
+   "id": 10,
+   "name": "新聞",
+   "x": 1248,
+   "y": 1296,
+   "neighbors": [
+    83,
+    77
+   ],
+   "sid": 0,
+   "kind": 2,
+   "flags": 0,
+   "type": "news"
+  },
+  {
+   "id": 11,
+   "name": "監獄",
+   "x": 1248,
+   "y": 1583,
+   "neighbors": [
+    80,
+    37,
+    75
+   ],
+   "sid": 0,
+   "kind": 4,
+   "flags": 2048,
+   "type": "jail"
+  },
+  {
+   "id": 12,
+   "name": "命運",
+   "x": 1103,
+   "y": 1728,
+   "neighbors": [
+    36,
+    13
+   ],
+   "sid": 0,
+   "kind": 3,
+   "flags": 0,
+   "type": "chance"
+  },
+  {
+   "id": 13,
+   "name": "公園",
+   "x": 1152,
+   "y": 1824,
+   "neighbors": [
+    12,
+    35
+   ],
+   "sid": 0,
+   "kind": 1,
+   "flags": 0,
+   "type": "blank"
+  },
+  {
+   "id": 14,
+   "name": "百貨公司",
+   "x": 959,
+   "y": 1825,
+   "neighbors": [
+    34,
+    74
+   ],
+   "sid": 6002,
+   "kind": 15,
+   "flags": 0,
+   "sidName": "潮商百貨",
+   "flag": 512,
+   "companyId": 10,
+   "companyPrice": 0,
+   "buildingId": 54,
+   "capital": 200000,
+   "type": "shop"
+  },
+  {
+   "id": 15,
+   "name": "醫院",
+   "x": 767,
+   "y": 1631,
+   "neighbors": [
+    71,
+    68,
+    69
+   ],
+   "sid": 0,
+   "kind": 5,
+   "flags": 4096,
+   "type": "hospital"
+  },
+  {
+   "id": 16,
+   "name": "新聞",
+   "x": 768,
+   "y": 1295,
+   "neighbors": [
+    64,
+    63
+   ],
+   "sid": 0,
+   "kind": 2,
+   "flags": 0,
+   "type": "news"
+  },
+  {
+   "id": 17,
+   "name": "命運",
+   "x": 768,
+   "y": 1008,
+   "neighbors": [
+    60,
+    59
+   ],
+   "sid": 0,
+   "kind": 3,
+   "flags": 0,
+   "type": "chance"
+  },
+  {
+   "id": 18,
+   "name": "銀行",
+   "x": 960,
+   "y": 815,
+   "neighbors": [
+    56,
+    55
+   ],
+   "sid": 6003,
+   "kind": 14,
+   "flags": 0,
+   "sidName": "汕頭信託",
+   "flag": 0,
+   "companyId": 7,
+   "companyPrice": 0,
+   "buildingId": 58,
+   "capital": 900000,
+   "type": "bank"
+  },
+  {
+   "id": 19,
+   "name": "樂透",
+   "x": 1248,
+   "y": 815,
+   "neighbors": [
+    52,
+    51
+   ],
+   "sid": 0,
+   "kind": 9,
+   "flags": 0,
+   "type": "lottery"
+  },
+  {
+   "id": 20,
+   "name": "公園",
+   "x": 1247,
+   "y": 624,
+   "neighbors": [
+    50,
+    49
+   ],
+   "sid": 0,
+   "kind": 1,
+   "flags": 0,
+   "type": "blank"
+  },
+  {
+   "id": 21,
+   "name": "新聞",
+   "x": 1055,
+   "y": 432,
+   "neighbors": [
+    46,
+    45
+   ],
+   "sid": 0,
+   "kind": 2,
+   "flags": 0,
+   "type": "news"
+  },
+  {
+   "id": 22,
+   "name": "公園",
+   "x": 384,
+   "y": 1056,
+   "neighbors": [
+    23
+   ],
+   "sid": 8001,
+   "kind": 1,
+   "flags": 0,
+   "type": "blank",
+   "scenery": true
+  },
+  {
+   "id": 23,
+   "name": "得５０點",
+   "x": 455,
+   "y": 1032,
+   "neighbors": [
+    98,
+    22
+   ],
+   "sid": 0,
+   "kind": 10,
+   "flags": 0,
+   "type": "points",
+   "pointsGain": 50
+  },
+  {
+   "id": 24,
+   "name": "七彩氣球",
+   "x": 503,
+   "y": 1128,
+   "neighbors": [
+    25,
+    98
+   ],
+   "sid": 0,
+   "kind": 8,
+   "flags": 32768,
+   "type": "game",
+   "minigame": "balloon"
+  },
+  {
+   "id": 25,
+   "name": "得３０點",
+   "x": 456,
+   "y": 1176,
+   "neighbors": [
+    99,
+    24
+   ],
+   "sid": 0,
+   "kind": 11,
+   "flags": 32768,
+   "type": "points",
+   "pointsGain": 30
+  },
+  {
+   "id": 26,
+   "name": "得１０點",
+   "x": 360,
+   "y": 1271,
+   "neighbors": [
+    101,
+    100
+   ],
+   "sid": 0,
+   "kind": 12,
+   "flags": 32768,
+   "type": "points",
+   "pointsGain": 10
+  },
+  {
+   "id": 27,
+   "name": "得１０點",
+   "x": 456,
+   "y": 1367,
+   "neighbors": [
+    102,
+    101
+   ],
+   "sid": 0,
+   "kind": 12,
+   "flags": 32768,
+   "type": "points",
+   "pointsGain": 10
+  },
+  {
+   "id": 28,
+   "name": "得１０點",
+   "x": 552,
+   "y": 1463,
+   "neighbors": [
+    70,
+    102
+   ],
+   "sid": 0,
+   "kind": 12,
+   "flags": 32768,
+   "type": "points",
+   "pointsGain": 10
+  },
+  {
+   "id": 29,
+   "name": "得１０點",
+   "x": 648,
+   "y": 1559,
+   "neighbors": [
+    69,
+    70
+   ],
+   "sid": 0,
+   "kind": 12,
+   "flags": 0,
+   "type": "points",
+   "pointsGain": 10
+  },
+  {
+   "id": 30,
+   "name": "",
+   "x": 1367,
+   "y": 1583,
+   "neighbors": [
+    75,
+    76
+   ],
+   "sid": 0,
+   "kind": 12,
+   "flags": 0,
+   "type": "points",
+   "pointsGain": 10
+  },
+  {
+   "id": 31,
+   "name": "得１０點",
+   "x": 1463,
+   "y": 1583,
+   "neighbors": [
+    76,
+    2
+   ],
+   "sid": 0,
+   "kind": 12,
+   "flags": 32768,
+   "type": "points",
+   "pointsGain": 10
+  },
+  {
+   "id": 32,
+   "name": "得１０點",
+   "x": 1559,
+   "y": 1680,
+   "neighbors": [
+    2,
+    3
+   ],
+   "sid": 0,
+   "kind": 12,
+   "flags": 32768,
+   "type": "points",
+   "pointsGain": 10
+  },
+  {
+   "id": 33,
+   "name": "得３０點",
+   "x": 1656,
+   "y": 1775,
+   "neighbors": [
+    3,
+    1
+   ],
+   "sid": 0,
+   "kind": 11,
+   "flags": 32768,
+   "type": "points",
+   "pointsGain": 30
+  },
+  {
+   "id": 34,
+   "name": "媽嶼",
+   "x": 1031,
+   "y": 1824,
+   "neighbors": [
+    35,
+    14
+   ],
+   "sid": 4003,
+   "kind": 0,
+   "flags": 0,
+   "type": "commercial",
+   "sidName": "媽嶼",
+   "flag": 1024,
+   "price": 5000,
+   "rents": [
+    500,
+    500,
+    1200,
+    3000,
+    6000,
+    10000
+   ]
+  },
+  {
+   "id": 35,
+   "name": "媽嶼",
+   "x": 1080,
+   "y": 1824,
+   "neighbors": [
+    13,
+    34
+   ],
+   "sid": 4003,
+   "kind": 0,
+   "flags": 0,
+   "type": "commercial",
+   "sidName": "媽嶼",
+   "flag": 1024,
+   "price": 5000,
+   "rents": [
+    500,
+    500,
+    1200,
+    3000,
+    6000,
+    10000
+   ]
+  },
+  {
+   "id": 36,
+   "name": "丹櫻",
+   "x": 1155,
+   "y": 1675,
+   "neighbors": [
+    37,
+    12
+   ],
+   "sid": 4002,
+   "kind": 0,
+   "flags": 0,
+   "type": "commercial",
+   "sidName": "丹櫻",
+   "flag": 1792,
+   "price": 4000,
+   "rents": [
+    400,
+    400,
+    1000,
+    2500,
+    5000,
+    8000
+   ]
+  },
+  {
+   "id": 37,
+   "name": "丹櫻",
+   "x": 1186,
+   "y": 1644,
+   "neighbors": [
+    11,
+    36
+   ],
+   "sid": 4002,
+   "kind": 0,
+   "flags": 0,
+   "type": "commercial",
+   "sidName": "丹櫻",
+   "flag": 1792,
+   "price": 4000,
+   "rents": [
+    400,
+    400,
+    1000,
+    2500,
+    5000,
+    8000
+   ]
+  },
+  {
+   "id": 38,
+   "name": "金平區",
+   "x": 1463,
+   "y": 239,
+   "neighbors": [
+    39,
+    5
+   ],
+   "sid": 2001,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "金平區",
+   "flag": 0,
+   "price": 2500,
+   "rents": [
+    500,
+    500,
+    1200,
+    3000,
+    7500,
+    16000,
+    30000
+   ]
+  },
+  {
+   "id": 39,
+   "name": "金平區",
+   "x": 1416,
+   "y": 239,
+   "neighbors": [
+    40,
+    38
+   ],
+   "sid": 2002,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "金平區",
+   "flag": 0,
+   "price": 2500,
+   "rents": [
+    500,
+    500,
+    1200,
+    3000,
+    7500,
+    16000,
+    30000
+   ]
+  },
+  {
+   "id": 40,
+   "name": "金平區",
+   "x": 1368,
+   "y": 239,
+   "neighbors": [
+    41,
+    39
+   ],
+   "sid": 2003,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "金平區",
+   "flag": 0,
+   "price": 2500,
+   "rents": [
+    500,
+    500,
+    1200,
+    3000,
+    7500,
+    16000,
+    30000
+   ]
+  },
+  {
+   "id": 41,
+   "name": "金平區",
+   "x": 1320,
+   "y": 239,
+   "neighbors": [
+    4,
+    40
+   ],
+   "sid": 2004,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "金平區",
+   "flag": 0,
+   "price": 2500,
+   "rents": [
+    500,
+    500,
+    1200,
+    3000,
+    7500,
+    16000,
+    30000
+   ]
+  },
+  {
+   "id": 42,
+   "name": "龍湖區",
+   "x": 1203,
+   "y": 285,
+   "neighbors": [
+    43,
+    4
+   ],
+   "sid": 2005,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "龍湖區",
+   "flag": 1792,
+   "price": 2000,
+   "rents": [
+    400,
+    400,
+    1000,
+    2400,
+    6000,
+    12500,
+    22000
+   ]
+  },
+  {
+   "id": 43,
+   "name": "龍湖區",
+   "x": 1170,
+   "y": 318,
+   "neighbors": [
+    44,
+    42
+   ],
+   "sid": 2006,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "龍湖區",
+   "flag": 1792,
+   "price": 2000,
+   "rents": [
+    400,
+    400,
+    1000,
+    2400,
+    6000,
+    12500,
+    22000
+   ]
+  },
+  {
+   "id": 44,
+   "name": "龍湖區",
+   "x": 1138,
+   "y": 351,
+   "neighbors": [
+    45,
+    43
+   ],
+   "sid": 2007,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "龍湖區",
+   "flag": 1792,
+   "price": 2000,
+   "rents": [
+    400,
+    400,
+    1000,
+    2400,
+    6000,
+    12500,
+    22000
+   ]
+  },
+  {
+   "id": 45,
+   "name": "龍湖區",
+   "x": 1103,
+   "y": 384,
+   "neighbors": [
+    21,
+    44
+   ],
+   "sid": 2008,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "龍湖區",
+   "flag": 1792,
+   "price": 2000,
+   "rents": [
+    400,
+    400,
+    1000,
+    2400,
+    6000,
+    12500,
+    22000
+   ]
+  },
+  {
+   "id": 46,
+   "name": "澄海區",
+   "x": 1102,
+   "y": 479,
+   "neighbors": [
+    47,
+    21
+   ],
+   "sid": 2009,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "澄海區",
+   "flag": 256,
+   "price": 1000,
+   "rents": [
+    200,
+    200,
+    500,
+    1200,
+    2800,
+    6000,
+    10000
+   ]
+  },
+  {
+   "id": 47,
+   "name": "澄海區",
+   "x": 1137,
+   "y": 513,
+   "neighbors": [
+    48,
+    46
+   ],
+   "sid": 2010,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "澄海區",
+   "flag": 256,
+   "price": 1000,
+   "rents": [
+    200,
+    200,
+    500,
+    1200,
+    2800,
+    6000,
+    10000
+   ]
+  },
+  {
+   "id": 48,
+   "name": "澄海區",
+   "x": 1171,
+   "y": 546,
+   "neighbors": [
+    49,
+    47
+   ],
+   "sid": 2011,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "澄海區",
+   "flag": 256,
+   "price": 1000,
+   "rents": [
+    200,
+    200,
+    500,
+    1200,
+    2800,
+    6000,
+    10000
+   ]
+  },
+  {
+   "id": 49,
+   "name": "澄海區",
+   "x": 1203,
+   "y": 578,
+   "neighbors": [
+    20,
+    48
+   ],
+   "sid": 2012,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "澄海區",
+   "flag": 256,
+   "price": 1000,
+   "rents": [
+    200,
+    200,
+    500,
+    1200,
+    2800,
+    6000,
+    10000
+   ]
+  },
+  {
+   "id": 50,
+   "name": "苗栗市",
+   "x": 1247,
+   "y": 697,
+   "neighbors": [
+    51,
+    20
+   ],
+   "sid": 6001,
+   "kind": 0,
+   "flags": 0,
+   "sidName": "汕頭人壽",
+   "flag": 256,
+   "companyId": 4,
+   "companyPrice": 750,
+   "buildingId": 49,
+   "capital": 400000,
+   "type": "company"
+  },
+  {
+   "id": 51,
+   "name": "苗栗市",
+   "x": 1247,
+   "y": 742,
+   "neighbors": [
+    19,
+    50
+   ],
+   "sid": 6001,
+   "kind": 0,
+   "flags": 0,
+   "sidName": "汕頭人壽",
+   "flag": 256,
+   "companyId": 4,
+   "companyPrice": 750,
+   "buildingId": 49,
+   "capital": 400000,
+   "type": "company"
+  },
+  {
+   "id": 52,
+   "name": "潮陽區",
+   "x": 1176,
+   "y": 815,
+   "neighbors": [
+    53,
+    19
+   ],
+   "sid": 2013,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "潮陽區",
+   "flag": 0,
+   "price": 2000,
+   "rents": [
+    400,
+    400,
+    1000,
+    2400,
+    6000,
+    12500,
+    22000
+   ]
+  },
+  {
+   "id": 53,
+   "name": "潮陽區",
+   "x": 1128,
+   "y": 816,
+   "neighbors": [
+    54,
+    52
+   ],
+   "sid": 2014,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "潮陽區",
+   "flag": 0,
+   "price": 2000,
+   "rents": [
+    400,
+    400,
+    1000,
+    2400,
+    6000,
+    12500,
+    22000
+   ]
+  },
+  {
+   "id": 54,
+   "name": "潮陽區",
+   "x": 1080,
+   "y": 816,
+   "neighbors": [
+    55,
+    53
+   ],
+   "sid": 2015,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "潮陽區",
+   "flag": 0,
+   "price": 2000,
+   "rents": [
+    400,
+    400,
+    1000,
+    2400,
+    6000,
+    12500,
+    22000
+   ]
+  },
+  {
+   "id": 55,
+   "name": "潮陽區",
+   "x": 1032,
+   "y": 815,
+   "neighbors": [
+    18,
+    54
+   ],
+   "sid": 2016,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "潮陽區",
+   "flag": 0,
+   "price": 2000,
+   "rents": [
+    400,
+    400,
+    1000,
+    2400,
+    6000,
+    12500,
+    22000
+   ]
+  },
+  {
+   "id": 56,
+   "name": "潮南區",
+   "x": 914,
+   "y": 861,
+   "neighbors": [
+    57,
+    18
+   ],
+   "sid": 2017,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "潮南區",
+   "flag": 768,
+   "price": 1000,
+   "rents": [
+    200,
+    200,
+    500,
+    1200,
+    2800,
+    6000,
+    10000
+   ]
+  },
+  {
+   "id": 57,
+   "name": "潮南區",
+   "x": 881,
+   "y": 893,
+   "neighbors": [
+    58,
+    56
+   ],
+   "sid": 2018,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "潮南區",
+   "flag": 768,
+   "price": 1000,
+   "rents": [
+    200,
+    200,
+    500,
+    1200,
+    2800,
+    6000,
+    10000
+   ]
+  },
+  {
+   "id": 58,
+   "name": "潮南區",
+   "x": 848,
+   "y": 925,
+   "neighbors": [
+    59,
+    57
+   ],
+   "sid": 2019,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "潮南區",
+   "flag": 768,
+   "price": 1000,
+   "rents": [
+    200,
+    200,
+    500,
+    1200,
+    2800,
+    6000,
+    10000
+   ]
+  },
+  {
+   "id": 59,
+   "name": "潮南區",
+   "x": 814,
+   "y": 959,
+   "neighbors": [
+    17,
+    58
+   ],
+   "sid": 2020,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "潮南區",
+   "flag": 768,
+   "price": 1000,
+   "rents": [
+    200,
+    200,
+    500,
+    1200,
+    2800,
+    6000,
+    10000
+   ]
+  },
+  {
+   "id": 60,
+   "name": "濠江區",
+   "x": 768,
+   "y": 1080,
+   "neighbors": [
+    61,
+    17
+   ],
+   "sid": 2021,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "濠江區",
+   "flag": 1536,
+   "price": 1500,
+   "rents": [
+    500,
+    300,
+    750,
+    2000,
+    4800,
+    10000,
+    18000
+   ]
+  },
+  {
+   "id": 61,
+   "name": "濠江區",
+   "x": 768,
+   "y": 1128,
+   "neighbors": [
+    62,
+    60
+   ],
+   "sid": 2022,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "濠江區",
+   "flag": 1536,
+   "price": 1500,
+   "rents": [
+    300,
+    300,
+    750,
+    2000,
+    4800,
+    10000,
+    18000
+   ]
+  },
+  {
+   "id": 62,
+   "name": "濠江區",
+   "x": 768,
+   "y": 1176,
+   "neighbors": [
+    63,
+    61
+   ],
+   "sid": 2023,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "濠江區",
+   "flag": 1536,
+   "price": 1500,
+   "rents": [
+    300,
+    300,
+    750,
+    2000,
+    4800,
+    10000,
+    18000
+   ]
+  },
+  {
+   "id": 63,
+   "name": "濠江區",
+   "x": 768,
+   "y": 1224,
+   "neighbors": [
+    16,
+    62
+   ],
+   "sid": 2024,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "濠江區",
+   "flag": 1536,
+   "price": 1500,
+   "rents": [
+    300,
+    300,
+    750,
+    2000,
+    4800,
+    10000,
+    18000
+   ]
+  },
+  {
+   "id": 64,
+   "name": "桑浦山",
+   "x": 768,
+   "y": 1367,
+   "neighbors": [
+    65,
+    16
+   ],
+   "sid": 2025,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "桑浦山",
+   "flag": 1536,
+   "price": 2000,
+   "rents": [
+    400,
+    400,
+    1000,
+    2400,
+    6000,
+    12500,
+    22000
+   ]
+  },
+  {
+   "id": 65,
+   "name": "桑浦山",
+   "x": 768,
+   "y": 1415,
+   "neighbors": [
+    66,
+    64
+   ],
+   "sid": 2026,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "桑浦山",
+   "flag": 1536,
+   "price": 2000,
+   "rents": [
+    400,
+    400,
+    1000,
+    2400,
+    6000,
+    12500,
+    22000
+   ]
+  },
+  {
+   "id": 66,
+   "name": "桑浦山",
+   "x": 768,
+   "y": 1464,
+   "neighbors": [
+    67,
+    65
+   ],
+   "sid": 2027,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "桑浦山",
+   "flag": 1536,
+   "price": 2000,
+   "rents": [
+    400,
+    400,
+    1000,
+    2400,
+    6000,
+    12500,
+    22000
+   ]
+  },
+  {
+   "id": 67,
+   "name": "桑浦山",
+   "x": 768,
+   "y": 1511,
+   "neighbors": [
+    68,
+    66
+   ],
+   "sid": 2028,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "桑浦山",
+   "flag": 1536,
+   "price": 2000,
+   "rents": [
+    400,
+    400,
+    1000,
+    2400,
+    6000,
+    12500,
+    22000
+   ]
+  },
+  {
+   "id": 68,
+   "name": "桑浦山",
+   "x": 768,
+   "y": 1559,
+   "neighbors": [
+    15,
+    67
+   ],
+   "sid": 2029,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "桑浦山",
+   "flag": 1536,
+   "price": 2000,
+   "rents": [
+    400,
+    400,
+    1000,
+    2400,
+    6000,
+    12500,
+    22000
+   ]
+  },
+  {
+   "id": 69,
+   "name": "",
+   "x": 696,
+   "y": 1608,
+   "neighbors": [
+    15,
+    29
+   ],
+   "sid": 0,
+   "kind": 17,
+   "flags": 0,
+   "type": "blank"
+  },
+  {
+   "id": 70,
+   "name": "喜從天降",
+   "x": 599,
+   "y": 1511,
+   "neighbors": [
+    29,
+    28
+   ],
+   "sid": 0,
+   "kind": 7,
+   "flags": 0,
+   "type": "game",
+   "minigame": "windfall"
+  },
+  {
+   "id": 71,
+   "name": "達濠",
+   "x": 814,
+   "y": 1678,
+   "neighbors": [
+    72,
+    15
+   ],
+   "sid": 2030,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "",
+   "flag": 256,
+   "price": 800,
+   "rents": [
+    150,
+    150,
+    400,
+    1000,
+    2400,
+    5000,
+    9000
+   ]
+  },
+  {
+   "id": 72,
+   "name": "達濠",
+   "x": 847,
+   "y": 1711,
+   "neighbors": [
+    73,
+    71
+   ],
+   "sid": 2031,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "",
+   "flag": 256,
+   "price": 800,
+   "rents": [
+    150,
+    150,
+    400,
+    1000,
+    2400,
+    5000,
+    9000
+   ]
+  },
+  {
+   "id": 73,
+   "name": "達濠",
+   "x": 880,
+   "y": 1744,
+   "neighbors": [
+    74,
+    72
+   ],
+   "sid": 2032,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "",
+   "flag": 256,
+   "price": 800,
+   "rents": [
+    150,
+    150,
+    400,
+    1000,
+    2400,
+    5000,
+    9000
+   ]
+  },
+  {
+   "id": 74,
+   "name": "達濠",
+   "x": 912,
+   "y": 1777,
+   "neighbors": [
+    14,
+    73
+   ],
+   "sid": 2033,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "",
+   "flag": 256,
+   "price": 800,
+   "rents": [
+    150,
+    150,
+    400,
+    1000,
+    2400,
+    5000,
+    9000
+   ]
+  },
+  {
+   "id": 75,
+   "name": "",
+   "x": 1320,
+   "y": 1582,
+   "neighbors": [
+    11,
+    30
+   ],
+   "sid": 0,
+   "kind": 17,
+   "flags": 0,
+   "type": "blank"
+  },
+  {
+   "id": 76,
+   "name": "",
+   "x": 1416,
+   "y": 1582,
+   "neighbors": [
+    30,
+    31
+   ],
+   "sid": 0,
+   "kind": 17,
+   "flags": 0,
+   "type": "blank"
+  },
+  {
+   "id": 77,
+   "name": "南澳縣",
+   "x": 1248,
+   "y": 1368,
+   "neighbors": [
+    10,
+    78
+   ],
+   "sid": 2037,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "南澳縣",
+   "flag": 1536,
+   "price": 500,
+   "rents": [
+    100,
+    100,
+    250,
+    700,
+    1800,
+    3500,
+    6600
+   ]
+  },
+  {
+   "id": 78,
+   "name": "南澳縣",
+   "x": 1248,
+   "y": 1416,
+   "neighbors": [
+    77,
+    79
+   ],
+   "sid": 2036,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "南澳縣",
+   "flag": 1536,
+   "price": 500,
+   "rents": [
+    100,
+    100,
+    250,
+    700,
+    1800,
+    3500,
+    6600
+   ]
+  },
+  {
+   "id": 79,
+   "name": "南澳縣",
+   "x": 1248,
+   "y": 1464,
+   "neighbors": [
+    78,
+    80
+   ],
+   "sid": 2035,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "南澳縣",
+   "flag": 1536,
+   "price": 500,
+   "rents": [
+    100,
+    100,
+    250,
+    700,
+    1800,
+    3500,
+    6600
+   ]
+  },
+  {
+   "id": 80,
+   "name": "南澳縣",
+   "x": 1248,
+   "y": 1512,
+   "neighbors": [
+    79,
+    11
+   ],
+   "sid": 2034,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "南澳縣",
+   "flag": 1536,
+   "price": 500,
+   "rents": [
+    100,
+    100,
+    250,
+    700,
+    1800,
+    3500,
+    6600
+   ]
+  },
+  {
+   "id": 81,
+   "name": "媽嶼島",
+   "x": 1248,
+   "y": 1129,
+   "neighbors": [
+    9,
+    82
+   ],
+   "sid": 2038,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "媽嶼島",
+   "flag": 1536,
+   "price": 800,
+   "rents": [
+    150,
+    150,
+    400,
+    1000,
+    2400,
+    5000,
+    9000
+   ]
+  },
+  {
+   "id": 82,
+   "name": "媽嶼島",
+   "x": 1248,
+   "y": 1176,
+   "neighbors": [
+    81,
+    83
+   ],
+   "sid": 2039,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "媽嶼島",
+   "flag": 1536,
+   "price": 800,
+   "rents": [
+    150,
+    150,
+    400,
+    1000,
+    2400,
+    5000,
+    9000
+   ]
+  },
+  {
+   "id": 83,
+   "name": "媽嶼島",
+   "x": 1248,
+   "y": 1224,
+   "neighbors": [
+    82,
+    10
+   ],
+   "sid": 2040,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "媽嶼島",
+   "flag": 1536,
+   "price": 800,
+   "rents": [
+    150,
+    150,
+    400,
+    1000,
+    2400,
+    5000,
+    9000
+   ]
+  },
+  {
+   "id": 84,
+   "name": "東海岸",
+   "x": 1296,
+   "y": 1008,
+   "neighbors": [
+    85,
+    9
+   ],
+   "sid": 4001,
+   "kind": 0,
+   "flags": 0,
+   "type": "commercial",
+   "sidName": "東海岸",
+   "flag": 1792,
+   "price": 4000,
+   "rents": [
+    400,
+    400,
+    1000,
+    2500,
+    5000,
+    8000
+   ]
+  },
+  {
+   "id": 85,
+   "name": "東海岸",
+   "x": 1328,
+   "y": 975,
+   "neighbors": [
+    86,
+    84
+   ],
+   "sid": 4001,
+   "kind": 0,
+   "flags": 0,
+   "type": "commercial",
+   "sidName": "東海岸",
+   "flag": 1792,
+   "price": 4000,
+   "rents": [
+    400,
+    400,
+    1000,
+    2500,
+    5000,
+    8000
+   ]
+  },
+  {
+   "id": 86,
+   "name": "東海岸",
+   "x": 1372,
+   "y": 931,
+   "neighbors": [
+    87,
+    85
+   ],
+   "sid": 2041,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "東海岸",
+   "flag": 1792,
+   "price": 1000,
+   "rents": [
+    200,
+    200,
+    500,
+    1200,
+    2800,
+    6000,
+    10000
+   ]
+  },
+  {
+   "id": 87,
+   "name": "東海岸",
+   "x": 1406,
+   "y": 897,
+   "neighbors": [
+    88,
+    86
+   ],
+   "sid": 2042,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "東海岸",
+   "flag": 1792,
+   "price": 1000,
+   "rents": [
+    200,
+    200,
+    500,
+    1200,
+    2800,
+    6000,
+    10000
+   ]
+  },
+  {
+   "id": 88,
+   "name": "東海岸",
+   "x": 1440,
+   "y": 863,
+   "neighbors": [
+    8,
+    87
+   ],
+   "sid": 2043,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "東海岸",
+   "flag": 1792,
+   "price": 1000,
+   "rents": [
+    200,
+    200,
+    500,
+    1200,
+    2800,
+    6000,
+    10000
+   ]
+  },
+  {
+   "id": 89,
+   "name": "青雲岩",
+   "x": 1487,
+   "y": 647,
+   "neighbors": [
+    7,
+    90
+   ],
+   "sid": 2046,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "青雲岩",
+   "flag": 1536,
+   "price": 1000,
+   "rents": [
+    200,
+    200,
+    500,
+    1200,
+    2800,
+    6000,
+    10000
+   ]
+  },
+  {
+   "id": 90,
+   "name": "青雲岩",
+   "x": 1487,
+   "y": 696,
+   "neighbors": [
+    89,
+    91
+   ],
+   "sid": 2045,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "青雲岩",
+   "flag": 1536,
+   "price": 1000,
+   "rents": [
+    200,
+    200,
+    500,
+    1200,
+    2800,
+    6000,
+    10000
+   ]
+  },
+  {
+   "id": 91,
+   "name": "青雲岩",
+   "x": 1487,
+   "y": 744,
+   "neighbors": [
+    90,
+    8
+   ],
+   "sid": 2044,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "青雲岩",
+   "flag": 1536,
+   "price": 1000,
+   "rents": [
+    200,
+    200,
+    500,
+    1200,
+    2800,
+    6000,
+    10000
+   ]
+  },
+  {
+   "id": 92,
+   "name": "小公園",
+   "x": 1530,
+   "y": 531,
+   "neighbors": [
+    93,
+    7
+   ],
+   "sid": 2050,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "小公園",
+   "flag": 1792,
+   "price": 1500,
+   "rents": [
+    300,
+    300,
+    750,
+    2000,
+    4800,
+    10000,
+    18000
+   ]
+  },
+  {
+   "id": 93,
+   "name": "小公園",
+   "x": 1564,
+   "y": 498,
+   "neighbors": [
+    94,
+    92
+   ],
+   "sid": 2049,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "小公園",
+   "flag": 1792,
+   "price": 1500,
+   "rents": [
+    300,
+    300,
+    750,
+    2000,
+    4800,
+    10000,
+    18000
+   ]
+  },
+  {
+   "id": 94,
+   "name": "小公園",
+   "x": 1599,
+   "y": 463,
+   "neighbors": [
+    95,
+    93
+   ],
+   "sid": 2048,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "小公園",
+   "flag": 1792,
+   "price": 1500,
+   "rents": [
+    300,
+    300,
+    750,
+    2000,
+    4800,
+    10000,
+    18000
+   ]
+  },
+  {
+   "id": 95,
+   "name": "小公園",
+   "x": 1632,
+   "y": 431,
+   "neighbors": [
+    6,
+    94
+   ],
+   "sid": 2047,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "小公園",
+   "flag": 1792,
+   "price": 1500,
+   "rents": [
+    300,
+    300,
+    750,
+    2000,
+    4800,
+    10000,
+    18000
+   ]
+  },
+  {
+   "id": 96,
+   "name": "汕頭港",
+   "x": 1624,
+   "y": 327,
+   "neighbors": [
+    97,
+    6
+   ],
+   "sid": 4004,
+   "kind": 0,
+   "flags": 0,
+   "type": "commercial",
+   "sidName": "汕頭港",
+   "flag": 256,
+   "price": 4000,
+   "rents": [
+    400,
+    400,
+    1000,
+    2500,
+    5000,
+    8000
+   ]
+  },
+  {
+   "id": 97,
+   "name": "汕頭港",
+   "x": 1593,
+   "y": 297,
+   "neighbors": [
+    5,
+    96
+   ],
+   "sid": 4004,
+   "kind": 0,
+   "flags": 0,
+   "type": "commercial",
+   "sidName": "汕頭港",
+   "flag": 256,
+   "price": 4000,
+   "rents": [
+    400,
+    400,
+    1000,
+    2500,
+    5000,
+    8000
+   ]
+  },
+  {
+   "id": 98,
+   "name": "",
+   "x": 504,
+   "y": 1080,
+   "neighbors": [
+    24,
+    23
+   ],
+   "sid": 0,
+   "kind": 17,
+   "flags": 32768,
+   "type": "blank"
+  },
+  {
+   "id": 99,
+   "name": "",
+   "x": 408,
+   "y": 1175,
+   "neighbors": [
+    100,
+    25
+   ],
+   "sid": 0,
+   "kind": 17,
+   "flags": 32768,
+   "type": "blank"
+  },
+  {
+   "id": 100,
+   "name": "企鵝挖寶",
+   "x": 360,
+   "y": 1224,
+   "neighbors": [
+    26,
+    99
+   ],
+   "sid": 0,
+   "kind": 6,
+   "flags": 32768,
+   "type": "game",
+   "minigame": "penguin"
+  },
+  {
+   "id": 101,
+   "name": "",
+   "x": 408,
+   "y": 1318,
+   "neighbors": [
+    27,
+    26
+   ],
+   "sid": 0,
+   "kind": 17,
+   "flags": 32768,
+   "type": "blank"
+  },
+  {
+   "id": 102,
+   "name": "",
+   "x": 504,
+   "y": 1415,
+   "neighbors": [
+    28,
+    27
+   ],
+   "sid": 0,
+   "kind": 17,
+   "flags": 32768,
+   "type": "blank"
+  }
+ ]
+}

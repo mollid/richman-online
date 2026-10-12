@@ -1,5 +1,6 @@
 export * from './types.js';
 export * from './board.js';
+export * from './maps/index.js';
 export * from './rng.js';
 export * from './calendar.js';
 export * from './economy.js';

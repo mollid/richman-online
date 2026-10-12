@@ -143,9 +143,8 @@ export function botDecide(state: GameState, botId: string, rng: () => number): P
   const acts = availableActions(state);
   const cell = state.board[me.position]!;
 
-  if (me.cards.includes('send-god') && isNegativeGod(me.god?.godId)) {
-    return { type: 'USE_CARD', cardId: 'send-god' };
-  }
+  // 送神卡只在掷骰前那一段办（上面已处理）：R4-d 之后落格窗里用卡会被引擎以
+  // 「该卡片只能在掷骰前使用」拒掉，这里再判一次就是给自己造错误。
 
   if (acts.canBuy && cell.price !== undefined && me.cash >= landPrice(state, cell) + 2000) {
     return { type: 'BUY_LAND' };

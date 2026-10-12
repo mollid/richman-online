@@ -13,7 +13,7 @@
  */
 import { FACILITIES, gradeName, vehicleLabel } from './tiles.js';
 import { companySharePrice } from './stocks.js';
-import { COMPANIES, lockedSharesOf, sellableSharesOf } from './companies.js';
+import { lockedSharesOf, sellableSharesOf } from './companies.js';
 import { propertyValue, scaled } from './economy.js';
 import type { CompanyKind, GameState, Player } from './types.js';
 
@@ -255,13 +255,12 @@ export function stockSummary(state: GameState, p: Player): StockSummary {
   for (const company of state.companies) {
     const quantity = company.shares[p.id] ?? 0;
     if (quantity <= 0) continue;
-    const def = COMPANIES[company.kind];
     const outstanding = Object.values(company.shares).reduce((a, b) => a + b, 0);
     corpRows.push({
       cellId: company.cellId,
       kind: company.kind,
-      name: def.name,
-      tile: def.tile,
+      name: company.name,
+      tile: company.tile,
       quantity,
       price: company.sharePrice,
       marketValue: company.sharePrice * quantity,

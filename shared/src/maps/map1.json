@@ -1,0 +1,3185 @@
+{
+ "mapId": 1,
+ "name": "中國",
+ "source": "map.mkf 块 #3",
+ "nodeCount": 144,
+ "startCellId": 0,
+ "subTables": {
+  "residential": {
+   "count": 73,
+   "offset": 5840,
+   "rowBytes": 52
+  },
+  "commercial": {
+   "count": 8,
+   "offset": 9688,
+   "rowBytes": 56
+  },
+  "company": {
+   "count": 4,
+   "offset": 10192,
+   "rowBytes": 52
+  },
+  "scenery": {
+   "count": 26,
+   "offset": 10452,
+   "rowBytes": 28
+  }
+ },
+ "companies": [
+  {
+   "sid": 6001,
+   "name": "中國石油",
+   "companyId": 6,
+   "sharePrice": 500,
+   "buildingId": 59,
+   "capital": 120000,
+   "cells": [
+    25,
+    26
+   ]
+  },
+  {
+   "sid": 6002,
+   "name": "中國人壽",
+   "companyId": 4,
+   "sharePrice": 600,
+   "buildingId": 49,
+   "capital": 288000,
+   "cells": [
+    120,
+    121
+   ]
+  }
+ ],
+ "cells": [
+  {
+   "id": 0,
+   "name": "瀋陽",
+   "x": 2045,
+   "y": 411,
+   "neighbors": [
+    1,
+    134
+   ],
+   "sid": 2001,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "瀋陽",
+   "flag": 256,
+   "price": 2000,
+   "rents": [
+    400,
+    400,
+    1000,
+    2400,
+    6000,
+    12500,
+    22000
+   ]
+  },
+  {
+   "id": 1,
+   "name": "瀋陽",
+   "x": 2010,
+   "y": 375,
+   "neighbors": [
+    2,
+    0
+   ],
+   "sid": 2002,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "瀋陽",
+   "flag": 256,
+   "price": 2000,
+   "rents": [
+    400,
+    400,
+    1000,
+    2400,
+    6000,
+    12500,
+    22000
+   ]
+  },
+  {
+   "id": 2,
+   "name": "瀋陽",
+   "x": 1976,
+   "y": 342,
+   "neighbors": [
+    3,
+    1
+   ],
+   "sid": 2003,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "瀋陽",
+   "flag": 256,
+   "price": 2000,
+   "rents": [
+    400,
+    400,
+    1000,
+    2400,
+    6000,
+    12500,
+    22000
+   ]
+  },
+  {
+   "id": 3,
+   "name": "瀋陽",
+   "x": 1942,
+   "y": 309,
+   "neighbors": [
+    4,
+    2
+   ],
+   "sid": 2004,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "瀋陽",
+   "flag": 256,
+   "price": 2000,
+   "rents": [
+    400,
+    400,
+    1000,
+    2400,
+    6000,
+    12500,
+    22000
+   ]
+  },
+  {
+   "id": 4,
+   "name": "魔法屋",
+   "x": 1895,
+   "y": 263,
+   "neighbors": [
+    5,
+    3
+   ],
+   "sid": 0,
+   "kind": 16,
+   "flags": 0,
+   "type": "magic"
+  },
+  {
+   "id": 5,
+   "name": "承德",
+   "x": 1824,
+   "y": 263,
+   "neighbors": [
+    6,
+    4
+   ],
+   "sid": 2005,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "承德",
+   "flag": 0,
+   "price": 1500,
+   "rents": [
+    300,
+    300,
+    750,
+    2000,
+    4800,
+    10000,
+    18000
+   ]
+  },
+  {
+   "id": 6,
+   "name": "承德",
+   "x": 1776,
+   "y": 263,
+   "neighbors": [
+    7,
+    5
+   ],
+   "sid": 2006,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "承德",
+   "flag": 0,
+   "price": 1500,
+   "rents": [
+    300,
+    300,
+    750,
+    2000,
+    4800,
+    10000,
+    18000
+   ]
+  },
+  {
+   "id": 7,
+   "name": "承德",
+   "x": 1727,
+   "y": 263,
+   "neighbors": [
+    8,
+    6
+   ],
+   "sid": 2007,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "承德",
+   "flag": 0,
+   "price": 1500,
+   "rents": [
+    300,
+    300,
+    750,
+    2000,
+    4800,
+    10000,
+    18000
+   ]
+  },
+  {
+   "id": 8,
+   "name": "承德",
+   "x": 1680,
+   "y": 263,
+   "neighbors": [
+    9,
+    7
+   ],
+   "sid": 2008,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "承德",
+   "flag": 0,
+   "price": 1500,
+   "rents": [
+    300,
+    300,
+    750,
+    2000,
+    4800,
+    10000,
+    18000
+   ]
+  },
+  {
+   "id": 9,
+   "name": "百貨公司",
+   "x": 1608,
+   "y": 263,
+   "neighbors": [
+    10,
+    8
+   ],
+   "sid": 6004,
+   "kind": 15,
+   "flags": 0,
+   "sidName": "玉井府百貨",
+   "flag": 512,
+   "companyId": 10,
+   "companyPrice": 0,
+   "buildingId": 54,
+   "capital": 160000,
+   "type": "shop"
+  },
+  {
+   "id": 10,
+   "name": "",
+   "x": 1561,
+   "y": 308,
+   "neighbors": [
+    11,
+    9
+   ],
+   "sid": 2009,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "",
+   "flag": 1792,
+   "price": 1000,
+   "rents": [
+    200,
+    200,
+    500,
+    1200,
+    2800,
+    6000,
+    10000
+   ]
+  },
+  {
+   "id": 11,
+   "name": "",
+   "x": 1529,
+   "y": 341,
+   "neighbors": [
+    12,
+    10
+   ],
+   "sid": 2010,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "",
+   "flag": 1792,
+   "price": 1000,
+   "rents": [
+    200,
+    200,
+    500,
+    1200,
+    2800,
+    6000,
+    10000
+   ]
+  },
+  {
+   "id": 12,
+   "name": "",
+   "x": 1494,
+   "y": 377,
+   "neighbors": [
+    13,
+    11
+   ],
+   "sid": 2011,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "",
+   "flag": 1792,
+   "price": 1000,
+   "rents": [
+    200,
+    200,
+    500,
+    1200,
+    2800,
+    6000,
+    10000
+   ]
+  },
+  {
+   "id": 13,
+   "name": "",
+   "x": 1459,
+   "y": 409,
+   "neighbors": [
+    14,
+    12
+   ],
+   "sid": 2012,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "",
+   "flag": 1792,
+   "price": 1000,
+   "rents": [
+    200,
+    200,
+    500,
+    1200,
+    2800,
+    6000,
+    10000
+   ]
+  },
+  {
+   "id": 14,
+   "name": "命運",
+   "x": 1415,
+   "y": 456,
+   "neighbors": [
+    15,
+    13
+   ],
+   "sid": 0,
+   "kind": 3,
+   "flags": 0,
+   "type": "chance"
+  },
+  {
+   "id": 15,
+   "name": "歸綏",
+   "x": 1344,
+   "y": 456,
+   "neighbors": [
+    16,
+    14
+   ],
+   "sid": 2013,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "歸綏",
+   "flag": 0,
+   "price": 800,
+   "rents": [
+    150,
+    150,
+    400,
+    1000,
+    2400,
+    5000,
+    9000
+   ]
+  },
+  {
+   "id": 16,
+   "name": "歸綏",
+   "x": 1296,
+   "y": 456,
+   "neighbors": [
+    17,
+    15
+   ],
+   "sid": 2014,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "歸綏",
+   "flag": 0,
+   "price": 800,
+   "rents": [
+    150,
+    150,
+    400,
+    1000,
+    2400,
+    5000,
+    9000
+   ]
+  },
+  {
+   "id": 17,
+   "name": "歸綏",
+   "x": 1247,
+   "y": 456,
+   "neighbors": [
+    18,
+    16
+   ],
+   "sid": 2015,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "歸綏",
+   "flag": 0,
+   "price": 800,
+   "rents": [
+    150,
+    150,
+    400,
+    1000,
+    2400,
+    5000,
+    9000
+   ]
+  },
+  {
+   "id": 18,
+   "name": "歸綏",
+   "x": 1197,
+   "y": 456,
+   "neighbors": [
+    19,
+    17
+   ],
+   "sid": 4008,
+   "kind": 0,
+   "flags": 0,
+   "type": "commercial",
+   "sidName": "歸綏",
+   "flag": 0,
+   "price": 2000,
+   "rents": [
+    200,
+    200,
+    500,
+    1200,
+    2500,
+    6000
+   ]
+  },
+  {
+   "id": 19,
+   "name": "歸綏",
+   "x": 1152,
+   "y": 456,
+   "neighbors": [
+    20,
+    18
+   ],
+   "sid": 4008,
+   "kind": 0,
+   "flags": 0,
+   "type": "commercial",
+   "sidName": "歸綏",
+   "flag": 0,
+   "price": 2000,
+   "rents": [
+    200,
+    200,
+    500,
+    1200,
+    2500,
+    6000
+   ]
+  },
+  {
+   "id": 20,
+   "name": "新聞",
+   "x": 1079,
+   "y": 456,
+   "neighbors": [
+    21,
+    19
+   ],
+   "sid": 0,
+   "kind": 2,
+   "flags": 0,
+   "type": "news"
+  },
+  {
+   "id": 21,
+   "name": "銀川",
+   "x": 1021,
+   "y": 514,
+   "neighbors": [
+    22,
+    20
+   ],
+   "sid": 2016,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "銀川",
+   "flag": 1792,
+   "price": 500,
+   "rents": [
+    100,
+    100,
+    250,
+    700,
+    1800,
+    3500,
+    6600
+   ]
+  },
+  {
+   "id": 22,
+   "name": "銀川",
+   "x": 988,
+   "y": 547,
+   "neighbors": [
+    23,
+    21
+   ],
+   "sid": 2017,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "銀川",
+   "flag": 1792,
+   "price": 500,
+   "rents": [
+    100,
+    100,
+    250,
+    700,
+    1800,
+    3500,
+    6600
+   ]
+  },
+  {
+   "id": 23,
+   "name": "銀川",
+   "x": 952,
+   "y": 581,
+   "neighbors": [
+    24,
+    22
+   ],
+   "sid": 2018,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "銀川",
+   "flag": 1792,
+   "price": 500,
+   "rents": [
+    100,
+    100,
+    250,
+    700,
+    1800,
+    3500,
+    6600
+   ]
+  },
+  {
+   "id": 24,
+   "name": "銀川",
+   "x": 920,
+   "y": 614,
+   "neighbors": [
+    25,
+    23
+   ],
+   "sid": 2019,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "銀川",
+   "flag": 1792,
+   "price": 500,
+   "rents": [
+    100,
+    100,
+    250,
+    700,
+    1800,
+    3500,
+    6600
+   ]
+  },
+  {
+   "id": 25,
+   "name": "銀川",
+   "x": 875,
+   "y": 658,
+   "neighbors": [
+    26,
+    24
+   ],
+   "sid": 6001,
+   "kind": 0,
+   "flags": 0,
+   "sidName": "中國石油",
+   "flag": 768,
+   "companyId": 6,
+   "companyPrice": 500,
+   "buildingId": 59,
+   "capital": 120000,
+   "type": "company"
+  },
+  {
+   "id": 26,
+   "name": "銀川",
+   "x": 842,
+   "y": 690,
+   "neighbors": [
+    27,
+    25
+   ],
+   "sid": 6001,
+   "kind": 0,
+   "flags": 0,
+   "sidName": "中國石油",
+   "flag": 768,
+   "companyId": 6,
+   "companyPrice": 500,
+   "buildingId": 59,
+   "capital": 120000,
+   "type": "company"
+  },
+  {
+   "id": 27,
+   "name": "監獄",
+   "x": 791,
+   "y": 744,
+   "neighbors": [
+    28,
+    26,
+    135
+   ],
+   "sid": 0,
+   "kind": 4,
+   "flags": 2048,
+   "type": "jail"
+  },
+  {
+   "id": 28,
+   "name": "蘭州",
+   "x": 841,
+   "y": 794,
+   "neighbors": [
+    29,
+    27
+   ],
+   "sid": 2020,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "蘭州",
+   "flag": 256,
+   "price": 800,
+   "rents": [
+    150,
+    150,
+    400,
+    1000,
+    2400,
+    5000,
+    9000
+   ]
+  },
+  {
+   "id": 29,
+   "name": "蘭州",
+   "x": 876,
+   "y": 830,
+   "neighbors": [
+    30,
+    28
+   ],
+   "sid": 2021,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "蘭州",
+   "flag": 256,
+   "price": 800,
+   "rents": [
+    150,
+    150,
+    400,
+    1000,
+    2400,
+    5000,
+    9000
+   ]
+  },
+  {
+   "id": 30,
+   "name": "蘭州",
+   "x": 909,
+   "y": 862,
+   "neighbors": [
+    31,
+    29
+   ],
+   "sid": 2022,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "蘭州",
+   "flag": 256,
+   "price": 800,
+   "rents": [
+    150,
+    150,
+    400,
+    1000,
+    2400,
+    5000,
+    9000
+   ]
+  },
+  {
+   "id": 31,
+   "name": "蘭州",
+   "x": 944,
+   "y": 896,
+   "neighbors": [
+    32,
+    30
+   ],
+   "sid": 2023,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "蘭州",
+   "flag": 256,
+   "price": 800,
+   "rents": [
+    150,
+    150,
+    400,
+    1000,
+    2400,
+    5000,
+    9000
+   ]
+  },
+  {
+   "id": 32,
+   "name": "蘭州",
+   "x": 977,
+   "y": 930,
+   "neighbors": [
+    33,
+    31
+   ],
+   "sid": 2024,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "蘭州",
+   "flag": 256,
+   "price": 800,
+   "rents": [
+    150,
+    150,
+    400,
+    1000,
+    2400,
+    5000,
+    9000
+   ]
+  },
+  {
+   "id": 33,
+   "name": "樂透",
+   "x": 1032,
+   "y": 984,
+   "neighbors": [
+    34,
+    32
+   ],
+   "sid": 0,
+   "kind": 9,
+   "flags": 0,
+   "type": "lottery"
+  },
+  {
+   "id": 34,
+   "name": "得３０點",
+   "x": 1103,
+   "y": 1056,
+   "neighbors": [
+    35,
+    33
+   ],
+   "sid": 0,
+   "kind": 11,
+   "flags": 0,
+   "type": "points",
+   "pointsGain": 30
+  },
+  {
+   "id": 35,
+   "name": "",
+   "x": 1151,
+   "y": 1080,
+   "neighbors": [
+    36,
+    34
+   ],
+   "sid": 0,
+   "kind": 17,
+   "flags": 0,
+   "type": "blank"
+  },
+  {
+   "id": 36,
+   "name": "得１０點",
+   "x": 1199,
+   "y": 1080,
+   "neighbors": [
+    37,
+    35
+   ],
+   "sid": 0,
+   "kind": 12,
+   "flags": 0,
+   "type": "points",
+   "pointsGain": 10
+  },
+  {
+   "id": 37,
+   "name": "企鵝挖寶",
+   "x": 1248,
+   "y": 1056,
+   "neighbors": [
+    38,
+    36
+   ],
+   "sid": 0,
+   "kind": 6,
+   "flags": 0,
+   "type": "game",
+   "minigame": "penguin"
+  },
+  {
+   "id": 38,
+   "name": "得１０點",
+   "x": 1295,
+   "y": 1007,
+   "neighbors": [
+    39,
+    37
+   ],
+   "sid": 0,
+   "kind": 12,
+   "flags": 0,
+   "type": "points",
+   "pointsGain": 10
+  },
+  {
+   "id": 39,
+   "name": "",
+   "x": 1344,
+   "y": 983,
+   "neighbors": [
+    40,
+    38
+   ],
+   "sid": 0,
+   "kind": 17,
+   "flags": 0,
+   "type": "blank"
+  },
+  {
+   "id": 40,
+   "name": "得３０點",
+   "x": 1392,
+   "y": 984,
+   "neighbors": [
+    41,
+    39
+   ],
+   "sid": 0,
+   "kind": 11,
+   "flags": 0,
+   "type": "points",
+   "pointsGain": 30
+  },
+  {
+   "id": 41,
+   "name": "",
+   "x": 1440,
+   "y": 1008,
+   "neighbors": [
+    42,
+    40
+   ],
+   "sid": 0,
+   "kind": 17,
+   "flags": 0,
+   "type": "blank"
+  },
+  {
+   "id": 42,
+   "name": "得１０點",
+   "x": 1488,
+   "y": 1055,
+   "neighbors": [
+    43,
+    41
+   ],
+   "sid": 0,
+   "kind": 12,
+   "flags": 0,
+   "type": "points",
+   "pointsGain": 10
+  },
+  {
+   "id": 43,
+   "name": "喜從天降",
+   "x": 1488,
+   "y": 1103,
+   "neighbors": [
+    44,
+    42
+   ],
+   "sid": 0,
+   "kind": 7,
+   "flags": 0,
+   "type": "game",
+   "minigame": "windfall"
+  },
+  {
+   "id": 44,
+   "name": "",
+   "x": 1488,
+   "y": 1151,
+   "neighbors": [
+    45,
+    43
+   ],
+   "sid": 0,
+   "kind": 17,
+   "flags": 0,
+   "type": "blank"
+  },
+  {
+   "id": 45,
+   "name": "得５０點",
+   "x": 1536,
+   "y": 1200,
+   "neighbors": [
+    46,
+    44
+   ],
+   "sid": 0,
+   "kind": 10,
+   "flags": 0,
+   "type": "points",
+   "pointsGain": 50
+  },
+  {
+   "id": 46,
+   "name": "",
+   "x": 1584,
+   "y": 1247,
+   "neighbors": [
+    47,
+    45
+   ],
+   "sid": 0,
+   "kind": 17,
+   "flags": 0,
+   "type": "blank"
+  },
+  {
+   "id": 47,
+   "name": "七彩氣球",
+   "x": 1633,
+   "y": 1296,
+   "neighbors": [
+    48,
+    46
+   ],
+   "sid": 0,
+   "kind": 8,
+   "flags": 0,
+   "type": "game",
+   "minigame": "balloon"
+  },
+  {
+   "id": 48,
+   "name": "得１０點",
+   "x": 1680,
+   "y": 1344,
+   "neighbors": [
+    49,
+    47
+   ],
+   "sid": 0,
+   "kind": 12,
+   "flags": 0,
+   "type": "points",
+   "pointsGain": 10
+  },
+  {
+   "id": 49,
+   "name": "",
+   "x": 1680,
+   "y": 1391,
+   "neighbors": [
+    50,
+    48
+   ],
+   "sid": 0,
+   "kind": 17,
+   "flags": 0,
+   "type": "blank"
+  },
+  {
+   "id": 50,
+   "name": "得５０點",
+   "x": 1681,
+   "y": 1440,
+   "neighbors": [
+    51,
+    49
+   ],
+   "sid": 0,
+   "kind": 10,
+   "flags": 0,
+   "type": "points",
+   "pointsGain": 50
+  },
+  {
+   "id": 51,
+   "name": "武漢",
+   "x": 1628,
+   "y": 1439,
+   "neighbors": [
+    52,
+    50
+   ],
+   "sid": 4003,
+   "kind": 0,
+   "flags": 0,
+   "type": "commercial",
+   "sidName": "武漢",
+   "flag": 1024,
+   "price": 5000,
+   "rents": [
+    500,
+    500,
+    1200,
+    3000,
+    6000,
+    10000
+   ]
+  },
+  {
+   "id": 52,
+   "name": "武漢",
+   "x": 1586,
+   "y": 1439,
+   "neighbors": [
+    53,
+    51
+   ],
+   "sid": 4003,
+   "kind": 0,
+   "flags": 0,
+   "type": "commercial",
+   "sidName": "武漢",
+   "flag": 1024,
+   "price": 5000,
+   "rents": [
+    500,
+    500,
+    1200,
+    3000,
+    6000,
+    10000
+   ]
+  },
+  {
+   "id": 53,
+   "name": "",
+   "x": 1536,
+   "y": 1439,
+   "neighbors": [
+    54,
+    52
+   ],
+   "sid": 0,
+   "kind": 17,
+   "flags": 0,
+   "type": "blank"
+  },
+  {
+   "id": 54,
+   "name": "得１０點",
+   "x": 1488,
+   "y": 1392,
+   "neighbors": [
+    55,
+    53
+   ],
+   "sid": 0,
+   "kind": 12,
+   "flags": 0,
+   "type": "points",
+   "pointsGain": 10
+  },
+  {
+   "id": 55,
+   "name": "",
+   "x": 1440,
+   "y": 1343,
+   "neighbors": [
+    56,
+    54
+   ],
+   "sid": 0,
+   "kind": 17,
+   "flags": 0,
+   "type": "blank"
+  },
+  {
+   "id": 56,
+   "name": "命運",
+   "x": 1368,
+   "y": 1271,
+   "neighbors": [
+    57,
+    55
+   ],
+   "sid": 0,
+   "kind": 3,
+   "flags": 0,
+   "type": "chance"
+  },
+  {
+   "id": 57,
+   "name": "重慶",
+   "x": 1295,
+   "y": 1271,
+   "neighbors": [
+    56,
+    58
+   ],
+   "sid": 2025,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "重慶",
+   "flag": 0,
+   "price": 2000,
+   "rents": [
+    400,
+    400,
+    1000,
+    2400,
+    6000,
+    12500,
+    22000
+   ]
+  },
+  {
+   "id": 58,
+   "name": "重慶",
+   "x": 1247,
+   "y": 1271,
+   "neighbors": [
+    59,
+    57
+   ],
+   "sid": 2026,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "重慶",
+   "flag": 0,
+   "price": 2000,
+   "rents": [
+    400,
+    400,
+    1000,
+    2400,
+    6000,
+    12500,
+    22000
+   ]
+  },
+  {
+   "id": 59,
+   "name": "重慶",
+   "x": 1199,
+   "y": 1271,
+   "neighbors": [
+    60,
+    58
+   ],
+   "sid": 2027,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "重慶",
+   "flag": 0,
+   "price": 2000,
+   "rents": [
+    400,
+    400,
+    1000,
+    2400,
+    6000,
+    12500,
+    22000
+   ]
+  },
+  {
+   "id": 60,
+   "name": "重慶",
+   "x": 1151,
+   "y": 1271,
+   "neighbors": [
+    61,
+    59
+   ],
+   "sid": 2028,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "重慶",
+   "flag": 0,
+   "price": 2000,
+   "rents": [
+    400,
+    400,
+    1000,
+    2400,
+    6000,
+    12500,
+    22000
+   ]
+  },
+  {
+   "id": 61,
+   "name": "重慶",
+   "x": 1104,
+   "y": 1271,
+   "neighbors": [
+    62,
+    60
+   ],
+   "sid": 2029,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "重慶",
+   "flag": 0,
+   "price": 2000,
+   "rents": [
+    400,
+    400,
+    1000,
+    2400,
+    6000,
+    12500,
+    22000
+   ]
+  },
+  {
+   "id": 62,
+   "name": "醫院",
+   "x": 1032,
+   "y": 1271,
+   "neighbors": [
+    63,
+    61
+   ],
+   "sid": 8001,
+   "kind": 5,
+   "flags": 0,
+   "type": "hospital",
+   "scenery": true
+  },
+  {
+   "id": 63,
+   "name": "成都",
+   "x": 980,
+   "y": 1321,
+   "neighbors": [
+    64,
+    62
+   ],
+   "sid": 2030,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "成都",
+   "flag": 1792,
+   "price": 1500,
+   "rents": [
+    300,
+    300,
+    750,
+    2000,
+    4800,
+    10000,
+    18000
+   ]
+  },
+  {
+   "id": 64,
+   "name": "成都",
+   "x": 947,
+   "y": 1355,
+   "neighbors": [
+    65,
+    63
+   ],
+   "sid": 2031,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "成都",
+   "flag": 1792,
+   "price": 1500,
+   "rents": [
+    300,
+    300,
+    750,
+    2000,
+    4800,
+    10000,
+    18000
+   ]
+  },
+  {
+   "id": 65,
+   "name": "成都",
+   "x": 913,
+   "y": 1388,
+   "neighbors": [
+    66,
+    64
+   ],
+   "sid": 2032,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "成都",
+   "flag": 1792,
+   "price": 1500,
+   "rents": [
+    300,
+    300,
+    750,
+    2000,
+    4800,
+    10000,
+    18000
+   ]
+  },
+  {
+   "id": 66,
+   "name": "成都",
+   "x": 878,
+   "y": 1425,
+   "neighbors": [
+    67,
+    65
+   ],
+   "sid": 2033,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "成都",
+   "flag": 1792,
+   "price": 1500,
+   "rents": [
+    300,
+    300,
+    750,
+    2000,
+    4800,
+    10000,
+    18000
+   ]
+  },
+  {
+   "id": 67,
+   "name": "成都",
+   "x": 846,
+   "y": 1456,
+   "neighbors": [
+    68,
+    66
+   ],
+   "sid": 2034,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "成都",
+   "flag": 1792,
+   "price": 1500,
+   "rents": [
+    300,
+    300,
+    750,
+    2000,
+    4800,
+    10000,
+    18000
+   ]
+  },
+  {
+   "id": 68,
+   "name": "新聞",
+   "x": 791,
+   "y": 1512,
+   "neighbors": [
+    69,
+    67
+   ],
+   "sid": 0,
+   "kind": 2,
+   "flags": 0,
+   "type": "news"
+  },
+  {
+   "id": 69,
+   "name": "康定",
+   "x": 791,
+   "y": 1590,
+   "neighbors": [
+    70,
+    68
+   ],
+   "sid": 4005,
+   "kind": 0,
+   "flags": 0,
+   "type": "commercial",
+   "sidName": "康定",
+   "flag": 1536,
+   "price": 4000,
+   "rents": [
+    400,
+    400,
+    1000,
+    2500,
+    5000,
+    8000
+   ]
+  },
+  {
+   "id": 70,
+   "name": "康定",
+   "x": 791,
+   "y": 1632,
+   "neighbors": [
+    71,
+    69
+   ],
+   "sid": 4005,
+   "kind": 0,
+   "flags": 0,
+   "type": "commercial",
+   "sidName": "康定",
+   "flag": 1536,
+   "price": 4000,
+   "rents": [
+    400,
+    400,
+    1000,
+    2500,
+    5000,
+    8000
+   ]
+  },
+  {
+   "id": 71,
+   "name": "康定",
+   "x": 791,
+   "y": 1679,
+   "neighbors": [
+    72,
+    70
+   ],
+   "sid": 4004,
+   "kind": 0,
+   "flags": 0,
+   "type": "commercial",
+   "sidName": "康定",
+   "flag": 1536,
+   "price": 4000,
+   "rents": [
+    400,
+    400,
+    1000,
+    2500,
+    5000,
+    8000
+   ]
+  },
+  {
+   "id": 72,
+   "name": "康定",
+   "x": 791,
+   "y": 1721,
+   "neighbors": [
+    73,
+    71
+   ],
+   "sid": 4004,
+   "kind": 0,
+   "flags": 0,
+   "type": "commercial",
+   "sidName": "康定",
+   "flag": 1536,
+   "price": 4000,
+   "rents": [
+    400,
+    400,
+    1000,
+    2500,
+    5000,
+    8000
+   ]
+  },
+  {
+   "id": 73,
+   "name": "魔法屋",
+   "x": 791,
+   "y": 1799,
+   "neighbors": [
+    74,
+    72
+   ],
+   "sid": 0,
+   "kind": 16,
+   "flags": 0,
+   "type": "magic"
+  },
+  {
+   "id": 74,
+   "name": "昆明",
+   "x": 836,
+   "y": 1754,
+   "neighbors": [
+    75,
+    73
+   ],
+   "sid": 2035,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "昆明",
+   "flag": 768,
+   "price": 500,
+   "rents": [
+    100,
+    100,
+    250,
+    700,
+    1800,
+    3500,
+    6600
+   ]
+  },
+  {
+   "id": 75,
+   "name": "昆明",
+   "x": 869,
+   "y": 1722,
+   "neighbors": [
+    76,
+    74
+   ],
+   "sid": 2036,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "昆明",
+   "flag": 768,
+   "price": 500,
+   "rents": [
+    100,
+    100,
+    250,
+    700,
+    1800,
+    3500,
+    6600
+   ]
+  },
+  {
+   "id": 76,
+   "name": "昆明",
+   "x": 901,
+   "y": 1686,
+   "neighbors": [
+    77,
+    75
+   ],
+   "sid": 2037,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "昆明",
+   "flag": 768,
+   "price": 500,
+   "rents": [
+    100,
+    100,
+    250,
+    700,
+    1800,
+    3500,
+    6600
+   ]
+  },
+  {
+   "id": 77,
+   "name": "昆明",
+   "x": 934,
+   "y": 1652,
+   "neighbors": [
+    78,
+    76
+   ],
+   "sid": 2038,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "昆明",
+   "flag": 768,
+   "price": 500,
+   "rents": [
+    100,
+    100,
+    250,
+    700,
+    1800,
+    3500,
+    6600
+   ]
+  },
+  {
+   "id": 78,
+   "name": "命運",
+   "x": 983,
+   "y": 1608,
+   "neighbors": [
+    79,
+    77
+   ],
+   "sid": 0,
+   "kind": 3,
+   "flags": 0,
+   "type": "chance"
+  },
+  {
+   "id": 79,
+   "name": "貴陽",
+   "x": 1032,
+   "y": 1660,
+   "neighbors": [
+    80,
+    78
+   ],
+   "sid": 4007,
+   "kind": 0,
+   "flags": 0,
+   "type": "commercial",
+   "sidName": "貴陽",
+   "flag": 256,
+   "price": 4000,
+   "rents": [
+    400,
+    400,
+    1000,
+    2500,
+    5000,
+    8000
+   ]
+  },
+  {
+   "id": 80,
+   "name": "貴陽",
+   "x": 1065,
+   "y": 1691,
+   "neighbors": [
+    81,
+    79
+   ],
+   "sid": 4007,
+   "kind": 0,
+   "flags": 0,
+   "type": "commercial",
+   "sidName": "貴陽",
+   "flag": 256,
+   "price": 4000,
+   "rents": [
+    400,
+    400,
+    1000,
+    2500,
+    5000,
+    8000
+   ]
+  },
+  {
+   "id": 81,
+   "name": "貴陽",
+   "x": 1104,
+   "y": 1729,
+   "neighbors": [
+    82,
+    80
+   ],
+   "sid": 2039,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "貴陽",
+   "flag": 1280,
+   "price": 1000,
+   "rents": [
+    200,
+    200,
+    500,
+    1200,
+    2800,
+    6000,
+    10000
+   ]
+  },
+  {
+   "id": 82,
+   "name": "貴陽",
+   "x": 1139,
+   "y": 1763,
+   "neighbors": [
+    83,
+    81
+   ],
+   "sid": 2040,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "貴陽",
+   "flag": 1280,
+   "price": 1000,
+   "rents": [
+    200,
+    200,
+    500,
+    1200,
+    2800,
+    6000,
+    10000
+   ]
+  },
+  {
+   "id": 83,
+   "name": "貴陽",
+   "x": 1173,
+   "y": 1799,
+   "neighbors": [
+    84,
+    82
+   ],
+   "sid": 2041,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "貴陽",
+   "flag": 1280,
+   "price": 1000,
+   "rents": [
+    200,
+    200,
+    500,
+    1200,
+    2800,
+    6000,
+    10000
+   ]
+  },
+  {
+   "id": 84,
+   "name": "公園",
+   "x": 1223,
+   "y": 1847,
+   "neighbors": [
+    85,
+    83
+   ],
+   "sid": 0,
+   "kind": 1,
+   "flags": 0,
+   "type": "blank"
+  },
+  {
+   "id": 85,
+   "name": "桂林",
+   "x": 1275,
+   "y": 1795,
+   "neighbors": [
+    86,
+    84
+   ],
+   "sid": 2042,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "桂林",
+   "flag": 1792,
+   "price": 800,
+   "rents": [
+    150,
+    150,
+    400,
+    1000,
+    2400,
+    5000,
+    9000
+   ]
+  },
+  {
+   "id": 86,
+   "name": "桂林",
+   "x": 1309,
+   "y": 1761,
+   "neighbors": [
+    87,
+    85
+   ],
+   "sid": 2043,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "桂林",
+   "flag": 1792,
+   "price": 800,
+   "rents": [
+    150,
+    150,
+    400,
+    1000,
+    2400,
+    5000,
+    9000
+   ]
+  },
+  {
+   "id": 87,
+   "name": "桂林",
+   "x": 1344,
+   "y": 1728,
+   "neighbors": [
+    88,
+    86
+   ],
+   "sid": 2044,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "桂林",
+   "flag": 1792,
+   "price": 800,
+   "rents": [
+    150,
+    150,
+    400,
+    1000,
+    2400,
+    5000,
+    9000
+   ]
+  },
+  {
+   "id": 88,
+   "name": "桂林",
+   "x": 1377,
+   "y": 1695,
+   "neighbors": [
+    89,
+    87
+   ],
+   "sid": 2045,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "桂林",
+   "flag": 1792,
+   "price": 800,
+   "rents": [
+    150,
+    150,
+    400,
+    1000,
+    2400,
+    5000,
+    9000
+   ]
+  },
+  {
+   "id": 89,
+   "name": "桂林",
+   "x": 1409,
+   "y": 1660,
+   "neighbors": [
+    90,
+    88
+   ],
+   "sid": 2046,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "桂林",
+   "flag": 1792,
+   "price": 800,
+   "rents": [
+    150,
+    150,
+    400,
+    1000,
+    2400,
+    5000,
+    9000
+   ]
+  },
+  {
+   "id": 90,
+   "name": "樂透",
+   "x": 1465,
+   "y": 1608,
+   "neighbors": [
+    91,
+    89
+   ],
+   "sid": 0,
+   "kind": 9,
+   "flags": 0,
+   "type": "lottery"
+  },
+  {
+   "id": 91,
+   "name": "長沙",
+   "x": 1464,
+   "y": 1679,
+   "neighbors": [
+    92,
+    90
+   ],
+   "sid": 2047,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "長沙",
+   "flag": 512,
+   "price": 1000,
+   "rents": [
+    200,
+    200,
+    500,
+    1200,
+    2800,
+    6000,
+    10000
+   ]
+  },
+  {
+   "id": 92,
+   "name": "長沙",
+   "x": 1464,
+   "y": 1728,
+   "neighbors": [
+    93,
+    91
+   ],
+   "sid": 2048,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "長沙",
+   "flag": 512,
+   "price": 1000,
+   "rents": [
+    200,
+    200,
+    500,
+    1200,
+    2800,
+    6000,
+    10000
+   ]
+  },
+  {
+   "id": 93,
+   "name": "長沙",
+   "x": 1464,
+   "y": 1776,
+   "neighbors": [
+    94,
+    92
+   ],
+   "sid": 2049,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "長沙",
+   "flag": 512,
+   "price": 1000,
+   "rents": [
+    200,
+    200,
+    500,
+    1200,
+    2800,
+    6000,
+    10000
+   ]
+  },
+  {
+   "id": 94,
+   "name": "長沙",
+   "x": 1464,
+   "y": 1824,
+   "neighbors": [
+    95,
+    93
+   ],
+   "sid": 2050,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "長沙",
+   "flag": 512,
+   "price": 1000,
+   "rents": [
+    200,
+    200,
+    500,
+    1200,
+    2800,
+    6000,
+    10000
+   ]
+  },
+  {
+   "id": 95,
+   "name": "新聞",
+   "x": 1464,
+   "y": 1896,
+   "neighbors": [
+    96,
+    94
+   ],
+   "sid": 0,
+   "kind": 2,
+   "flags": 0,
+   "type": "news"
+  },
+  {
+   "id": 96,
+   "name": "廣州",
+   "x": 1534,
+   "y": 1896,
+   "neighbors": [
+    97,
+    95
+   ],
+   "sid": 4002,
+   "kind": 0,
+   "flags": 0,
+   "type": "commercial",
+   "sidName": "廣州",
+   "flag": 1024,
+   "price": 5000,
+   "rents": [
+    500,
+    500,
+    1200,
+    3000,
+    6000,
+    10000
+   ]
+  },
+  {
+   "id": 97,
+   "name": "廣州",
+   "x": 1577,
+   "y": 1896,
+   "neighbors": [
+    98,
+    96
+   ],
+   "sid": 4002,
+   "kind": 0,
+   "flags": 0,
+   "type": "commercial",
+   "sidName": "廣州",
+   "flag": 1024,
+   "price": 5000,
+   "rents": [
+    500,
+    500,
+    1200,
+    3000,
+    6000,
+    10000
+   ]
+  },
+  {
+   "id": 98,
+   "name": "廣州",
+   "x": 1632,
+   "y": 1896,
+   "neighbors": [
+    99,
+    97
+   ],
+   "sid": 4001,
+   "kind": 0,
+   "flags": 0,
+   "type": "commercial",
+   "sidName": "廣州",
+   "flag": 1024,
+   "price": 4000,
+   "rents": [
+    400,
+    400,
+    1000,
+    2500,
+    5000,
+    8000
+   ]
+  },
+  {
+   "id": 99,
+   "name": "廣州",
+   "x": 1673,
+   "y": 1896,
+   "neighbors": [
+    100,
+    98
+   ],
+   "sid": 4001,
+   "kind": 0,
+   "flags": 0,
+   "type": "commercial",
+   "sidName": "廣州",
+   "flag": 1024,
+   "price": 4000,
+   "rents": [
+    400,
+    400,
+    1000,
+    2500,
+    5000,
+    8000
+   ]
+  },
+  {
+   "id": 100,
+   "name": "命運",
+   "x": 1752,
+   "y": 1895,
+   "neighbors": [
+    101,
+    99
+   ],
+   "sid": 0,
+   "kind": 3,
+   "flags": 0,
+   "type": "chance"
+  },
+  {
+   "id": 101,
+   "name": "福州",
+   "x": 1804,
+   "y": 1843,
+   "neighbors": [
+    102,
+    100
+   ],
+   "sid": 2051,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "福州",
+   "flag": 1792,
+   "price": 1000,
+   "rents": [
+    200,
+    200,
+    500,
+    1200,
+    2800,
+    6000,
+    10000
+   ]
+  },
+  {
+   "id": 102,
+   "name": "福州",
+   "x": 1837,
+   "y": 1808,
+   "neighbors": [
+    103,
+    101
+   ],
+   "sid": 2052,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "福州",
+   "flag": 1792,
+   "price": 1000,
+   "rents": [
+    200,
+    200,
+    500,
+    1200,
+    2800,
+    6000,
+    10000
+   ]
+  },
+  {
+   "id": 103,
+   "name": "福州",
+   "x": 1871,
+   "y": 1775,
+   "neighbors": [
+    104,
+    102
+   ],
+   "sid": 2053,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "福州",
+   "flag": 1792,
+   "price": 1000,
+   "rents": [
+    200,
+    200,
+    500,
+    1200,
+    2800,
+    6000,
+    10000
+   ]
+  },
+  {
+   "id": 104,
+   "name": "福州",
+   "x": 1906,
+   "y": 1739,
+   "neighbors": [
+    105,
+    103
+   ],
+   "sid": 2054,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "福州",
+   "flag": 1792,
+   "price": 1000,
+   "rents": [
+    200,
+    200,
+    500,
+    1200,
+    2800,
+    6000,
+    10000
+   ]
+  },
+  {
+   "id": 105,
+   "name": "福州",
+   "x": 1941,
+   "y": 1706,
+   "neighbors": [
+    106,
+    104
+   ],
+   "sid": 2055,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "福州",
+   "flag": 1792,
+   "price": 1000,
+   "rents": [
+    200,
+    200,
+    500,
+    1200,
+    2800,
+    6000,
+    10000
+   ]
+  },
+  {
+   "id": 106,
+   "name": "公園",
+   "x": 1992,
+   "y": 1657,
+   "neighbors": [
+    107,
+    105
+   ],
+   "sid": 0,
+   "kind": 1,
+   "flags": 0,
+   "type": "blank"
+  },
+  {
+   "id": 107,
+   "name": "上海",
+   "x": 1992,
+   "y": 1580,
+   "neighbors": [
+    108,
+    106
+   ],
+   "sid": 4006,
+   "kind": 0,
+   "flags": 0,
+   "type": "commercial",
+   "sidName": "上海",
+   "flag": 512,
+   "price": 6000,
+   "rents": [
+    600,
+    600,
+    1500,
+    4000,
+    8000,
+    12000
+   ]
+  },
+  {
+   "id": 108,
+   "name": "上海",
+   "x": 1992,
+   "y": 1539,
+   "neighbors": [
+    109,
+    107
+   ],
+   "sid": 4006,
+   "kind": 0,
+   "flags": 0,
+   "type": "commercial",
+   "sidName": "上海",
+   "flag": 512,
+   "price": 6000,
+   "rents": [
+    600,
+    600,
+    1500,
+    4000,
+    8000,
+    12000
+   ]
+  },
+  {
+   "id": 109,
+   "name": "銀行",
+   "x": 1992,
+   "y": 1464,
+   "neighbors": [
+    110,
+    108
+   ],
+   "sid": 6003,
+   "kind": 14,
+   "flags": 0,
+   "sidName": "上海銀行",
+   "flag": 0,
+   "companyId": 7,
+   "companyPrice": 0,
+   "buildingId": 58,
+   "capital": 560000,
+   "type": "bank"
+  },
+  {
+   "id": 110,
+   "name": "南京",
+   "x": 1992,
+   "y": 1391,
+   "neighbors": [
+    111,
+    109
+   ],
+   "sid": 2059,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "南京",
+   "flag": 512,
+   "price": 2000,
+   "rents": [
+    400,
+    400,
+    1000,
+    2400,
+    6000,
+    12500,
+    22000
+   ]
+  },
+  {
+   "id": 111,
+   "name": "南京",
+   "x": 1992,
+   "y": 1343,
+   "neighbors": [
+    112,
+    110
+   ],
+   "sid": 2058,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "南京",
+   "flag": 512,
+   "price": 2000,
+   "rents": [
+    400,
+    400,
+    1000,
+    2400,
+    6000,
+    12500,
+    22000
+   ]
+  },
+  {
+   "id": 112,
+   "name": "南京",
+   "x": 1992,
+   "y": 1295,
+   "neighbors": [
+    113,
+    111
+   ],
+   "sid": 2057,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "南京",
+   "flag": 512,
+   "price": 2000,
+   "rents": [
+    400,
+    400,
+    1000,
+    2400,
+    6000,
+    12500,
+    22000
+   ]
+  },
+  {
+   "id": 113,
+   "name": "南京",
+   "x": 1992,
+   "y": 1248,
+   "neighbors": [
+    114,
+    112
+   ],
+   "sid": 2056,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "南京",
+   "flag": 512,
+   "price": 2000,
+   "rents": [
+    400,
+    400,
+    1000,
+    2400,
+    6000,
+    12500,
+    22000
+   ]
+  },
+  {
+   "id": 114,
+   "name": "百貨公司",
+   "x": 1992,
+   "y": 1176,
+   "neighbors": [
+    115,
+    113
+   ],
+   "sid": 6004,
+   "kind": 15,
+   "flags": 0,
+   "sidName": "玉井府百貨",
+   "flag": 512,
+   "companyId": 10,
+   "companyPrice": 0,
+   "buildingId": 54,
+   "capital": 160000,
+   "type": "shop"
+  },
+  {
+   "id": 115,
+   "name": "合肥",
+   "x": 1920,
+   "y": 1176,
+   "neighbors": [
+    116,
+    114
+   ],
+   "sid": 2060,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "合肥",
+   "flag": 1024,
+   "price": 1500,
+   "rents": [
+    300,
+    300,
+    750,
+    2000,
+    4800,
+    10000,
+    18000
+   ]
+  },
+  {
+   "id": 116,
+   "name": "合肥",
+   "x": 1872,
+   "y": 1176,
+   "neighbors": [
+    117,
+    115
+   ],
+   "sid": 2061,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "合肥",
+   "flag": 1024,
+   "price": 1500,
+   "rents": [
+    300,
+    300,
+    750,
+    2000,
+    4800,
+    10000,
+    18000
+   ]
+  },
+  {
+   "id": 117,
+   "name": "合肥",
+   "x": 1824,
+   "y": 1176,
+   "neighbors": [
+    118,
+    116
+   ],
+   "sid": 2062,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "合肥",
+   "flag": 1024,
+   "price": 1500,
+   "rents": [
+    300,
+    300,
+    750,
+    2000,
+    4800,
+    10000,
+    18000
+   ]
+  },
+  {
+   "id": 118,
+   "name": "合肥",
+   "x": 1776,
+   "y": 1175,
+   "neighbors": [
+    119,
+    117
+   ],
+   "sid": 2063,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "合肥",
+   "flag": 1024,
+   "price": 1500,
+   "rents": [
+    300,
+    300,
+    750,
+    2000,
+    4800,
+    10000,
+    18000
+   ]
+  },
+  {
+   "id": 119,
+   "name": "命運",
+   "x": 1704,
+   "y": 1176,
+   "neighbors": [
+    120,
+    118
+   ],
+   "sid": 0,
+   "kind": 3,
+   "flags": 0,
+   "type": "chance"
+  },
+  {
+   "id": 120,
+   "name": "濟南",
+   "x": 1756,
+   "y": 1122,
+   "neighbors": [
+    121,
+    119
+   ],
+   "sid": 6002,
+   "kind": 0,
+   "flags": 0,
+   "sidName": "中國人壽",
+   "flag": 256,
+   "companyId": 4,
+   "companyPrice": 600,
+   "buildingId": 49,
+   "capital": 288000,
+   "type": "company"
+  },
+  {
+   "id": 121,
+   "name": "濟南",
+   "x": 1789,
+   "y": 1089,
+   "neighbors": [
+    122,
+    120
+   ],
+   "sid": 6002,
+   "kind": 0,
+   "flags": 0,
+   "sidName": "中國人壽",
+   "flag": 256,
+   "companyId": 4,
+   "companyPrice": 600,
+   "buildingId": 49,
+   "capital": 288000,
+   "type": "company"
+  },
+  {
+   "id": 122,
+   "name": "卡片",
+   "x": 1848,
+   "y": 1032,
+   "neighbors": [
+    123,
+    121
+   ],
+   "sid": 0,
+   "kind": 13,
+   "flags": 0,
+   "type": "free-card"
+  },
+  {
+   "id": 123,
+   "name": "天津",
+   "x": 1848,
+   "y": 959,
+   "neighbors": [
+    124,
+    122
+   ],
+   "sid": 2064,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "天津",
+   "flag": 1536,
+   "price": 2000,
+   "rents": [
+    400,
+    400,
+    1000,
+    2400,
+    6000,
+    12500,
+    22000
+   ]
+  },
+  {
+   "id": 124,
+   "name": "天津",
+   "x": 1848,
+   "y": 911,
+   "neighbors": [
+    125,
+    123
+   ],
+   "sid": 2068,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "天津",
+   "flag": 1536,
+   "price": 2000,
+   "rents": [
+    400,
+    400,
+    1000,
+    2400,
+    6000,
+    12500,
+    22000
+   ]
+  },
+  {
+   "id": 125,
+   "name": "天津",
+   "x": 1848,
+   "y": 863,
+   "neighbors": [
+    126,
+    124
+   ],
+   "sid": 2067,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "天津",
+   "flag": 1536,
+   "price": 2000,
+   "rents": [
+    400,
+    400,
+    1000,
+    2400,
+    6000,
+    12500,
+    22000
+   ]
+  },
+  {
+   "id": 126,
+   "name": "天津",
+   "x": 1848,
+   "y": 814,
+   "neighbors": [
+    127,
+    125
+   ],
+   "sid": 2066,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "天津",
+   "flag": 1536,
+   "price": 2000,
+   "rents": [
+    400,
+    400,
+    1000,
+    2400,
+    6000,
+    12500,
+    22000
+   ]
+  },
+  {
+   "id": 127,
+   "name": "天津",
+   "x": 1848,
+   "y": 768,
+   "neighbors": [
+    128,
+    126
+   ],
+   "sid": 2065,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "天津",
+   "flag": 1536,
+   "price": 2000,
+   "rents": [
+    400,
+    400,
+    1000,
+    2400,
+    6000,
+    12500,
+    22000
+   ]
+  },
+  {
+   "id": 128,
+   "name": "新聞",
+   "x": 1848,
+   "y": 696,
+   "neighbors": [
+    129,
+    127
+   ],
+   "sid": 0,
+   "kind": 2,
+   "flags": 0,
+   "type": "news"
+  },
+  {
+   "id": 129,
+   "name": "北京",
+   "x": 1899,
+   "y": 641,
+   "neighbors": [
+    130,
+    128
+   ],
+   "sid": 2069,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "北京",
+   "flag": 1792,
+   "price": 2500,
+   "rents": [
+    500,
+    500,
+    1200,
+    3000,
+    7500,
+    16000,
+    30000
+   ]
+  },
+  {
+   "id": 130,
+   "name": "北京",
+   "x": 1932,
+   "y": 609,
+   "neighbors": [
+    131,
+    129
+   ],
+   "sid": 2070,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "北京",
+   "flag": 1792,
+   "price": 2500,
+   "rents": [
+    500,
+    500,
+    1200,
+    3000,
+    7500,
+    16000,
+    30000
+   ]
+  },
+  {
+   "id": 131,
+   "name": "北京",
+   "x": 1967,
+   "y": 574,
+   "neighbors": [
+    132,
+    130
+   ],
+   "sid": 2071,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "北京",
+   "flag": 1792,
+   "price": 2500,
+   "rents": [
+    500,
+    500,
+    1200,
+    3000,
+    7500,
+    16000,
+    30000
+   ]
+  },
+  {
+   "id": 132,
+   "name": "北京",
+   "x": 2002,
+   "y": 539,
+   "neighbors": [
+    133,
+    131
+   ],
+   "sid": 2072,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "北京",
+   "flag": 1792,
+   "price": 2500,
+   "rents": [
+    500,
+    500,
+    1200,
+    3000,
+    7500,
+    16000,
+    30000
+   ]
+  },
+  {
+   "id": 133,
+   "name": "北京",
+   "x": 2035,
+   "y": 506,
+   "neighbors": [
+    134,
+    132
+   ],
+   "sid": 2073,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "北京",
+   "flag": 1792,
+   "price": 2500,
+   "rents": [
+    500,
+    500,
+    1200,
+    3000,
+    7500,
+    16000,
+    30000
+   ]
+  },
+  {
+   "id": 134,
+   "name": "公園",
+   "x": 2087,
+   "y": 453,
+   "neighbors": [
+    0,
+    133
+   ],
+   "sid": 0,
+   "kind": 1,
+   "flags": 0,
+   "type": "blank"
+  },
+  {
+   "id": 135,
+   "name": "",
+   "x": 719,
+   "y": 743,
+   "neighbors": [
+    27,
+    136
+   ],
+   "sid": 0,
+   "kind": 17,
+   "flags": 0,
+   "type": "blank"
+  },
+  {
+   "id": 136,
+   "name": "得１０點",
+   "x": 671,
+   "y": 743,
+   "neighbors": [
+    135,
+    137
+   ],
+   "sid": 0,
+   "kind": 12,
+   "flags": 0,
+   "type": "points",
+   "pointsGain": 10
+  },
+  {
+   "id": 137,
+   "name": "",
+   "x": 623,
+   "y": 743,
+   "neighbors": [
+    136,
+    138
+   ],
+   "sid": 0,
+   "kind": 17,
+   "flags": 0,
+   "type": "blank"
+  },
+  {
+   "id": 138,
+   "name": "得１０點",
+   "x": 575,
+   "y": 695,
+   "neighbors": [
+    137,
+    139
+   ],
+   "sid": 0,
+   "kind": 12,
+   "flags": 0,
+   "type": "points",
+   "pointsGain": 10
+  },
+  {
+   "id": 139,
+   "name": "",
+   "x": 527,
+   "y": 647,
+   "neighbors": [
+    138,
+    140
+   ],
+   "sid": 0,
+   "kind": 17,
+   "flags": 0,
+   "type": "blank"
+  },
+  {
+   "id": 140,
+   "name": "得１０點",
+   "x": 480,
+   "y": 599,
+   "neighbors": [
+    139,
+    141
+   ],
+   "sid": 0,
+   "kind": 12,
+   "flags": 0,
+   "type": "points",
+   "pointsGain": 10
+  },
+  {
+   "id": 141,
+   "name": "",
+   "x": 431,
+   "y": 551,
+   "neighbors": [
+    140,
+    142
+   ],
+   "sid": 0,
+   "kind": 17,
+   "flags": 0,
+   "type": "blank"
+  },
+  {
+   "id": 142,
+   "name": "得１０點",
+   "x": 383,
+   "y": 502,
+   "neighbors": [
+    141,
+    143
+   ],
+   "sid": 0,
+   "kind": 12,
+   "flags": 0,
+   "type": "points",
+   "pointsGain": 10
+  },
+  {
+   "id": 143,
+   "name": "",
+   "x": 336,
+   "y": 455,
+   "neighbors": [
+    142
+   ],
+   "sid": 8002,
+   "kind": 17,
+   "flags": 0,
+   "type": "blank",
+   "scenery": true
+  }
+ ]
+}

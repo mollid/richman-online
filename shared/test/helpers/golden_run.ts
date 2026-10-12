@@ -77,6 +77,8 @@ export function runGoldenMatch(
     sampleEvery?: number;
     /** 收集逐步状态序列（属性测试用；内存开销大，golden 默认不开） */
     collectStates?: boolean;
+    /** 跑哪张图：`null` / 不填 = 自建 64 格环，数字取自 `shared/src/maps` 的原版图 */
+    mapId?: number | null;
     /** 覆盖初始玩家定义（角色平衡回归用：同一份 id 注入不同 characterId） */
     decorate?: (state: GameState) => void;
   } = {},
@@ -87,7 +89,10 @@ export function runGoldenMatch(
   const collectStates = opts.collectStates ?? false;
 
   const defs = opts.players ?? GOLDEN_PLAYERS;
-  let state = applyAction(createGame(defs, seed, { startDate: { ...MONDAY } }), { type: 'START_GAME' });
+  let state = applyAction(
+    createGame(defs, seed, { startDate: { ...MONDAY }, mapId: opts.mapId ?? null }),
+    { type: 'START_GAME' },
+  );
   opts.decorate?.(state);
 
   // 与 GameRoom 相同：AI 决策随机独立于 GameState.rngState，靠动作日志保证回放一致
@@ -128,10 +133,11 @@ export function runGoldenMatch(
   };
 
   while (state.phase !== 'game_over' && state.turn <= maxTurns && steps < maxTurns * 12) {
-    // ECON-12：手牌额满的舍弃阶段 bot 不决策，由驱动代为弃第一张
+    // ECON-12：手牌额满的舍弃阶段 bot 不决策，由驱动代为弃第一张 —— 弃的是**卡主**的牌，
+    // 抽卡可以发生在别人的回合里（大福神显灵那类），按当前玩家取会拿到一只空手
     if (state.phase === 'awaiting_discard') {
-      const me = state.players[state.currentPlayerIndex];
-      const cardId = me?.cards[0];
+      const owner = state.players.find((q) => q.id === state.pendingCards[0]?.ownerId);
+      const cardId = owner?.cards[0];
       if (!cardId) {
         stalls += 1;
         break;

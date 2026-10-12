@@ -679,7 +679,7 @@ describe('M6 移动系统（路障/转向/乌龟）', () => {
     const g = newGame(203);
     g.players[0]!.cards = ['turnaround'];
     const used = applyAction(g, { type: 'USE_CARD', cardId: 'turnaround' });
-    expect(used.players[0]!.direction).toBe(-1);
+    expect(used.players[0]!.heading).toBe(0); // 邻接表下标 1 → 0 = 顺时针翻成逆时针
     used.rngState = seedForSum(3);
     used.players[0]!.position = 10;
     const rolled = applyAction(used, { type: 'ROLL_DICE' });

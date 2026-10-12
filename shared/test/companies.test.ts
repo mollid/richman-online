@@ -42,6 +42,9 @@ const PLAYERS: PlayerDef[] = [
 /** 周一、非 15 号、非月末：保证日切钩子不会在用例中途被动触发 */
 const MONDAY: DateSerial = { year: 2026, month: 1, day: 5 };
 
+/** 周六：例假日，银行四项业务全关 */
+const SATURDAY: DateSerial = { year: 2026, month: 1, day: 10 };
+
 function newGame(seed = 9001, startDate: DateSerial = MONDAY): GameState {
   const g = applyAction(createGame(PLAYERS, seed, { startDate: { ...startDate } }), { type: 'START_GAME' });
   atLegacyStart(g); // SP-01 出生点随机：本文件多处拿「脚下那格是什么」当门控前提
@@ -83,8 +86,8 @@ function seedForSumQuietNews(target: number): number {
 }
 
 /** 让当前玩家落到指定公司格（两骰之和 7），可在掷骰前注入初始状态 */
-function landOnCompany(cellId: number, mutate?: (g: GameState) => void): GameState {
-  const s = newGame();
+function landOnCompany(cellId: number, mutate?: (g: GameState) => void, startDate: DateSerial = MONDAY): GameState {
+  const s = newGame(9001, startDate);
   s.rngState = seedForSum(7);
   s.players[s.currentPlayerIndex]!.position = cellId - 7;
   mutate?.(s);
@@ -355,6 +358,32 @@ describe('CORP-09 企业银行与特别融资', () => {
     expect(acts.canTradeStock).toBe(false);
     // 非董事长无融资权
     expect(acts.canFinancing).toBe(false);
+  });
+
+  it('例假日休市：企业银行与公立银行同口径，这一格连窗都不开（R4）', () => {
+    const g = landOnCompany(58, undefined, SATURDAY);
+    // 银行四项全被拒 ⇒ 不钉人。曾经这里无条件 holdLanding，UI 于是弹出一层只有「关闭」的银行空壳
+    expect(g.landing).toBeNull();
+    expect(g.bankAccess).toBeNull();
+    expect(g.phase).toBe('awaiting_roll');
+    expect(g.currentPlayerIndex).toBe(1);
+    // 拒绝理由就地播报（门控与校验同源：不另写一套文案）
+    expect(g.log.some((l) => l.text.includes('例假日银行休市'))).toBe(true);
+  });
+
+  it('例假日只剩董事长的特别融资：窗照开，但存取款四项仍办不了', () => {
+    const g = landOnCompany(58, (s) => {
+      giveChairman(s, 'bank', 'p1');
+      s.players[1]!.deposit = 5000;
+    }, SATURDAY);
+    const acts = availableActions(g);
+    expect(acts.isHoliday).toBe(true);
+    expect(acts.canDeposit).toBe(false);
+    expect(acts.canLoan).toBe(false);
+    // 特别融资不看休市 ⇒ 这一格确实还有事，会话窗该留着（UI 因此不弹银行面板，见 AcHudLayer 的 bank 判据）
+    expect(acts.canFinancing).toBe(true);
+    expect(g.landing?.venue).toBe('bank');
+    expect(acts.canFinishLanding).toBe(true);
   });
 
   it('董事长特别融资：上限 = 其他玩家存款总额', () => {

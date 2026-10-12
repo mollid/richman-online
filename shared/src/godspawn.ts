@@ -19,7 +19,7 @@
  * - **死神不参与随机现身**：它只由认输投降与魔法屋渠道降临（help[51] / GOD-12）。
  */
 
-import { BOARD_SIZE } from './board.js';
+import { graphDistance } from './board.js';
 import type { GodEffectCtx } from './effect_ctx.js';
 import { GODS, currentMonthIndex, godDef, godPairKey, presentGodPairKeys, type GodDef } from './gods.js';
 import { nextRandom } from './rng.js';
@@ -49,7 +49,6 @@ export const GOD_SPAWN_ELIGIBLE_TYPES: readonly CellType[] = [
   'points',
   'lottery',
   'magic',
-  'treasure',
   'tax',
   'hospital',
   'jail',
@@ -62,10 +61,9 @@ export const GOD_SPAWN_ELIGIBLE_TYPES: readonly CellType[] = [
 /** 不参与随机现身的godId（死神只由认输投降 / 魔法屋降临） */
 export const GOD_NEVER_SPAWNS: readonly string[] = ['death'];
 
-/** 环形棋盘上两格的最短距离 */
-export function ringDistance(a: number, b: number): number {
-  const d = Math.abs(a - b);
-  return Math.min(d, BOARD_SIZE - d);
+/** 棋盘上两格的最短步数：环上即 `min(d, n - d)`，带支路的图上是 BFS */
+export function boardDistance(board: BoardCell[], a: number, b: number): number {
+  return graphDistance(board, a, b);
 }
 
 /** 某格上驻留的神明（无则 undefined） */
@@ -96,7 +94,7 @@ export function spawnCellCandidates(state: GameState): BoardCell[] {
     (c) =>
       GOD_SPAWN_ELIGIBLE_TYPES.includes(c.type) &&
       !taken.has(c.id) &&
-      occupied.every((at) => ringDistance(c.id, at) >= GOD_MIN_GAP_CELLS),
+      occupied.every((at) => boardDistance(state.board, c.id, at) >= GOD_MIN_GAP_CELLS),
   );
 }
 

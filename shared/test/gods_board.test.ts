@@ -13,7 +13,7 @@ import {
   createGame,
   godDef,
   godPairKey,
-  ringDistance,
+  boardDistance,
   spawnCellCandidates,
   spawnableGodDefs,
   summonableGodDefs,
@@ -136,7 +136,7 @@ describe('现身规则（概率 / 上限 / 对偶 / 格位）', () => {
     const occupied = g.players.map((p) => p.position);
     putGodOnBoard(g, 'big-wealth', 30);
     for (const cell of spawnCellCandidates(g)) {
-      for (const at of [...occupied, 30]) expect(ringDistance(cell.id, at)).toBeGreaterThanOrEqual(GOD_MIN_GAP_CELLS);
+      for (const at of [...occupied, 30]) expect(boardDistance(g.board, cell.id, at)).toBeGreaterThanOrEqual(GOD_MIN_GAP_CELLS);
     }
   });
 

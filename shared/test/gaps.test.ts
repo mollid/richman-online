@@ -391,7 +391,7 @@ describe('ECON-12 手牌额满须选择舍弃', () => {
     // 15 张「天使卡」，用计数断言舍弃生效
     p.cards = Array.from({ length: MAX_HAND_CARDS }, () => 'angel');
     g.phase = 'awaiting_discard';
-    g.pendingCards = ['tax-audit'];
+    g.pendingCards = [{ cardId: 'tax-audit', ownerId: p.id }];
     const r = applyAction(g, { type: 'DISCARD_CARD', cardId: 'angel' });
     expect(r.pendingCards).toEqual([]);
     // 没有落格窗可回 ⇒ 舍弃完就把先前被队列压住的那次回合推进补上（R4）
@@ -401,13 +401,31 @@ describe('ECON-12 手牌额满须选择舍弃', () => {
     expect(r.players[0]!.cards).toContain('tax-audit');
   });
 
+  it('额满抽卡发生在别人的回合里：该弃牌的是卡主，不是轮到的人（R5 修掉的软锁）', () => {
+    const g = newGame();
+    const owner = g.players[1]!;
+    owner.cards = Array.from({ length: MAX_HAND_CARDS }, () => 'angel');
+    g.currentPlayerIndex = 0; // 轮到 0 号，他手上一张牌都没有
+    g.phase = 'awaiting_discard';
+    g.pendingCards = [{ cardId: 'tax-audit', ownerId: owner.id }];
+    expect(g.players[0]!.cards).toHaveLength(0);
+
+    const r = applyAction(g, { type: 'DISCARD_CARD', cardId: 'angel' });
+    // applyAction 返回克隆，断言要读 r 里的玩家，不能握着改动前那份引用
+    const after = r.players[1]!;
+    expect(r.pendingCards).toEqual([]);
+    expect(after.cards).toContain('tax-audit'); // 新卡进的是卡主的手
+    expect(after.cards.filter((c) => c === 'angel')).toHaveLength(MAX_HAND_CARDS - 1);
+    expect(r.players[0]!.cards).toHaveLength(0); // 没去动「轮到的人」的牌
+  });
+
   it('同一回合连抽两张满手牌：队列不互相覆盖，逐张舍弃才收口（R4）', () => {
     const g = newGame();
     g.players[0]!.cards = Array.from({ length: MAX_HAND_CARDS }, () => 'angel');
     g.phase = 'awaiting_discard';
-    g.pendingCards = ['tax-audit', 'devil']; // 旧口径是单槽，后一张会把前一张顶掉
+    g.pendingCards = [{ cardId: 'tax-audit', ownerId: g.players[0]!.id }, { cardId: 'devil', ownerId: g.players[0]!.id }]; // 旧口径是单槽，后一张会把前一张顶掉
     const first = applyAction(g, { type: 'DISCARD_CARD', cardId: 'angel' });
-    expect(first.pendingCards).toEqual(['devil']);
+    expect(first.pendingCards).toEqual([{ cardId: 'devil', ownerId: g.players[0]!.id }]);
     expect(first.phase).toBe('awaiting_discard'); // 还有第二张要继续问
     expect(first.players[0]!.cards).toContain('tax-audit');
     const second = applyAction(first, { type: 'DISCARD_CARD', cardId: 'angel' });
@@ -433,7 +451,7 @@ describe('ECON-12 手牌额满须选择舍弃', () => {
   it('在商店里抽到额满：舍弃完回到店里，而不是把回合交出去（R4 会话窗）', () => {
     const g = newGame();
     g.players[0]!.cards = Array.from({ length: MAX_HAND_CARDS }, () => 'angel');
-    g.pendingCards = ['tax-audit'];
+    g.pendingCards = [{ cardId: 'tax-audit', ownerId: g.players[0]!.id }];
     // 商店会话窗开着时买卡买到手牌额满 —— 引擎就是把相位切成 awaiting_discard 而保留 landing
     const inShop = openLandingWindow(structuredClone(g), 0, 2); // 2 号商店
     inShop.phase = 'awaiting_discard';
@@ -446,8 +464,8 @@ describe('ECON-12 手牌额满须选择舍弃', () => {
   it('availableActions 暴露 pendingCards', () => {
     const g = newGame();
     g.phase = 'awaiting_discard';
-    g.pendingCards = ['devil'];
-    expect(availableActions(g).pendingCards).toEqual(['devil']);
+    g.pendingCards = [{ cardId: 'devil', ownerId: g.players[0]!.id }];
+    expect(availableActions(g).pendingCards).toEqual([{ cardId: 'devil', ownerId: g.players[0]!.id }]);
   });
 });
 

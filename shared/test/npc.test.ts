@@ -120,6 +120,19 @@ describe('NPC-01..04 四大恶人（数据与保释）', () => {
     }
   });
 
+  it('四张原版图开局：恶人押在该图自己的监狱格，不是默认图那格', () => {
+    for (const mapId of [0, 1, 2, 3]) {
+      const g = createGame(PLAYERS, 3, { startDate: { ...MONDAY }, mapId });
+      const jailId = g.board.find((c) => c.type === 'jail')!.id;
+      const villains = g.npcs.filter((n) => n.kind !== 'dog');
+      expect(villains).toHaveLength(4);
+      for (const v of villains) {
+        expect(v.jailed).toBe(true);
+        expect(v.position).toBe(jailId);
+      }
+    }
+  });
+
   it('监狱门外可保释：扣保释金、刑期 7 天、主人为保释人', () => {
     const g = setupLanding(newGame(11), JAIL_CELL, 3);
     const landed = applyAction(g, { type: 'ROLL_DICE' });

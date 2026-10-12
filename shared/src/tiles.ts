@@ -1,6 +1,6 @@
 import type { BoardCell, FacilityType, GameState, PlayerProperty } from './types.js';
 import { scaled } from './economy.js';
-import { BOARD_SIZE } from './board.js';
+import { walkWindow } from './board.js';
 
 /**
  * 格型数据表与纯计算（波 3）：对标文档 §4 EST 与 §9 TILE。
@@ -146,10 +146,8 @@ export function streetCells(state: GameState, cellId: number): number[] {
 export const VIEWPORT_SIZE = 16;
 
 /** 以玩家当前位置为中心的视窗格集合（换地/换屋卡等「视窗内」目标用） */
-export function viewportCells(position: number): number[] {
-  const out: number[] = [];
-  for (let d = -7; d <= 8; d++) out.push((position + d + BOARD_SIZE) % BOARD_SIZE);
-  return out;
+export function viewportCells(board: BoardCell[], position: number): number[] {
+  return walkWindow(board, position, 7, 8);
 }
 
 /**

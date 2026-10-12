@@ -12,7 +12,6 @@ export type CellType =
   | 'points'    // TILE-14/15/16 点券格：+10/+30/+50 点券
   | 'lottery'   // TILE-19 乐透行：投注（波 6 开放开奖）
   | 'magic'     // TILE-11 魔法屋：女巫施法（波 8 开放）
-  | 'treasure'  // TILE-31 宝箱：获得 500 点券（待验证格）
   | 'tax'       // 缴税格
   | 'hospital'  // TILE-09 医院：住院不能出门且丧失收租权
   | 'jail'      // TILE-10 监狱：坐牢失去自由
@@ -20,6 +19,7 @@ export type CellType =
   | 'shop'      // TILE-12 卡片店/道具店
   | 'bank'      // TILE-08/26 银行：存取款；停留可贷款
   | 'god'       // 神庙：召唤神仙附身
+  | 'blank'     // 空白格（原版地图上的无信息节点）：落上去什么都不发生
   | 'company';  // TILE-20..30 公司企业（波 5 开放经营）
 
 /** 地产分区（仅用于配色与展示） */
@@ -62,6 +62,16 @@ export interface BoardCell {
   pointsGain?: number;
   /** 公司格类型（TILE-20..30） */
   companyKind?: CompanyKind;
+  /**
+   * 邻接格号（原版地图的「主闭环 + 分支」拓扑，来自 map.mkf 节点记录）。
+   *
+   * 缺省即环：自建图不写这个字段，`boardNeighbors` 按 `(id ± 1) % 棋盘长度` 推出来，
+   * 所以「环」只是图的一个特例，不是一条特殊分支。
+   */
+  neighbors?: number[];
+  /** 棋盘坐标（原版节点像素坐标，渲染层据此摆格子；自建图缺省走 ringPos） */
+  x?: number;
+  y?: number;
 }
 
 export interface PlayerProperty {
@@ -104,8 +114,17 @@ export interface InsuranceStatus {
 /** 公司经营状态（CORP-01..13 / TILE-20..30，波 5） */
 export interface CompanyState {
   kind: CompanyKind;
-  /** 棋盘格 id */
+  /** 公司名：自建图取自 `COMPANIES[kind].name`，原版图取自 map.mkf 的企业子表（中國石油、ＳＥＧＡ 那类） */
+  name: string;
+  /** 文档对标编号：自建图是 `TILE-2x`，原版图是 `mkf <图号>/<企业 sid>` —— 别拿种类表那条去标原版公司 */
+  tile: string;
+  /** 主棋盘格 id：股市行名与新闻文案拿它指代「这家公司在哪」 */
   cellId: number;
+  /**
+   * 这家公司占的全部格子。原版一家公司占**相邻两格**（踩到哪一格都能认购），
+   * 自建图占一格。问「脚下这格是不是公司」一律走 `companyAtCell`，别自己比 `cellId`。
+   */
+  footprint: number[];
   /** 股票面值（每股价格；不随物价指数变化） */
   sharePrice: number;
   /** 累积盈余：消费费用累积（可为负 = 负债），每月 15 号按持股比例分配 */
@@ -283,8 +302,15 @@ export interface Player {
   god: GodStatus | null;
   /** 剩余跳过回合数（医院/监狱/冬眠/陷害） */
   skipTurns: number;
-  /** 行进方向：1=顺时针 -1=逆时针（转向卡改变） */
-  direction: 1 | -1;
+  /**
+   * 行进朝向：`boardNeighbors(board, position)` 里「正要去的那一格」的下标（1 = 顺时针）。
+   *
+   * 图上没有「±1」这种方向：环上它是 `(pos + dir) % 长度`，一旦地图有分支就说不通了。
+   * 存邻接表下标而不是绝对格号，是为了让它**扛得住直接改写 position** ——
+   * 场景搭建与测试常把玩家摆到某一格，绝对格号那份朝向会退化成随机残留值。
+   * 前进的完整规则见 `board.stepAlong`。
+   */
+  heading: number;
   /** 停留卡（CARD-14）：下一次前进时停留在原地 */
   holdTurns: number;
   /** 丧失收租权剩余天数（坐牢/冬眠/梦游） */
@@ -352,7 +378,6 @@ export interface NpcUnit {
   /** 是否仍在监狱中待保释（四大恶人） */
   jailed: boolean;
 }
-
 export type Phase =
   | 'lobby'        // 等待玩家加入/开始
   | 'awaiting_roll'    // 等待当前玩家掷骰（炒股、用卡片道具、挂牌都只在这一段做）
@@ -445,13 +470,40 @@ export interface Stock {
   name: string;
   /** 当前股价 */
   price: number;
-  /** 最近一次波动百分比（含新闻与冲击成本） */
+  /**
+   * 今日开盘价（= 昨日收盘）。当日行情与新闻都把价格钉在「开盘 ×(1±10%)」上，
+   * K 线的实体也以它为基准 —— 没有它，新闻就只能拿现价叠一层，一天能走出 ±20%。
+   */
+  openPrice: number;
+  /**
+   * 均值回归的锚。原版 = 这支股票绑定城市的地价 / 10000（无城市绑定时用存好的基准价，`股票表+0x0c`）；
+   * 我们没有「股票 ↔ 城市」这张绑定表，退化成**建仓价**：价格离锚越远，越被往回拉。
+   */
+  anchorPrice: number;
+  /**
+   * 个股波动系数：噪声乘以它才是这支股票的日内波动幅度（原版每支各有一个，`股票表+0x18`）。
+   * 具体数值不在反汇编证据里，所以统一 1.0 —— 机制先接上，数值留给平衡阶段调。
+   */
+  volatility: number;
+  /** 最近一次波动百分比（相对今日开盘，含新闻；冲击成本不计入 —— 那是玩家自己推的） */
   lastChangePct: number;
   /**
-   * 流通股本（股）：冲击成本与背景成交量的分母。
+   * 流通股本（股）：冲击成本与背景成交量的分母，也是**还没被买走的量的上限**。
    * 原版无此项，按「各支市值相当」定标 —— 大盘股同样一笔成交推动更小。
    */
   floatShares: number;
+  /**
+   * 剩余流通股（原版 `城市表+0x30`）：买入扣、卖出回补，**可以被买光**。
+   * 买光之后这张票就只剩持有者之间倒手，这正是「炒地皮的人顺手把整座城买下来」的那条路。
+   */
+  remainingShares: number;
+  /**
+   * 这支股票绑定的城市（原版 `股票表+0x04`）。按格名匹配：原版图上一座城的地产与那家的公司格同名。
+   * 没绑定（我们自造的 6 支虚拟股，对应原版 `+0x04 = 0`）就用 `anchorPrice` 原值。
+   */
+  cityName?: string;
+  /** 开局时这座城市的地价（锚的比值分母）；与 `cityName` 同时存在 */
+  cityPriceBase?: number;
   /** 最近 `STOCK_CANDLE_LIMIT` 根日 K 线，末尾为当日（可能仍在增长） */
   candles: StockCandle[];
 }
@@ -463,7 +515,11 @@ export interface StockMarket {
 /** 红卡/黑卡造成的涨跌停（CARD-24/25）；EVT-01 事件 26/27 的停牌（suspend）复用同一列表 */
 export interface StockHalt {
   stockId: string;
-  /** up=涨停板（不允许下跌） down=跌停板（不允许上涨） suspend=暂停交易（EVT-01 事件 26/27） */
+  /**
+   * up=强制涨停、down=强制跌停（原版 `股票表+0x07` 的高/低半字节：还剩几天被按在板上）；
+   * 这两档不是"限制方向"，而是**当日直接顶到 ±10%**（FUN_004291d6），于是闸门自然生效：
+   * 涨停追不进、跌停割不掉。suspend=暂停交易（EVT-01 事件 26/27），价格冻结、双向禁交易。
+   */
   kind: 'up' | 'down' | 'suspend';
   daysLeft: number;
 }
@@ -495,6 +551,18 @@ export interface RoundSnapshot {
   }>;
 }
 
+/**
+ * 一张「抽到手牌已满、等玩家选舍弃」的新卡（ECON-12）。
+ *
+ * **必须记 `ownerId`**：抽卡的人未必是当前回合玩家 —— 大福神显灵、卡片屋的连带效果都能在
+ * 别人的回合里给第三个人发卡。`awaiting_discard` 又是全局相位，只记「欠哪张卡」的话，
+ * 回合一转，就会被要求弃牌的人手上无牌可弃，整局卡死（该相位没有 FINISH_LANDING 出口）。
+ */
+export interface PendingCard {
+  cardId: string;
+  ownerId: string;
+}
+
 export interface GameState {
   players: Player[];
   board: BoardCell[];
@@ -508,6 +576,15 @@ export interface GameState {
    * 原子动作里，一清就没有人知道这一手掷了几点。
    */
   dice: number[] | null;
+  /**
+   * 上一手掷骰**逐格走过**的格子序列（不含起点，末元素 = 落点）。
+   *
+   * 存在的理由只有一个：表现层要照着它把棋子一格一格跳出来。引擎把「掷骰 → 走 n 步 → 落格」
+   * 压成一个原子动作，中间那些格子从不进任何快照，客户端只能靠两帧之差去猜 —— 定长环上猜得对，
+   * 地图一旦有分支就猜不出来（同一对起止点之间可能有好几条走法）。
+   * **规则一律不得读它**：它是演出数据，不是对局状态；神明挪位、传送那类位移也不写这里。
+   */
+  movePath: number[] | null;
   turn: number;
   /** 回合数（每循环一圈 +1，股票随回合波动） */
   round: number;
@@ -516,6 +593,13 @@ export interface GameState {
    * 出生点这类「开局即定、只认种子与座位」的量必须从这里派生，回放才还原得出来。
    */
   seed: number;
+  /**
+   * 本局地图：`null` = 自建的 64 格环（默认图），否则是 `shared/src/maps` 里那张原版图。
+   *
+   * 棋盘本身已经带在 `board` 里（含 `neighbors` / `x` / `y`），这个字段只是**溯源**：
+   * 出生点、公司表、行情池都按它取，回放与战绩因此能还原「当初跑的是哪张图」。
+   */
+  mapId: number | null;
   /** 确定性 RNG 状态（可回放/防作弊校验） */
   rngState: number;
   log: LogEntry[];
@@ -575,6 +659,13 @@ export interface GameState {
   loanBanDays: number;
   /** NPC 特殊单位（NPC-01..06：四大恶人 + 恶犬） */
   npcs: NpcUnit[];
+  /**
+   * TILE-31 宝箱当前驻留的格；null = 此刻场上没有宝箱。
+   * 宝箱不是格型而是驻留实体（形态同恶犬，刷新周期按月），投放与拾取见 engine 的 `treasureRefreshHook`。
+   */
+  treasureCellId: number | null;
+  /** 已投过宝箱的自然月序号（`currentMonthIndex`）；同月不再重投 ⇒ 拿走的宝箱不会当月回来。0 = 还没投过 */
+  treasureMonth: number;
   /** TILE-11 魔法屋：女巫水晶球的当次施法机会（NPC-06）；null 表示无 */
   magic: MagicOffer | null;
   /**
@@ -597,8 +688,8 @@ export interface GameState {
   spawnGods: boolean;
   /** 对偶神的再现身冷却：`godPairKey(...)` → 该 `elapsedDays` 之前不得再现身 */
   godPairBanUntil: Record<string, number>;
-  /** ECON-12：手牌额满时待玩家选择舍弃的卡片队列（R4 起为队列，连抽多张不会互相覆盖） */
-  pendingCards: string[];
+  /** ECON-12：手牌额满时待玩家选择舍弃的卡片队列（R4 起为队列，连抽多张不会互相覆盖；每条自带归属） */
+  pendingCards: PendingCard[];
   /**
    * R4 落格决策窗的凭据；null 表示此刻没有格子在等玩家当场决策。
    * 开窗只有 `holdLanding()` 一个入口，清空只在 `advanceTurn()` 一处。
@@ -830,8 +921,8 @@ export interface AvailableActions {
   dischargeFee: number;
   /** CORE-04：当前是否可认输投降（对局进行中且自己尚未倒闭） */
   canSurrender: boolean;
-  /** ECON-12：待舍弃的卡片队列（非空时 phase 为 awaiting_discard，UI 渲染舍弃弹窗） */
-  pendingCards: string[];
+  /** ECON-12：待舍弃的卡片队列（非空时 phase 为 awaiting_discard，UI 据此渲染**卡主**的舍弃弹窗） */
+  pendingCards: PendingCard[];
   /** UI-06：当前玩家可挂出的标的（_owned 且未挂牌），UI 据此渲染「我要挂出」 */
   tradableAssets: Array<{ kind: TradeKind; targetId: string; label: string; suggestPrice: number }>;
   /** UI-06：当前玩家现金（决定能否买入） */

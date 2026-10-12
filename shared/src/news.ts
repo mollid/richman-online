@@ -237,9 +237,11 @@ function stockSwing(ctx: NewsEffectCtx, sign: 1 | -1): string {
   const { state, isStockSuspended } = ctx;
   for (const s of state.stockMarket.stocks) {
     if (state.stockHaltAllDays > 0 || isStockSuspended(state, s.id)) continue;
-    const pct = sign * STOCK_NEWS_PCT;
-    s.price = Math.max(5, Math.round(s.price * (1 + pct / 100)));
-    s.lastChangePct = pct;
+    // 按**开盘价**钉板，不是在现价上再乘一层：一支当天已经涨过 10% 的票再吃一发全面上涨，
+    // 按现价乘就会走出 +21%，把行情那一侧的 ±10% 天花板从内部击穿。
+    const open = s.openPrice || s.price;
+    s.price = Math.max(5, Math.round(open * (1 + (sign * STOCK_NEWS_PCT) / 100)));
+    s.lastChangePct = Math.round(((s.price - open) / Math.max(1, open)) * 100);
   }
   return `全市场${sign > 0 ? '上涨' : '下跌'} ${STOCK_NEWS_PCT}%`;
 }

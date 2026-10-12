@@ -12,7 +12,7 @@ import {
   type PlayerDef,
 } from '../src/index.js';
 import { pinIndexOne } from './helpers/state.js';
-import { MONDAY } from './helpers/golden_run.js';
+import { MONDAY, runGoldenMatch } from './helpers/golden_run.js';
 
 /**
  * 对局结束条件（CORE-04 / 玩法文档 §14 第 2 项，W4）。
@@ -225,5 +225,53 @@ describe('天数上限的取值口径（建房参数 / 默认档位）', () => {
     expect(resolveMaxDays(5)).toBe(10); // 下限：短到没意义的局不允许
     expect(resolveMaxDays(9999)).toBe(360);
     expect(resolveMaxDays(45.7)).toBe(45);
+  });
+});
+
+describe('收场写定之后不许被覆盖（R5 修的两处活锁）', () => {
+  /**
+   * 不变式：`endReason` 一旦非空，那一帧必须停在 `game_over`。
+   *
+   * 钉的是这一类 bug：`advanceTurn` 里「日切 → 行情 → 开新回合」是一条直线，而**每一步都可能
+   * 把某人逼到破产**（行情里的每日随机新闻正是这么做的），`endGame` 写完 `game_over` 之后
+   * 直线还在往下走，最后一句 `phase = 'awaiting_roll'` 就把刚写定的收场抹了。
+   * 局面带着胜者却仍在开局 ⇒ 可以继续打到所有人破产 ⇒ `checkWinner` 的「只剩 1 人」永远等不到
+   * ⇒ 整局收不了口（实测：地图 2 上 turn=220 已判定三号胜，却一路打到 turn=369 全员破产）。
+   */
+  it('默认图与地图 2 的整局每一帧都满足「已判胜负 ⇒ phase 是 game_over」', () => {
+    for (const mapId of [null, 2]) {
+      const run = runGoldenMatch({ mapId, maxTurns: 300, sampleEvery: 100, collectStates: true });
+      expect(run.stalls).toBe(0);
+      const clobbered = run.states.filter((s) => s.endReason !== null && s.phase !== 'game_over');
+      expect(clobbered).toHaveLength(0);
+    }
+  }, 180_000);
+
+  it('双人房同归于尽：认输者退场、复仇者被索命打破产 ⇒ 无人获胜，但必须收场', () => {
+    const g = applyAction(
+      createGame(PLAYERS.slice(0, 2), 21, { startDate: { ...MONDAY }, spawnGods: false }),
+      { type: 'START_GAME' },
+    );
+    pinIndexOne(g);
+    const avenger = g.players[1]!;
+    avenger.cash = 0;
+    avenger.deposit = 0;
+    const ended = surrender(g, 'p1');
+    expect(ended.players.every((p) => p.bankrupt)).toBe(true);
+    expect(ended.phase).toBe('game_over');
+    expect(ended.endReason).toBe('bankrupt');
+    expect(ended.winnerId).toBeNull();
+    expect(ended.log.filter((e) => e.text.includes('无存活者'))).toHaveLength(1);
+  });
+
+  it('认输那一手已经判出结局：不再重开一局，也不把胜利播报写两遍', () => {
+    const g = game(null, 22); // 三人局
+    const avenger = g.players[1]!;
+    avenger.cash = 0;
+    avenger.deposit = 0;
+    const ended = surrender(g, 'p1'); // p1 认输 → 死神落到 p2 → 只剩 p3
+    expect(ended.phase).toBe('game_over');
+    expect(ended.winnerId).toBe('p3');
+    expect(ended.log.filter((e) => e.text.includes('获得最终胜利'))).toHaveLength(1);
   });
 });

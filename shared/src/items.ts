@@ -1,4 +1,4 @@
-import { BOARD_SIZE } from './board.js';
+import { pathAhead } from './board.js';
 import type { CardPhase } from './cards.js';
 import { godDef } from './gods.js';
 import type { ItemEffectCtx } from './effect_ctx.js';
@@ -55,9 +55,9 @@ export const ITEMS: Record<string, ItemDef> = {
     phase: 'any',
     target: 'none',
     researchLevel: null,
-    apply: ({ state, self: p, log, cellsAhead, clearBoardGods }) => {
+    apply: ({ state, self: p, log, clearBoardGods }) => {
       // ITEM-01：踢除前方 9 步内的路障 / 地雷 / 定时炸弹
-      const ahead = cellsAhead(state, p.position, p.direction, 9);
+      const ahead = pathAhead(state.board, p.position, p.heading, 9);
       const beforeRoad = state.roadblocks.length;
       const beforeMine = state.mines.length;
       state.roadblocks = state.roadblocks.filter((id) => !ahead.includes(id));

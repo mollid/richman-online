@@ -88,6 +88,24 @@ export function landPrice(state: GameState, cell: BoardCell): number {
   return scaled(state, Math.round((cell.price ?? 0) * streetFactor(state, cell)));
 }
 
+/**
+ * 一座城的当前地价 = 城里最贵那块地的**街价**（标价 × 街道乘数，不含全局物价指数）。
+ *
+ * 股票的那根锚读的是这个数（见 `stocks.stockAnchor`）：地价公告调涨 / 闹鬼下跌这类事件
+ * 改的是街道乘数，于是这座城里那家绑定公司的股价锚跟着抬或压 —— 指数不进来看，
+ * 否则全图一起通胀，锚就等于没锚。
+ * 同名格在原版图上就是同一座城（地产格与那家的公司格同名）；一座城也没有时返回 0，调用方按「无绑定」处理。
+ */
+export function cityLandPrice(state: GameState, cityName?: string): number {
+  if (!cityName) return 0;
+  let best = 0;
+  for (const cell of state.board) {
+    if (cell.name !== cityName || !cell.price) continue;
+    best = Math.max(best, Math.round(cell.price * streetFactor(state, cell)));
+  }
+  return best;
+}
+
 /** 升级价（含指数） */
 export function landUpgradeCost(state: GameState, cell: BoardCell, grade: number): number {
   return scaled(state, upgradeCost(cell.price ?? 0, grade));

@@ -40,6 +40,12 @@ export const THIEF_POINTS_TAKE = 500;
 /** NPC-02 收保护费比例（按土地地价计） */
 export const PROTECTION_FEE_RATE = 0.05;
 
+/**
+ * TILE-31 宝箱点券（公开攻略值，游戏内未在 help.mkf 明文，标注为待验证）。
+ * 宝箱是按月随机驻留的实体，投放与拾取逻辑见 engine 的 `treasureRefreshHook` 与移动循环。
+ */
+export const TREASURE_POINTS = 500;
+
 /** 魔法屋施法条件：决定候选受罚者 */
 export interface MagicConditionDef {
   kind: MagicCondition;

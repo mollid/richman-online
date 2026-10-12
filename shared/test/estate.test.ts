@@ -17,7 +17,6 @@ import {
   RESEARCH_ORDER,
   rollDie,
   streetCells,
-  TREASURE_POINTS,
 } from '../src/index.js';
 import type { GameState, PlayerDef } from '../src/index.js';
 import { pinIndexOne } from './helpers/state.js';
@@ -29,7 +28,7 @@ import { pinIndexOne } from './helpers/state.js';
  * - 住宅 5 级加盖（EST-02）与连锁店（EST-04/05）；
  * - 街区联合租金与黄金路线加成（EST-03）；
  * - 研究所研发队列（EST-09/10）；
- * - 新增格型：免费卡片 / 点券 / 宝箱 / 新闻 / 乐透行（TILE-13..19、TILE-31）；
+ * - 新增格型：免费卡片 / 点券 / 新闻 / 乐透行（TILE-13..19）；宝箱（TILE-31）已改为驻留实体，见 treasure.test.ts；
  * - TILE-08 公立银行：路过可存取款、不可贷款。
  */
 
@@ -325,7 +324,7 @@ describe('等级、街区与连锁店（EST-02..05）', () => {
   });
 });
 
-describe('新增格型与公立银行（TILE-13..19、TILE-31、TILE-08）', () => {
+describe('新增格型与公立银行（TILE-13..19、TILE-08）', () => {
   it('免费卡片格获得一张卡片（TILE-13）', () => {
     const g = pinIndexOne(newGame(1201));
     const rolled = applyAction(landOn(g, 42), { type: 'ROLL_DICE' });
@@ -338,12 +337,6 @@ describe('新增格型与公立银行（TILE-13..19、TILE-31、TILE-08）', () 
       const rolled = applyAction(landOn(g, cellId), { type: 'ROLL_DICE' });
       expect(rolled.players[0]!.points).toBe(POINTS_START + gain);
     }
-  });
-
-  it('宝箱格获得宝箱点券（TILE-31）', () => {
-    const g = pinIndexOne(newGame(1210));
-    const rolled = applyAction(landOn(g, 56), { type: 'ROLL_DICE' });
-    expect(rolled.players[0]!.points).toBe(POINTS_START + TREASURE_POINTS);
   });
 
   it('新闻格触发随机新闻事件（TILE-18）', () => {

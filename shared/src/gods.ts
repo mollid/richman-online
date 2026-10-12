@@ -12,7 +12,7 @@
  * 以免数据模块反向依赖引擎形成循环。
  */
 
-import { BOARD_SIZE } from './board.js';
+import { graphDistance } from './board.js';
 import { gameDate } from './calendar.js';
 import { scaled } from './economy.js';
 import type { GodEffectCtx } from './effect_ctx.js';
@@ -222,10 +222,7 @@ export function currentMonthIndex(state: GameState): number {
  */
 export function nearestGodFor(ctx: GodEffectCtx, p: Player): GodDef | null {
   const { state } = ctx;
-  const dist = (cellId: number): number => {
-    const d = Math.abs(cellId - p.position);
-    return Math.min(d, BOARD_SIZE - d);
-  };
+  const dist = (cellId: number): number => graphDistance(state.board, cellId, p.position);
   let best: GodDef | null = null;
   let bestDist = Infinity;
   for (const god of state.boardGods) {

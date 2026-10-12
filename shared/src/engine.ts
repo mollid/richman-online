@@ -8,14 +8,19 @@ import {
   MAX_LOAN,
   MINIGAME_POINTS_PER_HIT,
   PASS_START_SALARY,
+  pathAhead,
+  stepAlong,
   POINTS_START,
   STARTING_CASH,
   STOCK_DEFS,
+  walkWindow,
 } from './board.js';
+import { boardFromMap, companiesFromMap } from './maps/index.js';
 import {
   applyGodRentModifier,
   applyGodTravel,
   attachGod,
+  currentMonthIndex,
   godBlocksInvestment,
   godDef,
   godDoublesBuild,
@@ -26,9 +31,21 @@ import {
   summonGod,
 } from './gods.js';
 import { addMonths, DEFAULT_START_DATE, gameDate, toSerial } from './calendar.js';
-import { landPrice, landRent, landUpgradeCost, scaled, totalAssets } from './economy.js';
+import { cityLandPrice, landPrice, landRent, landUpgradeCost, scaled, totalAssets } from './economy.js';
 import { boardGodAt, clearBoardGodsOnCells, detachGodForPossession, godSpawnHook, godSummonRefusal } from './godspawn.js';
-import { applyTradeImpact, sealDailyCandle, stockExecPrice } from './stocks.js';
+import {
+  applyTradeImpact,
+  MARKET_DRIFT_PCT,
+  sealDailyCandle,
+  STOCK_DAY_LIMIT_PCT,
+  STOCK_MIN_PRICE,
+  STOCK_NOISE_PCT,
+  STOCK_REVERSION_HIGH,
+  STOCK_REVERSION_LOW,
+  stockAnchor,
+  stockExecPrice,
+  stockLimitState,
+} from './stocks.js';
 import { CARDS, CHANCE_CARD_POOL, SHOP_CARD_IDS } from './cards.js';
 import { resolveLanding } from './cell_handlers.js';
 import { ITEMS, SHOP_ITEM_IDS, STARTING_ITEMS } from './items.js';
@@ -57,6 +74,7 @@ import {
   CURSES,
   PROTECTION_FEE_RATE,
   THIEF_POINTS_TAKE,
+  TREASURE_POINTS,
   VILLAIN_DAYS,
   VILLAIN_KINDS,
   VILLAINS,
@@ -78,7 +96,7 @@ import {
 import {
   COMPANIES,
   COMPANY_LIST,
-  COMPANY_STOCK_DEFS,
+  companyStockDefs,
   companyStockId,
   ESTATE_BUILD_RATIO,
   MAX_SHARES_PER_BUY,
@@ -142,6 +160,11 @@ export function resolveMaxDays(value: unknown): number | null {
 export interface CreateGameOptions {
   /** 起始日期；缺省用固定常量，保证 shared 不读系统时钟 */
   startDate?: DateSerial;
+  /**
+   * 地图：`null` / 不填 = 自建的 64 格环（默认，也是既有测试与录像的基线），
+   * 数字取自 `shared/src/maps` 的原版图。棋盘、公司表、行情池都跟着这张图走。
+   */
+  mapId?: number | null;
   /**
    * 神明是否随机现身驻留棋盘（GOD 现身机制，W2）。默认开启。
    * 关掉 ⇒ 日切不为这条机制消耗 RNG 抽数，数值断言型测试用它隔离这条随机源
@@ -211,13 +234,13 @@ function basePlayer(def: PlayerDef, spawnAt: number): Player {
     position: spawnAt,
     // SP-02：出生格先「押着」，踏出第一步之前这一格不算落到（见 standsOnOwnSpawn）
     spawnCell: spawnAt,
+    heading: 1,
     properties: [],
     cards: [],
     items: {},
     stocks: {},
     god: null,
     skipTurns: 0,
-    direction: 1 as 1 | -1,
     holdTurns: 0,
     rentBlockedTurns: 0,
     sleepwalkTurns: 0,
@@ -240,33 +263,68 @@ export function createGame(players: PlayerDef[], seed = Date.now() % 2147483647,
   if (players.length > 4) {
     throw new Error('游戏最多 4 名玩家');
   }
-  const spawns = spawnCells(seed >>> 0, players.length, DEFAULT_BOARD);
+  const mapId = options.mapId ?? null;
+  const board = mapId == null ? structuredClone(DEFAULT_BOARD) : boardFromMap(mapId);
+  // 原版每张图的监狱格 id 都不同，恶人押在哪一格要跟着图走，不能写死默认图的那格
+  const jailCell = board.find((c) => c.type === 'jail');
+  if (!jailCell) throw new Error('棋盘缺少监狱格');
+  // 公司表按图给：自建图是那 11 家，原版图用 mkf 自带的 1~4 家（一家占相邻两格、名字是原名）
+  const companyDefs = mapId == null ? COMPANY_LIST : companiesFromMap(mapId);
+  const corpStockDefs = companyStockDefs(companyDefs);
+  // 行情池：自建图 = 6 支自造行业股 + 11 家公司股；原版图 = **只挂这张图有出处的公司**。
+  // 那 6 支行业股（科技/食品/地产…）是我们的占位设计、与地图无关，挂在原版图上就是假数据
+  // （用户 2026-10-12 拍的）。原版图那 12 支里剩下的价格与城市绑定在 EXE 的股票表里，拿到再补。
+  const stockDefs = mapId == null ? [...STOCK_DEFS, ...corpStockDefs] : corpStockDefs;
+  const spawns = spawnCells(seed >>> 0, players.length, board);
+  // 股票 ↔ 城市绑定（原版 `股票表+0x04`）：公司格与同城地产同名，所以拿格名当绑定键。
+  // 自建图的公司格叫「电脑公司」这类名字，与任何地产都不同名 ⇒ 天然「无绑定」，
+  // 锚就停在面值本身 —— 于是这一波改动对默认图逐位无影响。
+  const cityOf = new Map<string, string>();
+  for (const def of companyDefs) {
+    const city = board[def.cellId]?.name;
+    if (city) cityOf.set(companyStockId(def.kind), city);
+  }
+  const cityPriceAtStart = (name?: string): number =>
+    name ? Math.max(0, ...board.filter((c) => c.name === name && c.price).map((c) => c.price!)) : 0;
   return {
     players: players.map((p, i) => basePlayer(p, spawns[i] ?? 0)),
-    board: structuredClone(DEFAULT_BOARD),
+    board,
     currentPlayerIndex: 0,
     phase: 'lobby',
     turnStage: 'start',
     dice: null,
+    movePath: null,
     turn: 0,
     round: 1,
     // 建局参数原样存一份：出生点按 (seed, seat) 派生，`rngState` 会被后续抽数推着走、不能当种子用
     seed: seed >>> 0,
+    mapId,
     rngState: seed >>> 0,
     log: [{ turn: 0, text: '游戏房间已创建' }],
     winnerId: null,
     endReason: null,
     maxDays: options.maxDays ?? null,
     stockMarket: {
-      // 6 支虚拟股 + 11 家公司股（CORP-14）：同一套行情机器，日切每支各抽一次数 ⇒ 抽数流按 17 支走
-      stocks: [...STOCK_DEFS, ...COMPANY_STOCK_DEFS].map((s) => ({
-        id: s.id,
-        name: s.name,
-        price: s.initialPrice,
-        lastChangePct: 0,
-        floatShares: s.floatShares,
-        candles: [],
-      })),
+      // 同一套行情机器：日切每支各抽一次数 ⇒ 抽数流按这张图的支数走
+      stocks: stockDefs.map((s) => {
+        const city = cityOf.get(s.id);
+        const cityPriceBase = cityPriceAtStart(city);
+        return {
+          id: s.id,
+          name: s.name,
+          price: s.initialPrice,
+          // 开盘 = 锚 = 建仓价：第一个交易日之前没有「昨收」，闸门因此判平盘；
+          // 锚是均值回归的那根桩，原版挂在绑定城市的地价上（每天现读），我们按比值接过去
+          openPrice: s.initialPrice,
+          anchorPrice: s.initialPrice,
+          volatility: 1,
+          lastChangePct: 0,
+          floatShares: s.floatShares,
+          remainingShares: s.floatShares,   // 还没被买走的量：买入扣、卖出回补，可以买光
+          ...(city && cityPriceBase > 0 ? { cityName: city, cityPriceBase } : {}),
+          candles: [],
+        };
+      }),
     },
     pendingFixedDice: null,
     roadblocks: [],
@@ -284,9 +342,12 @@ export function createGame(players: PlayerDef[], seed = Date.now() % 2147483647,
     lotteryTickets: [],
     auction: null,
     auctionQueue: [],
-    companies: COMPANY_LIST.map((def) => ({
+    companies: companyDefs.map((def) => ({
       kind: def.kind,
+      name: def.name,
+      tile: def.tile,
       cellId: def.cellId,
+      footprint: def.footprint ?? [def.cellId],
       sharePrice: def.sharePrice,
       surplus: 0,
       shares: {},
@@ -302,11 +363,14 @@ export function createGame(players: PlayerDef[], seed = Date.now() % 2147483647,
     // NPC-01..04 四大恶人初始在押于监狱；被玩家保释后上路为保释人效力
     npcs: VILLAIN_KINDS.map((kind) => ({
       kind,
-      position: DEFAULT_BOARD.find((c) => c.type === 'jail')!.id,
+      position: jailCell.id,
       ownerId: null,
       daysLeft: 0,
       jailed: true,
     })),
+    // 宝箱（TILE-31）：开局在 startGame 投第一只，此后换月由日切钩子重投
+    treasureCellId: null,
+    treasureMonth: 0,
     magic: null,
     // GOD-01 土地公隔月再现（help [40]）：初始未出现过，可随机到
     landGodCooldownMonth: 0,
@@ -408,9 +472,17 @@ function stockById(state: GameState, stockId: string) {
 }
 
 function checkWinner(state: GameState): void {
+  // 收场只写一次：`checkWinner` 会在嵌套效果里和外面各被调一遍（认输 → 死神索命 → pay →
+  // checkWinner，出来后 surrender 自己又调一遍），第二次进来局面早已判完，再走 `endGame`
+  // 就是把同一条胜利播报写两遍。
+  if (isGameOver(state)) return;
   const active = state.players.filter((p) => !p.bankrupt);
   if (active.length === 1) {
     endGame(state, active[0]!.id, 'bankrupt', `${active[0]!.name} 获得最终胜利！`);
+  } else if (active.length === 0) {
+    // 全员破产（单人房唯一的玩家倒下，或收场被覆盖后拖到同归于尽）：没有存活者就没有胜者，
+    // 但**必须收场** —— 否则局面停在 awaiting_roll，谁也动不了，整局活锁。
+    endGame(state, null, 'bankrupt', '场上已无存活者，本局无人获胜');
   }
 }
 
@@ -492,7 +564,7 @@ function bankruptPlayer(state: GameState, p: Player): void {
   p.points = 0;
   p.loan = null;
   p.skipTurns = 0;
-  p.direction = 1;
+  p.heading = 1;
   p.holdTurns = 0;
   p.rentBlockedTurns = 0;
   p.sleepwalkTurns = 0;
@@ -672,6 +744,11 @@ function canTradeStockNow(state: GameState): boolean {
 function tickStockMarket(state: GameState): void {
   if (gameDate(state).isHoliday) return; // 例假日休市：不生成当日 K 线，也不走随机
   const stocks = state.stockMarket.stocks;
+  // 大盘漂移：当日全体共享一个（原版 `(rand()-0x4000)/4097` ∈ ±4%）。
+  // 走**只读派生随机**而不是再抽一次：日钩子里多一条抽数会把此后所有骰子序列整体打散
+  // （W2 的神明现身就是这种量级的代价），而漂移只是行情层的数，与恶犬/恶人/宝箱同一类，
+  // 按日做 salt ⇒ 逐日不同、跨日不重演，且不扰动确定性回放。
+  const drift = (derivedValue(state, state.calendar.elapsedDays * 8 + 7) * 2 - 1) * MARKET_DRIFT_PCT;
   // 每支当日已消耗的那个随机数，稍后借去决定上影长还是下影长（不再多抽一次）
   const bias = new Array<number>(stocks.length).fill(0.5);
   const traded = new Array<boolean>(stocks.length).fill(true);
@@ -681,19 +758,37 @@ function tickStockMarket(state: GameState): void {
     const draw = nextRandom(state.rngState);
     state.rngState = draw.nextState;
     bias[i] = draw.value;
+    const open = openOf[i]!;
+    stock.openPrice = open;   // 闸门与「今日涨跌」的基准都落在状态上，表现层不必自己猜
     // EVT-01 事件 26/27：停牌期间价格冻结（仍消耗抽数，保持回放确定性）
     if (state.stockHaltAllDays > 0 || isStockSuspended(state, stock.id)) {
       stock.lastChangePct = 0;
       traded[i] = false;
       return;
     }
-    let pct = Math.round(draw.value * 20 - 10); // -10% ~ +10%
     const halt = state.stockHalts.find((h) => h.stockId === stock.id);
-    if (halt?.kind === 'up') pct = Math.max(pct, 0); // 涨停板：不允许下跌
-    if (halt?.kind === 'down') pct = Math.min(pct, 0); // 跌停板：不允许上涨
-    const next = Math.max(5, Math.round(stock.price * (1 + pct / 100)));
-    stock.lastChangePct = pct + Math.round(((next - stock.price) / Math.max(stock.price, 1)) * 100) - pct;
+    let pct: number;
+    if (halt?.kind === 'up') {
+      pct = STOCK_DAY_LIMIT_PCT;              // 被按在涨停板上：当日直接顶到 +10%
+    } else if (halt?.kind === 'down') {
+      pct = -STOCK_DAY_LIMIT_PCT;
+    } else {
+      // 原版的游走有三层：个股噪声（±14%）× 波动系数、**昨日涨跌**（趋势惯性）、大盘漂移。
+      // 少掉中间那一项，价格就是一条无记忆随机游走 —— 走成一路单边，也就没有"追涨杀跌"这回事。
+      const noise = (draw.value * 2 - 1) * STOCK_NOISE_PCT;
+      pct = noise * stock.volatility + stock.lastChangePct + drift;
+      // 均值回归：偏离锚越远越被往回拉（腰斩时涨得快、跌得慢；过热时对称反过来）
+      const anchor = stockAnchor(stock, cityLandPrice(state, stock.cityName));
+      if (anchor > 0 && stock.price < anchor * STOCK_REVERSION_LOW) {
+        pct = pct > 0 ? pct * 2 : pct * 0.5;
+      } else if (anchor > 0 && stock.price > anchor * STOCK_REVERSION_HIGH) {
+        pct = pct < 0 ? pct * 2 : pct * 0.5;
+      }
+      pct = Math.max(-STOCK_DAY_LIMIT_PCT, Math.min(STOCK_DAY_LIMIT_PCT, pct));
+    }
+    const next = Math.max(STOCK_MIN_PRICE, Math.round(open * (1 + pct / 100)));
     stock.price = next;
+    stock.lastChangePct = Math.round(((next - open) / Math.max(1, open)) * 100);
   });
   applyRandomNews(state);
   // 收 K 线放在新闻之后：这样当天那根线的收盘价就是「消息面落地后」的真实价
@@ -712,13 +807,16 @@ function applyRandomNews(state: GameState): void {
   const signDraw = nextRandom(state.rngState);
   state.rngState = signDraw.nextState;
   const up = signDraw.value < 0.5;
-  let pct = up ? 15 : -15;
   const halt = state.stockHalts.find((h) => h.stockId === stock.id);
-  if (state.stockHaltAllDays > 0 || halt?.kind === 'suspend') pct = 0; // EVT-01 事件 26/27：停牌
-  if (halt?.kind === 'up') pct = Math.max(pct, 0);
-  if (halt?.kind === 'down') pct = Math.min(pct, 0);
-  stock.price = Math.max(5, Math.round(stock.price * (1 + pct / 100)));
-  stock.lastChangePct = pct;
+  const frozen = state.stockHaltAllDays > 0 || halt?.kind === 'suspend'; // EVT-01 事件 26/27：停牌
+  // 消息面不再叠加在游走之上：原版一天的边界就是 ±10%（FUN_004291d6 末尾的 clamp），
+  // 利好/利空的作用是「把这支当天钉在那块板上」，而不是把板击穿（原先的 ±15% 就是击穿）。
+  const pct = frozen ? 0 : up ? STOCK_DAY_LIMIT_PCT : -STOCK_DAY_LIMIT_PCT;
+  if (!frozen) {
+    const open = stock.openPrice || stock.price;
+    stock.price = Math.max(STOCK_MIN_PRICE, Math.round(open * (1 + pct / 100)));
+    stock.lastChangePct = Math.round(((stock.price - open) / Math.max(1, open)) * 100);
+  }
   const newsText = pct > 0
     ? `【新闻】${stock.name} 业绩超预期，大涨 ${pct}%！`
     : pct < 0
@@ -962,11 +1060,13 @@ function noticeHolidayHook(state: GameState): void {
 function dividendAndLotteryHook(state: GameState): void {
   const d = gameDate(state);
   if (!d.isDividendDay) return;
-  log(state, `【分红日】${d.iso} 是 15 号，股东分红结算`);
+  // 原版图一家公司都没有（`createGame` 按图给空表）⇒ 这句播报就成了假话，别播；
+  // 乐透开奖照旧 —— 那与公司在不在无关。
+  if (state.companies.length > 0) log(state, `【分红日】${d.iso} 是 15 号，股东分红结算`);
   for (const company of state.companies) {
     const total = Object.values(company.shares).reduce((a, b) => a + b, 0);
     if (total <= 0 || company.surplus === 0) continue;
-    const name = COMPANIES[company.kind].name;
+    const name = company.name;
     const surplus = company.surplus;
     let distributed = 0;
     for (const [id, shares] of Object.entries(company.shares)) {
@@ -1142,9 +1242,32 @@ function dogActivityHook(state: GameState): void {
   state.npcs = state.npcs.filter((n) => n.kind !== 'dog');
   const roll = nextRandom(state.rngState);
   if (roll.value >= DOG_SPAWN_CHANCE) return;
-  const position = Math.min(BOARD_SIZE - 1, Math.floor((roll.value / DOG_SPAWN_CHANCE) * BOARD_SIZE));
+  const size = state.board.length;
+  const position = Math.min(size - 1, Math.floor((roll.value / DOG_SPAWN_CHANCE) * size));
   state.npcs.push({ kind: 'dog', position, ownerId: null, daysLeft: 1, jailed: false });
   log(state, `【恶犬】一只恶犬在「${state.board[position]!.name}」附近徘徊`);
+}
+
+/**
+ * TILE-31 宝箱：按月重投的驻留实体（用户规则：形态同恶犬，刷新周期换成一个月）。
+ *
+ * 换月即换地方；`treasureMonth` 记住「这个月已经投过」，所以本月被拿走之后不会当月又冒出来。
+ * 零抽数：`derivedIndex` 读而不写回 `rngState`，salt 用 `elapsedDays * 8 + 5` 与恶人
+ * （`elapsedDays * 8 + {0,2,4,6}`）错开 ⇒ 逐月不同位、又不扰动确定性回放。
+ * 不投在有人站着的格上：宝箱一驻留就是一整个月，压在某人脚下等于本月谁都捡不到。
+ */
+function treasureRefreshHook(state: GameState): void {
+  const month = currentMonthIndex(state);
+  if (state.treasureMonth === month) return;
+  const taken = new Set(state.players.map((p) => p.position));
+  // 起点不摆：那是「经过即领薪水」的仪式格，压上一只宝箱等于把两条播报挤进同一帧 ——
+  // 神明现身为同样的理由把它排除在外（见 godspawn.ts 里 GOD_SPAWN_ELIGIBLE_TYPES 的注释）。
+  const candidates = state.board.filter((c) => c.type !== 'start' && !taken.has(c.id));
+  if (candidates.length === 0) return;
+  const cell = candidates[derivedIndex(state, state.calendar.elapsedDays * 8 + 5, candidates.length)]!;
+  state.treasureMonth = month;
+  state.treasureCellId = cell.id;
+  log(state, `【宝箱】「${cell.name}」冒出一只宝箱，踩中就有 ${TREASURE_POINTS} 点券`);
 }
 
 /**
@@ -1231,7 +1354,8 @@ function villainDefOf(npc: NpcUnit): VillainDef {
  */
 function villainAct(state: GameState, npc: NpcUnit, salt: number): void {
   const steps = 1 + derivedIndex(state, salt, 6);
-  npc.position = (npc.position + steps) % BOARD_SIZE;
+  // 恶人沿图前进（岔口取定序，不抽数 —— 这条机制的口径是「零抽数派生」）
+  npc.position = pathAhead(state.board, npc.position, 1, steps).pop() ?? npc.position;
   const cell = state.board[npc.position]!;
   const victimPool = activePlayers(state).filter((p) => p.id !== npc.ownerId && !p.bankrupt);
   if (victimPool.length === 0) return;
@@ -1365,6 +1489,7 @@ const DAY_HOOKS: DayHook[] = [
   researchTickHook,
   (state) => godTickHook(godCtx(state)),
   dogActivityHook,
+  treasureRefreshHook,
   villainActivityHook,
   // 神明现身必须在 godTickHook 之后：先完成期满转化与清退，才知道还挤不挤得下第 4 尊
   (state) => godSpawnHook(godCtx(state)),
@@ -1448,6 +1573,12 @@ function advanceTurn(state: GameState): void {
   }
   // `dice` 不在这里清：它的定位是「最近一次掷骰结果」（见 types），客户端的骰子动画与
   // 走格子都取这一手。回合推进时掷骰与换人挤在同一个原子动作里，一清就没人知道骰了几点。
+  //
+  // 收场要在**这一句之前**再确认一次：本函数上面每一步都可能把某人逼到破产（`onDayChange` 的
+  // 贷款到期、`tickStockMarket` 的每日随机新闻都是），而它们都在 `endGame` 之后继续往这里走。
+  // 少了这一道闸门，刚写定的 `game_over` 会被覆盖成 `awaiting_roll` —— 局面带着胜者却仍在开局，
+  // 于是可以继续打到所有人破产（`checkWinner` 的「只剩 1 人」永远等不到），整局收不了口。
+  if (isGameOver(state)) return;
   state.phase = 'awaiting_roll';
   state.turnStage = 'start';
 }
@@ -1503,7 +1634,7 @@ function drawChanceCard(state: GameState, p: Player, source = '机会'): void {
     // R4：这里是**队列**而不是单槽。落格推进不再抹掉它（见 `advanceTurn` 的推迟闸门），
     // 但同一回合里连抽两张满手牌的情况仍然存在（神明先附身、随后落格又抽一张）——
     // 单槽会被后一张覆盖，前一张白丢。
-    state.pendingCards.push(cardId);
+    state.pendingCards.push({ cardId, ownerId: p.id });
     state.phase = 'awaiting_discard';
     log(state, `${p.name} 在${source}抽到卡片「${CARDS[cardId]!.name}」，但手牌已满（上限 ${MAX_HAND_CARDS} 张），请选择舍弃一张`);
     return;
@@ -1512,19 +1643,30 @@ function drawChanceCard(state: GameState, p: Player, source = '机会'): void {
   log(state, `${p.name} 在${source}抽到卡片「${CARDS[cardId]!.name}」`);
 }
 
+/** 此刻该由谁来舍弃：队列头部那张卡的主人（未必是当前回合玩家） */
+function pendingOwner(state: GameState): Player | null {
+  const head = state.pendingCards[0];
+  return head ? (state.players.find((q) => q.id === head.ownerId) ?? null) : null;
+}
+
 /**
  * ECON-12：完成「选择舍弃」。队列里还有下一张就停在 `awaiting_discard` 继续问；
  * 收干净之后去哪一边，看**此刻还有没有落格决策窗**：
  * - 有窗（在商店 / 银行里抽到卡，或单步窗里的事还没做完）⇒ 交回 `awaiting_action`；
  * - 没窗 ⇒ 这一手的回合推进正被队列压在 `advanceTurn` 的推迟闸门里，在此补上那次推进。
  *   少了这一句，玩家舍弃完就顶着一个没有窗、也没有事可做的 `awaiting_action`。
+ *
+ * 新卡入的是**卡主**的手牌，不是「此刻轮到谁」—— 大福神显灵这类效果会在别人的回合里给第三
+ * 个人发卡，按当前玩家入栏会把卡塞给错误的人，而原先的 `awaiting_discard` 正是这样卡死的。
  */
 function resolvePendingCard(state: GameState): void {
-  const cardId = state.pendingCards.shift();
-  if (cardId) {
-    const p = currentPlayer(state);
-    p.cards.push(cardId);
-    log(state, `${p.name} 舍弃一张手牌，收下新卡「${CARDS[cardId]?.name ?? cardId}」`);
+  const entry = state.pendingCards.shift();
+  if (entry) {
+    const owner = state.players.find((q) => q.id === entry.ownerId);
+    if (owner) {
+      owner.cards.push(entry.cardId);
+      log(state, `${owner.name} 舍弃一张手牌，收下新卡「${CARDS[entry.cardId]?.name ?? entry.cardId}」`);
+    }
   }
   if (state.pendingCards.length > 0) {
     state.phase = 'awaiting_discard';
@@ -1590,7 +1732,9 @@ function surrender(state: GameState, revengeTargetId: string): void {
 
   // 死神附身于复仇者：清空卡片道具 + 霉运加倍 13 天 + 索命损失
   summonDeathOnAvenger(godCtx(state), avenger, godDef('death'));
-  state.phase = 'awaiting_roll';
+  // 收场判定排在「开新回合」之前，而且中间不能再有 phase 写入：索命那笔钱本身就能把复仇者
+  // 打到破产 ⇒ 这一手可能已经分出结局（双人房甚至是同归于尽），先写 awaiting_roll 会把
+  // 刚判定的 game_over 抹掉，胜者还在、局面却重新开局（同一条胜利播报因此会写第二遍）。
   checkWinner(state);
   if (!isGameOver(state)) {
     state.currentPlayerIndex = state.players.findIndex((q) => !q.bankrupt);
@@ -1702,11 +1846,9 @@ function propertyRent(state: GameState, cell: BoardCell, owned: { player: Player
   return holdsWholeStreet(state, owned.player.id, cell.id) ? Math.round(total * 1.5) : total;
 }
 
-/** 环上以 center 为中心、半径 radius 的格集合（模拟 3×3 / 5×5 爆炸范围） */
-function blastArea(center: number, radius: number): number[] {
-  const cells: number[] = [];
-  for (let d = -radius; d <= radius; d++) cells.push((center + d + BOARD_SIZE) % BOARD_SIZE);
-  return cells;
+/** 以 center 为中心、半径 radius 的连续格集合（模拟 3×3 / 5×5 爆炸范围；顺序被播报依赖） */
+function blastArea(state: GameState, center: number, radius: number): number[] {
+  return walkWindow(state.board, center, radius, radius);
 }
 
 /**
@@ -1780,7 +1922,7 @@ function applyDisaster(
 
 /** 结算一次爆炸（飞弹 / 核子飞弹 / 定时炸弹）：范围内玩家住院 + 房屋倒塌 + 车辆损毁 */
 function detonate(state: GameState, center: number, radius: number, hospitalDays: number, label: string): number {
-  const cells = blastArea(center, radius);
+  const cells = blastArea(state, center, radius);
   const cellNames = cells.map((id) => state.board[id]?.name ?? `${id}`).join('、');
   log(state, `【${label}】${cellNames} 遭受轰炸！`);
   let destroyed = 0;
@@ -1957,6 +2099,8 @@ function startGame(state: GameState): void {
   for (const p of state.players) {
     log(state, `${p.name} 随机出生落在「${state.board[p.position]?.name ?? `第 ${p.position} 格`}」—— 站着不算落到，走回来才能买`);
   }
+  // 宝箱（TILE-31）第一只在开局投：出生点已经落定，此刻排除「有人站着」的格才有意义
+  treasureRefreshHook(state);
 }
 
 /**
@@ -2038,9 +2182,13 @@ function rollDice(state: GameState, action: Extract<PlayerAction, { type: 'ROLL_
   // 逐格移动：支持方向反转、路障截停与地雷
   const oldPos = p.position;
   let pos = oldPos;
+  // 朝向 = 邻接表里「正要去那格」的下标；环上 1 恒等于顺时针，与旧的 direction = 1 同义
+  let heading = p.heading;
   let crossedStart = false;
   state.turnStage = 'move';
   let moved = 0;
+  /** 这一手逐格走过的格子（给表现层播，规则不读） */
+  const path: number[] = [];
   let steppedOnMine = false;
   let bittenByDog = false;
   /** 移动途中撞上的驻留神明所在格（null = 没撞上；路障等截停优先时保持 null） */
@@ -2048,9 +2196,14 @@ function rollDice(state: GameState, action: Extract<PlayerAction, { type: 'ROLL_
   /** EVT-04：途中遇到的原地乞讨者 */
   let beggar: Player | null = null;
   for (let i = 0; i < steps; i++) {
-    pos = (pos + p.direction + BOARD_SIZE) % BOARD_SIZE;
+    // 岔路口随机拐（原版规则）：环上排除「刚离开那格」后只剩一条路，因此不抽 RNG、回放逐位不变
+    const stepped = stepAlong(state.board, pos, heading,
+      (options) => options[randomIndex(state, options.length)]!);
+    pos = stepped.next;
+    heading = stepped.heading;
+    path.push(pos);
     moved += 1;
-    if (pos === 0) crossedStart = true;
+    if (state.board[pos]?.type === 'start') crossedStart = true;
     if (state.roadblocks.includes(pos)) {
       state.roadblocks = state.roadblocks.filter((id) => id !== pos);
       const coneCell = state.board[pos]!;
@@ -2068,18 +2221,6 @@ function rollDice(state: GameState, action: Extract<PlayerAction, { type: 'ROLL_
       const b = state.players.find((q) => q.bankrupt && q.position === pos);
       if (b) beggar = b;
     }
-    // NPC-05 恶犬：步行者被咬伤（住院 3 天）；以车辆行进者可将其撞跑
-    const dogIdx = state.npcs.findIndex((n) => n.kind === 'dog' && n.position === pos);
-    if (dogIdx >= 0) {
-      const dogCell = state.board[pos]!;
-      state.npcs.splice(dogIdx, 1);
-      if (p.diceCount <= 1) {
-        log(state, `${p.name} 在「${dogCell.name}」步行途中碰上恶犬，被咬伤`);
-        bittenByDog = true;
-        break;
-      }
-      log(state, `${p.name} 驾车在「${dogCell.name}」撞跑了恶犬`);
-    }
     // GOD 现身机制（W2）：日切现身的驻留神明，**经过即附身**。
     // 排在路障 / 地雷 / 恶犬之后：那三者是截停型强效果，必须优先，
     // 否则「被路障截停在神明格」会既算截停又算附身，一个回合双触发。
@@ -2094,6 +2235,9 @@ function rollDice(state: GameState, action: Extract<PlayerAction, { type: 'ROLL_
     log(state, `${p.name} 经过起点，领取薪水 ¥${PASS_START_SALARY}`);
   }
   p.position = pos;
+  p.heading = heading;
+  // 原地不动（停留卡）就没有路线可播：置 null，让表现层走它自己的兜底
+  state.movePath = path.length > 0 ? path : null;
 
   // EVT-04 倒闭与乞讨：路遇原地乞讨的倒闭者，施舍 1000 元（固定金额，随物价指数缩放）
   if (beggar) {
@@ -2124,6 +2268,20 @@ function rollDice(state: GameState, action: Extract<PlayerAction, { type: 'ROLL_
     return;
   }
 
+  // NPC-05 恶犬与 TILE-31 宝箱都只认**踩中**那一格（用户规则：路过不算撞上）。
+  // 所以它们不在移动循环里，而在落定之后 —— 循环只管路障与地雷这类截停型效果。
+  const dogIdx = state.npcs.findIndex((n) => n.kind === 'dog' && n.position === pos);
+  if (dogIdx >= 0) {
+    const dogCell = state.board[pos]!;
+    state.npcs.splice(dogIdx, 1);
+    if (p.diceCount <= 1) {
+      log(state, `${p.name} 在「${dogCell.name}」踩中恶犬，被咬伤`);
+      bittenByDog = true;
+    } else {
+      log(state, `${p.name} 驾车在「${dogCell.name}」撞跑了恶犬`);
+    }
+  }
+
   // NPC-05 恶犬咬伤（步行者）：住院 3 天并丧失收租权
   if (bittenByDog) {
     p.skipTurns = Math.max(p.skipTurns, DOG_HOSPITAL_DAYS);
@@ -2132,6 +2290,14 @@ function rollDice(state: GameState, action: Extract<PlayerAction, { type: 'ROLL_
     log(state, `${p.name} 被恶犬咬伤，住院 ${DOG_HOSPITAL_DAYS} 天并丧失收租权`);
     advanceTurn(state);
     return;
+  }
+
+  // TILE-31 宝箱：踩中才开箱，拿完这一格照常结算；本月不再回来（换月重投）
+  if (state.treasureCellId === pos) {
+    const treasureCell = state.board[pos]!;
+    state.treasureCellId = null;
+    p.points += TREASURE_POINTS;
+    log(state, `${p.name} 在「${treasureCell.name}」打开宝箱，获得 ${TREASURE_POINTS} 点券！`);
   }
 
   const c = cellAt(state, pos);
@@ -2851,8 +3017,6 @@ const EFFECT_KIT: EffectKit = {
     const god = state.boardGods.find((g) => g.godId === godId);
     return god ? detachGodForPossession(state, god.cellId) !== null : false;
   },
-  cellsAhead: (state, from, dir, steps) =>
-    Array.from({ length: steps }, (_, i) => (from + dir * (i + 1) + BOARD_SIZE) % BOARD_SIZE),
   summonGod: (state, p) => summonGod(godCtx(state), p),
   applyGodRentModifier: (state, p, rent, cellName) => applyGodRentModifier(godCtx(state), p, rent, cellName),
   unluckyMultiplier,
@@ -2936,7 +3100,8 @@ function buyCard(state: GameState, action: Extract<PlayerAction, { type: 'BUY_CA
 function discardCard(state: GameState, action: Extract<PlayerAction, { type: 'DISCARD_CARD' }>): void {
   // ECON-12：额满待舍弃阶段也允许 DISCARD_CARD，选定后新卡立即入栏
   assertLegal(state, action);
-  const p = currentPlayer(state);
+  // 待舍弃阶段动手的是「卡的主人」，不是「轮到谁」：两者可以不是同一个人（见 PendingCard）
+  const p = state.phase === 'awaiting_discard' ? (pendingOwner(state) ?? currentPlayer(state)) : currentPlayer(state);
   consumeCard(p, action.cardId);
   log(state, `${p.name} 舍弃了卡片「${CARDS[action.cardId]?.name ?? action.cardId}」`);
   if (state.phase === 'awaiting_discard') resolvePendingCard(state);
@@ -3032,6 +3197,7 @@ function buyStock(state: GameState, action: Extract<PlayerAction, { type: 'BUY_S
   const { execPrice, moved } = applyTradeImpact(state, stock, action.quantity, 'buy');
   const total = execPrice * action.quantity;
   p.deposit -= total;
+  stock.remainingShares -= action.quantity;   // 供给有限：买走的从流通盘里扣，可以买到没有
   const company = companyOfStock(state, stock.id);
   if (company) {
     // 一本账：面板买的也是这家公司的股东 —— 持股记进 `CompanyState.shares`（与踩格认购同一本），
@@ -3074,6 +3240,8 @@ function sellStock(state: GameState, action: Extract<PlayerAction, { type: 'SELL
     p.stockCost[stock.id] = costBefore - costOut;
   }
   p.deposit += total; // 股市那侧的收支一律走存款（含卖出所得）
+  // 卖回来的量回到流通盘里（上限就是总股本），下一位买的人才有货可买
+  stock.remainingShares = Math.min(stock.floatShares, stock.remainingShares + action.quantity);
   const { moved } = applyTradeImpact(state, stock, action.quantity, 'sell');
   const profit = total - costOut;
   const profitText = profit === 0 ? '' : `（${profit >= 0 ? '赚' : '亏'} ¥${Math.abs(profit).toLocaleString('zh-CN')}）`;
@@ -3098,13 +3266,15 @@ function buyShares(state: GameState, action: Extract<PlayerAction, { type: 'BUY_
   const company = companyAtCell(state, action.cellId)!;
   const cost = company.sharePrice * action.quantity;
   p.cash -= cost;
+  const subscribed = stockById(state, companyStockId(company.kind));
+  if (subscribed) subscribed.remainingShares = Math.max(0, subscribed.remainingShares - action.quantity);
   company.shares[p.id] = (company.shares[p.id] ?? 0) + action.quantity;
   company.lockedShares[p.id] = lockedSharesOf(company, p.id) + action.quantity;
   if (company.firstHeldDayIndex[p.id] === undefined) company.firstHeldDayIndex[p.id] = state.calendar.elapsedDays;
   const locked = lockedSharesOf(company, p.id);
   log(
     state,
-    `${p.name} 以现金 ¥${cost.toLocaleString('zh-CN')} 认购${COMPANIES[company.kind].name} ${action.quantity} 张` +
+    `${p.name} 以现金 ¥${cost.toLocaleString('zh-CN')} 认购${company.name} ${action.quantity} 张` +
       `（持股 ${company.shares[p.id]}，其中 ${locked} 张要到下次行动才能转手）`,
   );
   recomputeCompanyChairman(state, company);
@@ -3133,9 +3303,10 @@ function sellShares(state: GameState, action: Extract<PlayerAction, { type: 'SEL
     company.shares[p.id] = left;
   }
   p.deposit += total; // 股市那侧的钱一律进出存款（现金只归买地、升级、踩格认购）
+  stock.remainingShares = Math.min(stock.floatShares, stock.remainingShares + action.quantity);
   log(
     state,
-    `${p.name} 卖出 ${COMPANIES[company.kind].name} 原始股 ×${action.quantity}，按市价 ¥${execPrice.toLocaleString('zh-CN')} 成交，` +
+    `${p.name} 卖出 ${company.name} 原始股 ×${action.quantity}，按市价 ¥${execPrice.toLocaleString('zh-CN')} 成交，` +
       `得存款 ¥${total.toLocaleString('zh-CN')}（持股 ${left}）`,
   );
   recomputeCompanyChairman(state, company);
@@ -3155,15 +3326,15 @@ function recomputeCompanyChairman(state: GameState, company: CompanyState): void
     if (prev && prev.financing > 0) {
       const amount = prev.financing;
       prev.financing = 0;
-      log(state, `【特别融资】${COMPANIES[company.kind].name} 董事长换人，${prev.name} 的周转融资 ¥${amount} 须立即还清`);
+      log(state, `【特别融资】${company.name} 董事长换人，${prev.name} 的周转融资 ¥${amount} 须立即还清`);
       pay(state, prev, amount, null, { reason: 'financing' });
     }
   }
   if (nextId) {
     const next = state.players.find((q) => q.id === nextId);
-    log(state, `${next?.name ?? nextId} 取得${COMPANIES[company.kind].name}经营权，成为董事长`);
+    log(state, `${next?.name ?? nextId} 取得${company.name}经营权，成为董事长`);
   } else {
-    log(state, `${COMPANIES[company.kind].name}经营权空缺`);
+    log(state, `${company.name}经营权空缺`);
   }
 }
 
@@ -3241,6 +3412,11 @@ function actorForAction(state: GameState, action: PlayerAction): Player | null {
     const a = state.auction;
     if (!a) return null;
     return state.players.find((q) => q.id === a.bidders[a.turnIndex]) ?? null;
+  }
+  // 待舍弃阶段同理：动手的是那张卡的主人。抽卡可以发生在别人的回合里（大福神显灵那类），
+  // 按当前玩家判就会变成「要求一个手上没牌的人弃牌」，整局钉死在这个相位。
+  if (action.type === 'DISCARD_CARD' && state.phase === 'awaiting_discard') {
+    return pendingOwner(state);
   }
   return currentPlayerOrNull(state);
 }
@@ -3485,8 +3661,20 @@ function checkRepayLoan(state: GameState, p: Player | null, action: ActionOf<'RE
   return null;
 }
 
-/** 股票类动作的共同前置（买卖共用，顺序与引擎逐条一致） */
-function stockTradeRefusal(state: GameState, p: Player | null, stockId: string, quantity: number): ActionRefusal {
+/**
+ * 股票类动作的共同前置（买卖共用，顺序与引擎逐条一致）。
+ *
+ * `side` 决定涨跌停闸门的方向 —— 原版判得很不对称（FUN_004295ea + 两个入口）：
+ * **涨停追不进（禁买可卖）、跌停割不掉（禁卖可买）**。少掉这一条，"涨停板"就只是个
+ * 数字而不是规则，玩家永远能在最高点满仓、也在最低点清仓。
+ */
+function stockTradeRefusal(
+  state: GameState,
+  p: Player | null,
+  stockId: string,
+  quantity: number,
+  side: 'buy' | 'sell',
+): ActionRefusal {
   if (!canTradeStockNow(state)) return '当前不能交易股票';
   if (!p) return NO_ACTOR_MESSAGE;
   if (p.bankrupt) return '已倒闭的玩家不能交易股票';
@@ -3495,18 +3683,24 @@ function stockTradeRefusal(state: GameState, p: Player | null, stockId: string, 
   if (state.stockHaltAllDays > 0) return `全市场停牌中（剩余 ${state.stockHaltAllDays} 天）`;
   if (gameDate(state).isHoliday) return '例假日休市，无法买卖股票';
   if (isStockSuspended(state, stock.id)) return `${stock.name} 暂停交易中`;
+  const limit = stockLimitState(stock);
+  if (side === 'buy' && limit === 'up') return `${stock.name} 涨停中，无法买进`;
+  if (side === 'sell' && limit === 'down') return `${stock.name} 跌停中，无法卖出`;
   if (!Number.isInteger(quantity) || quantity <= 0) return '数量必须为正整数';
   return null;
 }
 
 function checkBuyStock(state: GameState, p: Player | null, action: ActionOf<'BUY_STOCK'>): ActionRefusal {
-  const early = stockTradeRefusal(state, p, action.stockId, action.quantity);
+  const early = stockTradeRefusal(state, p, action.stockId, action.quantity, 'buy');
   if (early) return early;
   const stock = stockById(state, action.stockId)!;
   // 校验用**结算价**（含冲击）而不是盘口原价：否则「刚好够钱」的那笔会扣成负存款
   const total = stockExecPrice(stock, action.quantity, 'buy') * action.quantity;
   // 股票**只能用存款买入**（help[07]：买股票的收支由银行自动转、扣帐，走存款账户）；
   // 现金不能用于炒股——现金只够买地与升级建筑。
+  if (action.quantity > stock.remainingShares) {
+    return `${stock.name} 的流通股只剩 ${stock.remainingShares} 张，买不到 ${action.quantity} 张（有人已经把它买光了）`;
+  }
   if (p!.deposit < total) {
     return `存款不足：买入 ${stock.name} ×${action.quantity} 需 ¥${total.toLocaleString('zh-CN')}，可用存款 ¥${p!.deposit.toLocaleString('zh-CN')}（现金不能用于炒股）`;
   }
@@ -3514,7 +3708,7 @@ function checkBuyStock(state: GameState, p: Player | null, action: ActionOf<'BUY
 }
 
 function checkSellStock(state: GameState, p: Player | null, action: ActionOf<'SELL_STOCK'>): ActionRefusal {
-  const early = stockTradeRefusal(state, p, action.stockId, action.quantity);
+  const early = stockTradeRefusal(state, p, action.stockId, action.quantity, 'sell');
   if (early) return early;
   // 公司股是股东名册上的账（`CompanyState.shares`），转手走 SELL_SHARES —— 那里才看得见锁定期
   if (companyOfStock(state, action.stockId)) return '公司股请在「我的原始股权益」里转手';
@@ -3558,9 +3752,13 @@ function checkBuyShares(state: GameState, p: Player | null, action: ActionOf<'BU
   if (action.cellId !== p.position) return '没走到该公司格，不能认购其原始股';
   if (!Number.isInteger(action.quantity) || action.quantity <= 0) return '股数必须为正整数';
   if (action.quantity > MAX_SHARES_PER_BUY) return `单次认购上限 ${MAX_SHARES_PER_BUY} 张`;
+  const listed = stockById(state, companyStockId(company.kind));
+  if (listed && action.quantity > listed.remainingShares) {
+    return `${company.name} 的流通股只剩 ${listed.remainingShares} 张，认购不到 ${action.quantity} 张`;
+  }
   const need = company.sharePrice * action.quantity;
   if (p.cash < need) {
-    return `现金不足：认购 ${COMPANIES[company.kind].name} ×${action.quantity} 需 ¥${need.toLocaleString('zh-CN')}，可用现金 ¥${p.cash.toLocaleString('zh-CN')}`;
+    return `现金不足：认购 ${company.name} ×${action.quantity} 需 ¥${need.toLocaleString('zh-CN')}，可用现金 ¥${p.cash.toLocaleString('zh-CN')}`;
   }
   return null;
 }
@@ -3578,6 +3776,9 @@ function checkSellShares(state: GameState, p: Player | null, action: ActionOf<'S
   if (!Number.isInteger(action.quantity) || action.quantity <= 0) return '股数必须为正整数';
   if (state.stockHaltAllDays > 0) return `全市场停牌中（剩余 ${state.stockHaltAllDays} 天）`;
   if (gameDate(state).isHoliday) return '例假日休市，无法卖出原始股';
+  // 二级转手同样吃跌停闸门：割不掉就是割不掉（认购走的是面值申购，不受此限）
+  const listed = stockById(state, companyStockId(company.kind));
+  if (listed && stockLimitState(listed) === 'down') return `${company.name} 跌停中，无法卖出原始股`;
   const locked = lockedSharesOf(company, p.id);
   if (action.quantity > sellableSharesOf(company, p.id)) {
     return locked > 0

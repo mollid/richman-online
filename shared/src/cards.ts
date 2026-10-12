@@ -1,4 +1,4 @@
-import { MAX_HAND_CARDS, MAX_ITEM_COUNT } from './board.js';
+import { boardNeighbors, MAX_HAND_CARDS, MAX_ITEM_COUNT, pathAhead } from './board.js';
 import type { CardEffectCtx } from './effect_ctx.js';
 import { scaled, upgradeCost } from './economy.js';
 import { godDef } from './gods.js';
@@ -172,7 +172,7 @@ export const CARDS: Record<string, CardDef> = {
       const toId = requireCellId();
       if (toId === p.position) throw new Error('请选择与脚下不同的土地');
       // CARD-04「视窗内其他土地」：在线版以脚下 4×4（16 格）视窗近似
-      if (!viewportCells(p.position).includes(toId)) throw new Error('目标土地不在视窗（4×4）范围内');
+      if (!viewportCells(state.board, p.position).includes(toId)) throw new Error('目标土地不在视窗（4×4）范围内');
       const fromCell = state.board[p.position]!;
       const toCell = state.board[toId]!;
       if (fromCell.type !== toCell.type) throw new Error('只能同类互换（住宅换住宅 / 商业换商业）');
@@ -201,7 +201,7 @@ export const CARDS: Record<string, CardDef> = {
       const toId = requireCellId();
       if (toId === p.position) throw new Error('请选择与脚下不同的土地');
       // CARD-05「视窗内其他房屋」：在线版以脚下 4×4（16 格）视窗近似
-      if (!viewportCells(p.position).includes(toId)) throw new Error('目标房屋不在视窗（4×4）范围内');
+      if (!viewportCells(state.board, p.position).includes(toId)) throw new Error('目标房屋不在视窗（4×4）范围内');
       const fromCell = state.board[p.position]!;
       const toCell = state.board[toId]!;
       if (fromCell.type !== toCell.type) throw new Error('只能同类互换（住宅换住宅 / 商业换商业）');
@@ -228,7 +228,11 @@ export const CARDS: Record<string, CardDef> = {
     available: true,
     apply: ({ state, self: p, log }) => {
       for (const q of state.players) {
-        if (!q.bankrupt) q.direction = q.direction === 1 ? -1 : 1;
+        if (q.bankrupt) continue;
+        // 朝向是邻接表下标：环上 1=顺时针、0=逆时针，翻一格即掉头。
+        // 岔路口（邻居多于两个）时「掉头」只能理解成「换到另一条路」，取下一条即可。
+        const ways = boardNeighbors(state.board, q.position).length || 1;
+        q.heading = (q.heading + 1) % ways;
       }
       log(state, `${p.name} 使用「转向卡」，所有玩家行进方向 180° 反转`);
     },
@@ -535,7 +539,7 @@ export const CARDS: Record<string, CardDef> = {
     phase: 'any',
     target: 'none',
     available: true,
-    apply: ({ state, self: p, log, cellsAhead, clearBoardGods }) => {
+    apply: ({ state, self: p, log, clearBoardGods }) => {
       let done = false;
       const bomb = state.bombs.find((b) => b.playerId === p.id);
       if (bomb) {
@@ -551,7 +555,7 @@ export const CARDS: Record<string, CardDef> = {
       }
       // 既未被附身也没带炸弹时，退而请走前方 9 步内**驻留在棋盘上**的神明（W2）：
       // 神明会挡在必经之路上，经过就被动附身，提前送走等于给自己让路。
-      if (!done && clearBoardGods(state, cellsAhead(state, p.position, p.direction, 9), '被送神卡请回') > 0) {
+      if (!done && clearBoardGods(state, pathAhead(state.board, p.position, p.heading, 9), '被送神卡请回') > 0) {
         log(state, `${p.name} 使用「送神卡」，请走了前方 9 步内的驻留神明`);
         return;
       }

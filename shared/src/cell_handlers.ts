@@ -23,12 +23,11 @@
  * 的属性测试每帧验证。
  */
 
-import { TREASURE_POINTS } from './board.js';
 import { landOnCompany } from './companies.js';
 import type { CellLandingCtx, LandingResult } from './effect_ctx.js';
-import { holdLanding, landingBlocker } from './effect_ctx.js';
+import { holdLanding, landingBlocker, openBankWindow } from './effect_ctx.js';
 import { landPrice, scaled } from './economy.js';
-import { CRIME_JAIL_DAYS, FATE_MAP_IDS, fateCardById, renderFateText } from './fate.js';
+import { FATE_MAP_IDS, fateCardById, renderFateText } from './fate.js';
 import { LOTTERY_TICKET_COST } from './lottery.js';
 import { CURSES, CURSE_ORDER, MAGIC_CONDITIONS, MAGIC_CONDITION_LABEL } from './npc.js';
 import { nextRandom } from './rng.js';
@@ -61,6 +60,18 @@ function onLandingStart(ctx: CellLandingCtx): LandingResult {
   return 'advance';
 }
 
+/**
+ * 空白格（原版地图 mkf 里那些没有名字的节点）：什么都不发生，回合直接走。
+ *
+ * 它是 R4 那条不变式最干净的用例 —— 既然这一格没有任何可决策的事，就连窗都不该开。
+ * 播报留一句，免得玩家停在空地上以为漏结算了。
+ */
+function onLandingBlank(ctx: CellLandingCtx): LandingResult {
+  const { state, self: p, cell: c } = ctx;
+  ctx.log(state, `${p.name} 来到${c.name}，这一格什么都没有`);
+  return 'advance';
+}
+
 /** TILE-17 机会/危险格：命运卡池抽签（help[28]）+ 附带的违法事件风险（EVT-02） */
 function onLandingChance(ctx: CellLandingCtx): LandingResult {
   const { state, self: p } = ctx;
@@ -75,7 +86,7 @@ function onLandingChance(ctx: CellLandingCtx): LandingResult {
         Math.min(FATE_MAP_IDS.length - 1, Math.floor((crimeRoll.value / CRIME_CHANCE) * FATE_MAP_IDS.length))
       ]!;
     const cause = fateCardById(causeId);
-    const days = cause?.days ?? CRIME_JAIL_DAYS;
+    const days = cause?.days ?? 1;
     ctx.applyDisaster(state, p, 'jail', null, (v) => {
       v.skipTurns = Math.max(v.skipTurns, days);
       v.custody = { kind: 'jail', daysLeft: Math.max(v.skipTurns, days) };
@@ -154,22 +165,12 @@ function onLandingShop(ctx: CellLandingCtx): LandingResult {
  * TILE-08 公立银行 / TILE-26 企业银行：**会话窗**（`venue='bank'`），停留当格开放存取款与贷款。
  *
  * 但只在「真有事可办」时才开：例假日休市且没有贷款可还的这一格，推进回合就是它的正确结算，
- * 钉在窗口里只能靠逃生门出来。
+ * 钉在窗口里只能靠逃生门出来。判据与企业银行共用 `openBankWindow` 那一份。
  */
 function onLandingBank(ctx: CellLandingCtx): LandingResult {
   const { state, self: p, cell: c } = ctx;
-  // 先授权再探路：银行四项校验读的都是 `state.bankAccess`，顺序倒了会得到「当前不能进行银行操作」，
-  // 于是每格银行都被判成「无事可做」—— 门控与引擎同源的含义就是**按引擎的口径去问**。
-  state.bankAccess = { canDeposit: true, canLoan: true, cellId: c.id };
-  const blocker = landingBlocker(ctx, [
-    { type: 'DEPOSIT', amount: 1 },
-    { type: 'WITHDRAW', amount: 1 },
-    { type: 'TAKE_LOAN', amount: 1 },
-    { type: 'REPAY_LOAN', amount: 1 },
-  ]);
+  const blocker = openBankWindow(ctx);
   if (blocker !== null) {
-    // 例假日休市且无贷款可还：这一格确实没事，把刚给的权限收回去（别留给下一位）
-    state.bankAccess = null;
     ctx.log(state, `${p.name} 来到${c.name}，${blocker}`);
     return 'advance';
   }
@@ -437,14 +438,6 @@ function onLandingPoints(ctx: CellLandingCtx): LandingResult {
   return 'advance';
 }
 
-/** TILE-31 宝箱（点数来源，待验证） */
-function onLandingTreasure(ctx: CellLandingCtx): LandingResult {
-  const { state, self: p, cell: c } = ctx;
-  p.points += TREASURE_POINTS;
-  ctx.log(state, `${p.name} 打开「${c.name}」，获得 ${TREASURE_POINTS} 点券！`);
-  return 'advance';
-}
-
 /** TILE-18 新闻格：游标轮询触发 36 条新闻事件池中的一条（EVT-01） */
 function onLandingNews(ctx: CellLandingCtx): LandingResult {
   const { state } = ctx;
@@ -521,13 +514,13 @@ export const CELL_HANDLERS: Record<CellType, (ctx: CellLandingCtx) => LandingRes
   points: onLandingPoints,
   lottery: onLandingLottery,
   magic: onLandingMagic,
-  treasure: onLandingTreasure,
   tax: onLandingTax,
   hospital: onLandingHospital,
   jail: onLandingJail,
   bank: onLandingBank,
   shop: onLandingShop,
   god: onLandingGod,
+  blank: onLandingBlank,
   game: onLandingGame,
   company: onLandingCompany,
 };

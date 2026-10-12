@@ -13,6 +13,11 @@ export interface ReplayRecordData {
    */
   maxDays?: number | null;
   /**
+   * 建局时的地图（R5-b）。必须随记录一起存：不存的话原版图的回放会复现成自建 64 格环 ——
+   * 棋盘都不一样，动作日志再逐字一致也不是那一局。null / 缺省 = 默认图。
+   */
+  mapId?: number | null;
+  /**
    * 座位序即数组下标 —— 回合轮转按座位走，顺序错了整局就串。
    * `player_key` 是局内玩家 id（联机是 sessionId，热座是 local-N）：
    * `SURRENDER` 的复仇者、挂牌的卖家等动作引用的是它，回放必须同名。
@@ -40,7 +45,7 @@ export class ReplayEngine {
     }));
     // 外部传入的录像记录可能缺字段：先补默认值再逐帧复现
     let state = normalizeGameState(
-      applyAction(createGame(defs, record.seed, { startDate: record.startDate, maxDays: record.maxDays ?? null }), {
+      applyAction(createGame(defs, record.seed, { startDate: record.startDate, maxDays: record.maxDays ?? null, mapId: record.mapId ?? null }), {
         type: 'START_GAME',
       }),
     );

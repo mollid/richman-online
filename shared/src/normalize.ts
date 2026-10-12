@@ -1,4 +1,5 @@
 import { stockFloatShares } from './stocks.js';
+import { COMPANIES } from './companies.js';
 import { landingVenueOf } from './effect_ctx.js';
 import type { GameState } from './types.js';
 
@@ -29,14 +30,28 @@ export function normalizeGameState(state: GameState): GameState {
   state.spawnGods ??= true;
   if (!state.godPairBanUntil) state.godPairBanUntil = {};
 
-  // 股票 K 线与冲击成本（stocks）：老存档的 Stock 没有这两项，按定义表补齐
+  // 股票 K 线与冲击成本（stocks）：老存档的 Stock 没有这些项，按定义表补齐。
+  // 开盘/锚退回**当前价**（等于承认「今天还没走过」），闸门因此判平盘；波动系数 1 = 与原版同形。
   for (const stock of state.stockMarket?.stocks ?? []) {
     stock.floatShares ??= stockFloatShares(stock.id);
     stock.candles ??= [];
+    stock.openPrice ??= stock.price;
+    stock.anchorPrice ??= stock.price;
+    stock.volatility ??= 1;
+    // 剩余流通股：老对象没这个键时按「一股都还没被买走」补 —— 与「还没人交易」的默认一致，
+    // 比补成 0（整支票立刻买不到）安全。
+    stock.remainingShares ??= stock.floatShares;
   }
 
-  // 原始股锁定期（CORP-14）：缺键当作「没有待解锁的股份」，不凭空锁住玩家的持股
-  for (const company of state.companies ?? []) company.lockedShares ??= {};
+  // 原始股锁定期（CORP-14）：缺键当作「没有待解锁的股份」，不凭空锁住玩家的持股。
+  // R6 给公司加了 name / footprint：名字退回那张种类表（就是它原先显示的值），
+  // footprint 退回「只占脚下这一格」—— 自建图本来就是一格一公司。
+  for (const company of state.companies ?? []) {
+    company.lockedShares ??= {};
+    company.name ??= COMPANIES[company.kind]?.name ?? company.kind;
+    company.tile ??= COMPANIES[company.kind]?.tile ?? '';
+    company.footprint ??= [company.cellId];
+  }
 
   // 落格决策窗（R4）：老存档没有这个键。若正停在 awaiting_action，就按「格型 → venue」那张
   // 唯一的表**就地补一扇窗** —— 凭据的 cellId 取行动者脚下格，与开窗时的写法一致。
@@ -60,12 +75,13 @@ export function normalizeGameState(state: GameState): GameState {
     delete legacyAuction.passes;
   }
 
-  // 待舍弃手牌（R4）：单槽 `pendingCard` 换成队列 `pendingCards`。老热座存档里正卡在
-  // awaiting_discard 的那一局，若不把旧的那一张搬进队列，就会停在「要舍弃却没有卡可舍」的
-  // 死角（该相位没有 FINISH_LANDING 出口），所以这里做一次形状搬运。
-  const legacyPending = state as typeof state & { pendingCard?: string | null };
-  state.pendingCards ??= legacyPending.pendingCard ? [legacyPending.pendingCard] : [];
-  delete legacyPending.pendingCard;
+  // ECON-12 待舍弃队列：每条要带归属（见 `PendingCard`）。开发阶段不为老形状兜底。
+  state.pendingCards ??= [];
+
+  // 宝箱（TILE-31）改成驻留实体：老对象没有这两个键，按「此刻场上没有宝箱、本月还没投过」补，
+  // 下一个换月的日切钩子会照常投一只出来。
+  state.treasureCellId ??= null;
+  state.treasureMonth ??= 0;
 
   // 老状态没有回合子阶段：按可见相位反推一个合理值（该字段不参与任何规则判定）
   if (!state.turnStage) {

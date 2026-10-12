@@ -58,6 +58,8 @@ export async function initStorage(): Promise<void> {
         --   seat        座位序：回合轮转、并列决胜都按座位走，按名字排会串位
         --   player_key  局内玩家 id：SURRENDER / 挂牌等动作引用的是这个 id，回放必须同名
         ALTER TABLE game_records ADD COLUMN IF NOT EXISTS max_days INT;
+        --   map_id      本局跑的是哪张图（null = 自建 64 格环）：不存的话原版图的回放会复现成默认图
+        ALTER TABLE game_records ADD COLUMN IF NOT EXISTS map_id INT;
         ALTER TABLE game_record_players ADD COLUMN IF NOT EXISTS seat INT NOT NULL DEFAULT 0;
         ALTER TABLE game_record_players ADD COLUMN IF NOT EXISTS player_key VARCHAR(64);
         CREATE INDEX IF NOT EXISTS idx_records_finished ON game_records(finished_at DESC);
@@ -149,6 +151,8 @@ export interface GameRecordInput {
   actions: Array<{ turn: number; action: unknown }>;
   /** 天数上限（W4）：建局参数之一，不存就复现不出到期结算 */
   maxDays: number | null;
+  /** 本局地图（null = 自建 64 格环）：不存就复现成另一张棋盘 */
+  mapId: number | null;
   /** 按座位序传入（数组下标即 `seat`），`id` 是局内玩家 id */
   players: Array<{ id: string; userId: string | null; playerName: string; color: number; cash: number; bankrupt: boolean }>;
 }
@@ -159,8 +163,8 @@ export async function saveGameRecord(input: GameRecordInput): Promise<void> {
   try {
     await client.query('BEGIN');
     const recordRes = await client.query<{ id: string }>(
-      `INSERT INTO game_records (room_id, seed, start_date, winner_name, player_count, turns, rounds, actions, max_days)
-       VALUES ($1, $2, $3::jsonb, $4, $5, $6, $7, $8::jsonb, $9) RETURNING id`,
+      `INSERT INTO game_records (room_id, seed, start_date, winner_name, player_count, turns, rounds, actions, max_days, map_id)
+       VALUES ($1, $2, $3::jsonb, $4, $5, $6, $7, $8::jsonb, $9, $10) RETURNING id`,
       [
         input.roomId,
         input.seed,
@@ -171,6 +175,7 @@ export async function saveGameRecord(input: GameRecordInput): Promise<void> {
         input.rounds,
         JSON.stringify(input.actions),
         input.maxDays,
+        input.mapId,
       ],
     );
     const recordId = recordRes.rows[0]!.id;
@@ -208,6 +213,8 @@ export interface ReplayRecord extends ReplayRecordSummary {
   start_date: DateSerial | null;
   /** 建局时的天数上限（W4）；null = 不限 */
   max_days: number | null;
+  /** 本局地图；null = 自建 64 格环（老记录没有这一列，读出来即 null） */
+  map_id: number | null;
   actions: Array<{ turn: number; action: unknown }>;
 }
 
@@ -234,7 +241,7 @@ export async function getRecord(id: string): Promise<ReplayRecord | null> {
   if (!pool || !storageReady.pg) return null;
   if (!/^[0-9a-f-]{36}$/i.test(id)) return null;
   const res = await pool.query<ReplayRecord>(
-    `SELECT gr.id, gr.room_id, gr.seed, gr.start_date, gr.max_days, gr.winner_name, gr.player_count, gr.turns, gr.rounds, gr.actions, gr.finished_at,
+    `SELECT gr.id, gr.room_id, gr.seed, gr.start_date, gr.max_days, gr.map_id, gr.winner_name, gr.player_count, gr.turns, gr.rounds, gr.actions, gr.finished_at,
             COALESCE(
               json_agg(json_build_object('player_name', rp.player_name, 'color', rp.color, 'cash', rp.cash, 'bankrupt', rp.bankrupt, 'player_key', rp.player_key)
                        ORDER BY rp.seat)

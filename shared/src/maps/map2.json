@@ -1,0 +1,2403 @@
+{
+ "mapId": 2,
+ "name": "日本",
+ "source": "map.mkf 块 #5",
+ "nodeCount": 110,
+ "startCellId": 0,
+ "subTables": {
+  "residential": {
+   "count": 49,
+   "offset": 4480,
+   "rowBytes": 52
+  },
+  "commercial": {
+   "count": 5,
+   "offset": 7080,
+   "rowBytes": 56
+  },
+  "company": {
+   "count": 6,
+   "offset": 7416,
+   "rowBytes": 52
+  },
+  "scenery": {
+   "count": 16,
+   "offset": 7780,
+   "rowBytes": 28
+  }
+ },
+ "companies": [
+  {
+   "sid": 6002,
+   "name": "豐田汽車",
+   "companyId": 5,
+   "sharePrice": 700,
+   "buildingId": 56,
+   "capital": 270000,
+   "cells": [
+    58,
+    59
+   ]
+  },
+  {
+   "sid": 6003,
+   "name": "日產建設",
+   "companyId": 11,
+   "sharePrice": 5000,
+   "buildingId": 51,
+   "capital": 244000,
+   "cells": [
+    66,
+    67
+   ]
+  },
+  {
+   "sid": 6004,
+   "name": "三井生命",
+   "companyId": 4,
+   "sharePrice": 1000,
+   "buildingId": 52,
+   "capital": 790000,
+   "cells": [
+    91,
+    92
+   ]
+  },
+  {
+   "sid": 6005,
+   "name": "ＳＥＧＡ",
+   "companyId": 3,
+   "sharePrice": 150,
+   "buildingId": 50,
+   "capital": 2400000,
+   "cells": [
+    101,
+    102
+   ]
+  }
+ ],
+ "cells": [
+  {
+   "id": 0,
+   "name": "銀行",
+   "x": 1368,
+   "y": 1656,
+   "neighbors": [
+    2,
+    109
+   ],
+   "sid": 6006,
+   "kind": 14,
+   "flags": 0,
+   "sidName": "富士銀行",
+   "flag": 0,
+   "companyId": 7,
+   "companyPrice": 0,
+   "buildingId": 58,
+   "capital": 1000000,
+   "type": "bank"
+  },
+  {
+   "id": 1,
+   "name": "命運",
+   "x": 1032,
+   "y": 1655,
+   "neighbors": [
+    7,
+    6
+   ],
+   "sid": 0,
+   "kind": 3,
+   "flags": 0,
+   "type": "chance"
+  },
+  {
+   "id": 2,
+   "name": "大阪",
+   "x": 1296,
+   "y": 1656,
+   "neighbors": [
+    3,
+    0
+   ],
+   "sid": 2019,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "大阪",
+   "flag": 0,
+   "price": 2000,
+   "rents": [
+    400,
+    400,
+    1000,
+    2400,
+    6000,
+    12500,
+    22000
+   ]
+  },
+  {
+   "id": 3,
+   "name": "大阪",
+   "x": 1248,
+   "y": 1656,
+   "neighbors": [
+    4,
+    2
+   ],
+   "sid": 2020,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "大阪",
+   "flag": 0,
+   "price": 2000,
+   "rents": [
+    400,
+    400,
+    1000,
+    2400,
+    6000,
+    12500,
+    22000
+   ]
+  },
+  {
+   "id": 4,
+   "name": "大阪",
+   "x": 1200,
+   "y": 1656,
+   "neighbors": [
+    5,
+    3
+   ],
+   "sid": 2021,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "大阪",
+   "flag": 0,
+   "price": 2000,
+   "rents": [
+    400,
+    400,
+    1000,
+    2400,
+    6000,
+    12500,
+    22000
+   ]
+  },
+  {
+   "id": 5,
+   "name": "大阪",
+   "x": 1152,
+   "y": 1656,
+   "neighbors": [
+    6,
+    4
+   ],
+   "sid": 2022,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "大阪",
+   "flag": 0,
+   "price": 2000,
+   "rents": [
+    400,
+    400,
+    1000,
+    2400,
+    6000,
+    12500,
+    22000
+   ]
+  },
+  {
+   "id": 6,
+   "name": "大阪",
+   "x": 1103,
+   "y": 1656,
+   "neighbors": [
+    1,
+    5
+   ],
+   "sid": 2023,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "大阪",
+   "flag": 0,
+   "price": 2000,
+   "rents": [
+    400,
+    400,
+    1000,
+    2400,
+    6000,
+    12500,
+    22000
+   ]
+  },
+  {
+   "id": 7,
+   "name": "神戶",
+   "x": 981,
+   "y": 1706,
+   "neighbors": [
+    8,
+    1
+   ],
+   "sid": 2024,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "神戶",
+   "flag": 1792,
+   "price": 1500,
+   "rents": [
+    300,
+    300,
+    750,
+    2000,
+    4800,
+    10000,
+    18000
+   ]
+  },
+  {
+   "id": 8,
+   "name": "神戶",
+   "x": 944,
+   "y": 1741,
+   "neighbors": [
+    9,
+    7
+   ],
+   "sid": 2025,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "神戶",
+   "flag": 1792,
+   "price": 1500,
+   "rents": [
+    300,
+    300,
+    750,
+    2000,
+    4800,
+    10000,
+    18000
+   ]
+  },
+  {
+   "id": 9,
+   "name": "神戶",
+   "x": 910,
+   "y": 1774,
+   "neighbors": [
+    10,
+    8
+   ],
+   "sid": 2026,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "神戶",
+   "flag": 1792,
+   "price": 1500,
+   "rents": [
+    300,
+    300,
+    750,
+    2000,
+    4800,
+    10000,
+    18000
+   ]
+  },
+  {
+   "id": 10,
+   "name": "神戶",
+   "x": 875,
+   "y": 1811,
+   "neighbors": [
+    11,
+    9
+   ],
+   "sid": 2027,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "神戶",
+   "flag": 1792,
+   "price": 1500,
+   "rents": [
+    300,
+    300,
+    750,
+    2000,
+    4800,
+    10000,
+    18000
+   ]
+  },
+  {
+   "id": 11,
+   "name": "神戶",
+   "x": 839,
+   "y": 1846,
+   "neighbors": [
+    12,
+    10
+   ],
+   "sid": 2028,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "神戶",
+   "flag": 1792,
+   "price": 1500,
+   "rents": [
+    300,
+    300,
+    750,
+    2000,
+    4800,
+    10000,
+    18000
+   ]
+  },
+  {
+   "id": 12,
+   "name": "新聞",
+   "x": 792,
+   "y": 1896,
+   "neighbors": [
+    13,
+    11
+   ],
+   "sid": 0,
+   "kind": 2,
+   "flags": 0,
+   "type": "news"
+  },
+  {
+   "id": 13,
+   "name": "得１０點",
+   "x": 863,
+   "y": 1920,
+   "neighbors": [
+    14,
+    12
+   ],
+   "sid": 0,
+   "kind": 12,
+   "flags": 0,
+   "type": "points",
+   "pointsGain": 10
+  },
+  {
+   "id": 14,
+   "name": "",
+   "x": 888,
+   "y": 1968,
+   "neighbors": [
+    15,
+    13
+   ],
+   "sid": 0,
+   "kind": 17,
+   "flags": 0,
+   "type": "blank"
+  },
+  {
+   "id": 15,
+   "name": "得１０點",
+   "x": 887,
+   "y": 2015,
+   "neighbors": [
+    16,
+    14
+   ],
+   "sid": 0,
+   "kind": 12,
+   "flags": 0,
+   "type": "points",
+   "pointsGain": 10
+  },
+  {
+   "id": 16,
+   "name": "四國",
+   "x": 887,
+   "y": 2064,
+   "neighbors": [
+    17,
+    15
+   ],
+   "sid": 0,
+   "kind": 17,
+   "flags": 0,
+   "type": "blank"
+  },
+  {
+   "id": 17,
+   "name": "得１０點",
+   "x": 839,
+   "y": 2111,
+   "neighbors": [
+    18,
+    16
+   ],
+   "sid": 0,
+   "kind": 12,
+   "flags": 0,
+   "type": "points",
+   "pointsGain": 10
+  },
+  {
+   "id": 18,
+   "name": "命運",
+   "x": 792,
+   "y": 2160,
+   "neighbors": [
+    19,
+    17
+   ],
+   "sid": 0,
+   "kind": 3,
+   "flags": 0,
+   "type": "chance"
+  },
+  {
+   "id": 19,
+   "name": "得５０點",
+   "x": 719,
+   "y": 2160,
+   "neighbors": [
+    20,
+    18
+   ],
+   "sid": 0,
+   "kind": 10,
+   "flags": 0,
+   "type": "points",
+   "pointsGain": 50
+  },
+  {
+   "id": 20,
+   "name": "四國",
+   "x": 671,
+   "y": 2158,
+   "neighbors": [
+    21,
+    19
+   ],
+   "sid": 0,
+   "kind": 17,
+   "flags": 0,
+   "type": "blank"
+  },
+  {
+   "id": 21,
+   "name": "企鵝挖寶",
+   "x": 623,
+   "y": 2111,
+   "neighbors": [
+    22,
+    20
+   ],
+   "sid": 0,
+   "kind": 6,
+   "flags": 0,
+   "type": "game",
+   "minigame": "penguin"
+  },
+  {
+   "id": 22,
+   "name": "得３０點",
+   "x": 599,
+   "y": 2063,
+   "neighbors": [
+    23,
+    21
+   ],
+   "sid": 0,
+   "kind": 11,
+   "flags": 32768,
+   "type": "points",
+   "pointsGain": 30
+  },
+  {
+   "id": 23,
+   "name": "七彩氣球",
+   "x": 599,
+   "y": 2016,
+   "neighbors": [
+    24,
+    22
+   ],
+   "sid": 0,
+   "kind": 8,
+   "flags": 32768,
+   "type": "game",
+   "minigame": "balloon"
+  },
+  {
+   "id": 24,
+   "name": "得１０點",
+   "x": 552,
+   "y": 1968,
+   "neighbors": [
+    25,
+    23
+   ],
+   "sid": 0,
+   "kind": 12,
+   "flags": 32768,
+   "type": "points",
+   "pointsGain": 10
+  },
+  {
+   "id": 25,
+   "name": "喜從天降",
+   "x": 503,
+   "y": 1968,
+   "neighbors": [
+    26,
+    24
+   ],
+   "sid": 0,
+   "kind": 7,
+   "flags": 32768,
+   "type": "game",
+   "minigame": "windfall"
+  },
+  {
+   "id": 26,
+   "name": "得３０點",
+   "x": 456,
+   "y": 2016,
+   "neighbors": [
+    27,
+    25
+   ],
+   "sid": 0,
+   "kind": 11,
+   "flags": 32768,
+   "type": "points",
+   "pointsGain": 30
+  },
+  {
+   "id": 27,
+   "name": "樂透",
+   "x": 408,
+   "y": 2064,
+   "neighbors": [
+    28,
+    26
+   ],
+   "sid": 0,
+   "kind": 9,
+   "flags": 32768,
+   "type": "lottery"
+  },
+  {
+   "id": 28,
+   "name": "得１０點",
+   "x": 336,
+   "y": 2065,
+   "neighbors": [
+    29,
+    27
+   ],
+   "sid": 0,
+   "kind": 12,
+   "flags": 32768,
+   "type": "points",
+   "pointsGain": 10
+  },
+  {
+   "id": 29,
+   "name": "九州",
+   "x": 287,
+   "y": 2064,
+   "neighbors": [
+    30,
+    28
+   ],
+   "sid": 0,
+   "kind": 17,
+   "flags": 0,
+   "type": "blank"
+  },
+  {
+   "id": 30,
+   "name": "得５０點",
+   "x": 240,
+   "y": 2016,
+   "neighbors": [
+    31,
+    29
+   ],
+   "sid": 0,
+   "kind": 10,
+   "flags": 0,
+   "type": "points",
+   "pointsGain": 50
+  },
+  {
+   "id": 31,
+   "name": "九州",
+   "x": 239,
+   "y": 1968,
+   "neighbors": [
+    32,
+    30
+   ],
+   "sid": 0,
+   "kind": 17,
+   "flags": 0,
+   "type": "blank"
+  },
+  {
+   "id": 32,
+   "name": "得１０點",
+   "x": 287,
+   "y": 1920,
+   "neighbors": [
+    33,
+    31
+   ],
+   "sid": 0,
+   "kind": 12,
+   "flags": 0,
+   "type": "points",
+   "pointsGain": 10
+  },
+  {
+   "id": 33,
+   "name": "",
+   "x": 335,
+   "y": 1871,
+   "neighbors": [
+    34,
+    32
+   ],
+   "sid": 0,
+   "kind": 17,
+   "flags": 0,
+   "type": "blank"
+  },
+  {
+   "id": 34,
+   "name": "魔法屋",
+   "x": 383,
+   "y": 1824,
+   "neighbors": [
+    35,
+    33
+   ],
+   "sid": 0,
+   "kind": 16,
+   "flags": 0,
+   "type": "magic"
+  },
+  {
+   "id": 35,
+   "name": "宮島",
+   "x": 383,
+   "y": 1752,
+   "neighbors": [
+    36,
+    34
+   ],
+   "sid": 2029,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "宮島",
+   "flag": 1536,
+   "price": 1000,
+   "rents": [
+    200,
+    200,
+    500,
+    1200,
+    2800,
+    6000,
+    10000
+   ]
+  },
+  {
+   "id": 36,
+   "name": "宮島",
+   "x": 383,
+   "y": 1704,
+   "neighbors": [
+    37,
+    35
+   ],
+   "sid": 2030,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "宮島",
+   "flag": 1536,
+   "price": 1000,
+   "rents": [
+    200,
+    200,
+    500,
+    1200,
+    2800,
+    6000,
+    10000
+   ]
+  },
+  {
+   "id": 37,
+   "name": "宮島",
+   "x": 383,
+   "y": 1657,
+   "neighbors": [
+    38,
+    36
+   ],
+   "sid": 2031,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "宮島",
+   "flag": 1536,
+   "price": 1000,
+   "rents": [
+    200,
+    200,
+    500,
+    1200,
+    2800,
+    6000,
+    10000
+   ]
+  },
+  {
+   "id": 38,
+   "name": "廣島",
+   "x": 412,
+   "y": 1603,
+   "neighbors": [
+    39,
+    37
+   ],
+   "sid": 4002,
+   "kind": 0,
+   "flags": 0,
+   "type": "commercial",
+   "sidName": "廣島",
+   "flag": 1792,
+   "price": 6000,
+   "rents": [
+    600,
+    600,
+    1500,
+    4000,
+    8000,
+    12000
+   ]
+  },
+  {
+   "id": 39,
+   "name": "廣島",
+   "x": 446,
+   "y": 1569,
+   "neighbors": [
+    40,
+    38
+   ],
+   "sid": 4002,
+   "kind": 0,
+   "flags": 0,
+   "type": "commercial",
+   "sidName": "廣島",
+   "flag": 1792,
+   "price": 6000,
+   "rents": [
+    600,
+    600,
+    1500,
+    4000,
+    8000,
+    12000
+   ]
+  },
+  {
+   "id": 40,
+   "name": "公園",
+   "x": 503,
+   "y": 1511,
+   "neighbors": [
+    41,
+    39
+   ],
+   "sid": 0,
+   "kind": 1,
+   "flags": 0,
+   "type": "blank"
+  },
+  {
+   "id": 41,
+   "name": "姬路",
+   "x": 575,
+   "y": 1511,
+   "neighbors": [
+    42,
+    40
+   ],
+   "sid": 2032,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "倉敷",
+   "flag": 0,
+   "price": 1500,
+   "rents": [
+    300,
+    300,
+    750,
+    2000,
+    4800,
+    10000,
+    18000
+   ]
+  },
+  {
+   "id": 42,
+   "name": "倉敷",
+   "x": 623,
+   "y": 1511,
+   "neighbors": [
+    43,
+    41
+   ],
+   "sid": 2033,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "倉敷",
+   "flag": 0,
+   "price": 1500,
+   "rents": [
+    300,
+    300,
+    750,
+    2000,
+    4800,
+    10000,
+    18000
+   ]
+  },
+  {
+   "id": 43,
+   "name": "倉敷",
+   "x": 672,
+   "y": 1511,
+   "neighbors": [
+    44,
+    42
+   ],
+   "sid": 2034,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "倉敷",
+   "flag": 0,
+   "price": 1500,
+   "rents": [
+    300,
+    300,
+    750,
+    2000,
+    4800,
+    10000,
+    18000
+   ]
+  },
+  {
+   "id": 44,
+   "name": "命運",
+   "x": 744,
+   "y": 1511,
+   "neighbors": [
+    45,
+    43
+   ],
+   "sid": 0,
+   "kind": 3,
+   "flags": 0,
+   "type": "chance"
+  },
+  {
+   "id": 45,
+   "name": "姬路",
+   "x": 817,
+   "y": 1511,
+   "neighbors": [
+    46,
+    44
+   ],
+   "sid": 4001,
+   "kind": 0,
+   "flags": 0,
+   "type": "commercial",
+   "sidName": "姬路",
+   "flag": 0,
+   "price": 4000,
+   "rents": [
+    400,
+    400,
+    1000,
+    2500,
+    5000,
+    8000
+   ]
+  },
+  {
+   "id": 46,
+   "name": "姬路",
+   "x": 860,
+   "y": 1511,
+   "neighbors": [
+    47,
+    45
+   ],
+   "sid": 4001,
+   "kind": 0,
+   "flags": 0,
+   "type": "commercial",
+   "sidName": "姬路",
+   "flag": 0,
+   "price": 4000,
+   "rents": [
+    400,
+    400,
+    1000,
+    2500,
+    5000,
+    8000
+   ]
+  },
+  {
+   "id": 47,
+   "name": "姬路",
+   "x": 912,
+   "y": 1511,
+   "neighbors": [
+    48,
+    46
+   ],
+   "sid": 4003,
+   "kind": 0,
+   "flags": 0,
+   "type": "commercial",
+   "sidName": "姬路",
+   "flag": 0,
+   "price": 5000,
+   "rents": [
+    500,
+    500,
+    1200,
+    3000,
+    6000,
+    10000
+   ]
+  },
+  {
+   "id": 48,
+   "name": "姬路",
+   "x": 957,
+   "y": 1511,
+   "neighbors": [
+    49,
+    47
+   ],
+   "sid": 4003,
+   "kind": 0,
+   "flags": 0,
+   "type": "commercial",
+   "sidName": "姬路",
+   "flag": 0,
+   "price": 5000,
+   "rents": [
+    500,
+    500,
+    1200,
+    3000,
+    6000,
+    10000
+   ]
+  },
+  {
+   "id": 49,
+   "name": "百貨公司",
+   "x": 1032,
+   "y": 1512,
+   "neighbors": [
+    50,
+    48
+   ],
+   "sid": 6001,
+   "kind": 15,
+   "flags": 0,
+   "sidName": "三越百貨",
+   "flag": 512,
+   "companyId": 10,
+   "companyPrice": 0,
+   "buildingId": 54,
+   "capital": 176000,
+   "type": "shop"
+  },
+  {
+   "id": 50,
+   "name": "京都",
+   "x": 1075,
+   "y": 1467,
+   "neighbors": [
+    51,
+    49
+   ],
+   "sid": 2035,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "京都",
+   "flag": 1792,
+   "price": 2000,
+   "rents": [
+    400,
+    400,
+    1000,
+    2400,
+    6000,
+    12500,
+    22000
+   ]
+  },
+  {
+   "id": 51,
+   "name": "京都",
+   "x": 1108,
+   "y": 1434,
+   "neighbors": [
+    52,
+    50
+   ],
+   "sid": 2036,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "京都",
+   "flag": 1792,
+   "price": 2000,
+   "rents": [
+    400,
+    400,
+    1000,
+    2400,
+    6000,
+    12500,
+    22000
+   ]
+  },
+  {
+   "id": 52,
+   "name": "京都",
+   "x": 1144,
+   "y": 1397,
+   "neighbors": [
+    53,
+    51
+   ],
+   "sid": 2037,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "京都",
+   "flag": 1792,
+   "price": 2000,
+   "rents": [
+    400,
+    400,
+    1000,
+    2400,
+    6000,
+    12500,
+    22000
+   ]
+  },
+  {
+   "id": 53,
+   "name": "京都",
+   "x": 1175,
+   "y": 1366,
+   "neighbors": [
+    54,
+    52
+   ],
+   "sid": 2038,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "京都",
+   "flag": 1792,
+   "price": 2000,
+   "rents": [
+    400,
+    400,
+    1000,
+    2400,
+    6000,
+    12500,
+    22000
+   ]
+  },
+  {
+   "id": 54,
+   "name": "醫院",
+   "x": 1223,
+   "y": 1319,
+   "neighbors": [
+    55,
+    53
+   ],
+   "sid": 8001,
+   "kind": 5,
+   "flags": 0,
+   "type": "hospital",
+   "scenery": true
+  },
+  {
+   "id": 55,
+   "name": "松本",
+   "x": 1274,
+   "y": 1268,
+   "neighbors": [
+    56,
+    54
+   ],
+   "sid": 2039,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "松本",
+   "flag": 1792,
+   "price": 1500,
+   "rents": [
+    300,
+    300,
+    750,
+    2000,
+    4800,
+    10000,
+    18000
+   ]
+  },
+  {
+   "id": 56,
+   "name": "松本",
+   "x": 1307,
+   "y": 1236,
+   "neighbors": [
+    57,
+    55
+   ],
+   "sid": 2040,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "松本",
+   "flag": 1792,
+   "price": 1500,
+   "rents": [
+    300,
+    300,
+    750,
+    2000,
+    4800,
+    10000,
+    18000
+   ]
+  },
+  {
+   "id": 57,
+   "name": "松本",
+   "x": 1341,
+   "y": 1201,
+   "neighbors": [
+    58,
+    56
+   ],
+   "sid": 2041,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "松本",
+   "flag": 1792,
+   "price": 1500,
+   "rents": [
+    300,
+    300,
+    750,
+    2000,
+    4800,
+    10000,
+    18000
+   ]
+  },
+  {
+   "id": 58,
+   "name": "松本",
+   "x": 1378,
+   "y": 1165,
+   "neighbors": [
+    59,
+    57
+   ],
+   "sid": 6002,
+   "kind": 0,
+   "flags": 0,
+   "sidName": "豐田汽車",
+   "flag": 1280,
+   "companyId": 5,
+   "companyPrice": 700,
+   "buildingId": 56,
+   "capital": 270000,
+   "type": "company"
+  },
+  {
+   "id": 59,
+   "name": "松本",
+   "x": 1408,
+   "y": 1133,
+   "neighbors": [
+    60,
+    58
+   ],
+   "sid": 6002,
+   "kind": 0,
+   "flags": 0,
+   "sidName": "豐田汽車",
+   "flag": 1280,
+   "companyId": 5,
+   "companyPrice": 700,
+   "buildingId": 56,
+   "capital": 270000,
+   "type": "company"
+  },
+  {
+   "id": 60,
+   "name": "新聞",
+   "x": 1464,
+   "y": 1080,
+   "neighbors": [
+    61,
+    59
+   ],
+   "sid": 0,
+   "kind": 2,
+   "flags": 0,
+   "type": "news"
+  },
+  {
+   "id": 61,
+   "name": "新潟",
+   "x": 1508,
+   "y": 1034,
+   "neighbors": [
+    62,
+    60
+   ],
+   "sid": 2042,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "新潟",
+   "flag": 1792,
+   "price": 1000,
+   "rents": [
+    200,
+    200,
+    500,
+    1200,
+    2800,
+    6000,
+    10000
+   ]
+  },
+  {
+   "id": 62,
+   "name": "新潟",
+   "x": 1541,
+   "y": 1002,
+   "neighbors": [
+    63,
+    61
+   ],
+   "sid": 2043,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "新潟",
+   "flag": 1792,
+   "price": 1000,
+   "rents": [
+    200,
+    200,
+    500,
+    1200,
+    2800,
+    6000,
+    10000
+   ]
+  },
+  {
+   "id": 63,
+   "name": "新潟",
+   "x": 1575,
+   "y": 968,
+   "neighbors": [
+    64,
+    62
+   ],
+   "sid": 2044,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "新潟",
+   "flag": 1792,
+   "price": 1000,
+   "rents": [
+    200,
+    200,
+    500,
+    1200,
+    2800,
+    6000,
+    10000
+   ]
+  },
+  {
+   "id": 64,
+   "name": "新潟",
+   "x": 1608,
+   "y": 935,
+   "neighbors": [
+    65,
+    63
+   ],
+   "sid": 2045,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "新潟",
+   "flag": 1792,
+   "price": 1000,
+   "rents": [
+    200,
+    200,
+    500,
+    1200,
+    2800,
+    6000,
+    10000
+   ]
+  },
+  {
+   "id": 65,
+   "name": "命運",
+   "x": 1655,
+   "y": 888,
+   "neighbors": [
+    66,
+    64
+   ],
+   "sid": 0,
+   "kind": 3,
+   "flags": 0,
+   "type": "chance"
+  },
+  {
+   "id": 66,
+   "name": "秋田",
+   "x": 1655,
+   "y": 812,
+   "neighbors": [
+    67,
+    65
+   ],
+   "sid": 6003,
+   "kind": 0,
+   "flags": 0,
+   "sidName": "日產建設",
+   "flag": 768,
+   "companyId": 11,
+   "companyPrice": 5000,
+   "buildingId": 51,
+   "capital": 244000,
+   "type": "company"
+  },
+  {
+   "id": 67,
+   "name": "秋田",
+   "x": 1655,
+   "y": 768,
+   "neighbors": [
+    68,
+    66
+   ],
+   "sid": 6003,
+   "kind": 0,
+   "flags": 0,
+   "sidName": "日產建設",
+   "flag": 768,
+   "companyId": 11,
+   "companyPrice": 5000,
+   "buildingId": 51,
+   "capital": 244000,
+   "type": "company"
+  },
+  {
+   "id": 68,
+   "name": "秋田",
+   "x": 1655,
+   "y": 719,
+   "neighbors": [
+    69,
+    67
+   ],
+   "sid": 2046,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "秋田",
+   "flag": 1536,
+   "price": 800,
+   "rents": [
+    150,
+    150,
+    400,
+    1000,
+    2400,
+    5000,
+    9000
+   ]
+  },
+  {
+   "id": 69,
+   "name": "秋田",
+   "x": 1655,
+   "y": 672,
+   "neighbors": [
+    70,
+    68
+   ],
+   "sid": 2047,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "秋田",
+   "flag": 1536,
+   "price": 800,
+   "rents": [
+    150,
+    150,
+    400,
+    1000,
+    2400,
+    5000,
+    9000
+   ]
+  },
+  {
+   "id": 70,
+   "name": "秋田",
+   "x": 1655,
+   "y": 623,
+   "neighbors": [
+    71,
+    69
+   ],
+   "sid": 2048,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "秋田",
+   "flag": 1536,
+   "price": 800,
+   "rents": [
+    150,
+    150,
+    400,
+    1000,
+    2400,
+    5000,
+    9000
+   ]
+  },
+  {
+   "id": 71,
+   "name": "秋田",
+   "x": 1655,
+   "y": 576,
+   "neighbors": [
+    72,
+    70
+   ],
+   "sid": 2049,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "秋田",
+   "flag": 1536,
+   "price": 800,
+   "rents": [
+    150,
+    150,
+    400,
+    1000,
+    2400,
+    5000,
+    9000
+   ]
+  },
+  {
+   "id": 72,
+   "name": "魔法屋",
+   "x": 1655,
+   "y": 503,
+   "neighbors": [
+    73,
+    71
+   ],
+   "sid": 0,
+   "kind": 16,
+   "flags": 0,
+   "type": "magic"
+  },
+  {
+   "id": 73,
+   "name": "青森",
+   "x": 1729,
+   "y": 503,
+   "neighbors": [
+    74,
+    72
+   ],
+   "sid": 4004,
+   "kind": 0,
+   "flags": 0,
+   "type": "commercial",
+   "sidName": "青森",
+   "flag": 0,
+   "price": 5000,
+   "rents": [
+    500,
+    500,
+    1200,
+    2600,
+    6000,
+    15000
+   ]
+  },
+  {
+   "id": 74,
+   "name": "青森",
+   "x": 1772,
+   "y": 503,
+   "neighbors": [
+    75,
+    73
+   ],
+   "sid": 4004,
+   "kind": 0,
+   "flags": 0,
+   "type": "commercial",
+   "sidName": "青森",
+   "flag": 0,
+   "price": 5000,
+   "rents": [
+    500,
+    500,
+    1200,
+    2600,
+    6000,
+    15000
+   ]
+  },
+  {
+   "id": 75,
+   "name": "青森",
+   "x": 1826,
+   "y": 503,
+   "neighbors": [
+    76,
+    74
+   ],
+   "sid": 4005,
+   "kind": 0,
+   "flags": 0,
+   "type": "commercial",
+   "sidName": "青森",
+   "flag": 0,
+   "price": 5000,
+   "rents": [
+    500,
+    500,
+    1200,
+    2600,
+    6000,
+    15000
+   ]
+  },
+  {
+   "id": 76,
+   "name": "青森",
+   "x": 1870,
+   "y": 503,
+   "neighbors": [
+    77,
+    75
+   ],
+   "sid": 4005,
+   "kind": 0,
+   "flags": 0,
+   "type": "commercial",
+   "sidName": "青森",
+   "flag": 0,
+   "price": 5000,
+   "rents": [
+    500,
+    500,
+    1200,
+    2600,
+    6000,
+    15000
+   ]
+  },
+  {
+   "id": 77,
+   "name": "監獄",
+   "x": 1943,
+   "y": 503,
+   "neighbors": [
+    84,
+    76,
+    78
+   ],
+   "sid": 0,
+   "kind": 4,
+   "flags": 2048,
+   "type": "jail"
+  },
+  {
+   "id": 78,
+   "name": "得１０點",
+   "x": 1942,
+   "y": 432,
+   "neighbors": [
+    77,
+    79
+   ],
+   "sid": 0,
+   "kind": 12,
+   "flags": 0,
+   "type": "points",
+   "pointsGain": 10
+  },
+  {
+   "id": 79,
+   "name": "",
+   "x": 1943,
+   "y": 383,
+   "neighbors": [
+    78,
+    80
+   ],
+   "sid": 0,
+   "kind": 17,
+   "flags": 0,
+   "type": "blank"
+  },
+  {
+   "id": 80,
+   "name": "得１０點",
+   "x": 1943,
+   "y": 336,
+   "neighbors": [
+    79,
+    81
+   ],
+   "sid": 0,
+   "kind": 12,
+   "flags": 0,
+   "type": "points",
+   "pointsGain": 10
+  },
+  {
+   "id": 81,
+   "name": "北海道",
+   "x": 1943,
+   "y": 287,
+   "neighbors": [
+    80,
+    82
+   ],
+   "sid": 0,
+   "kind": 17,
+   "flags": 0,
+   "type": "blank"
+  },
+  {
+   "id": 82,
+   "name": "得３０點",
+   "x": 1942,
+   "y": 239,
+   "neighbors": [
+    81,
+    83
+   ],
+   "sid": 0,
+   "kind": 11,
+   "flags": 0,
+   "type": "points",
+   "pointsGain": 30
+  },
+  {
+   "id": 83,
+   "name": "北海道",
+   "x": 1943,
+   "y": 192,
+   "neighbors": [
+    82
+   ],
+   "sid": 8002,
+   "kind": 17,
+   "flags": 0,
+   "type": "blank",
+   "scenery": true
+  },
+  {
+   "id": 84,
+   "name": "盛岡",
+   "x": 1943,
+   "y": 575,
+   "neighbors": [
+    85,
+    77
+   ],
+   "sid": 2001,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "盛岡",
+   "flag": 1536,
+   "price": 500,
+   "rents": [
+    100,
+    100,
+    250,
+    700,
+    1800,
+    3500,
+    6600
+   ]
+  },
+  {
+   "id": 85,
+   "name": "盛岡",
+   "x": 1943,
+   "y": 624,
+   "neighbors": [
+    86,
+    84
+   ],
+   "sid": 2002,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "盛岡",
+   "flag": 1536,
+   "price": 500,
+   "rents": [
+    100,
+    100,
+    250,
+    700,
+    1800,
+    3500,
+    6600
+   ]
+  },
+  {
+   "id": 86,
+   "name": "盛岡",
+   "x": 1943,
+   "y": 672,
+   "neighbors": [
+    87,
+    85
+   ],
+   "sid": 2003,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "盛岡",
+   "flag": 1536,
+   "price": 500,
+   "rents": [
+    100,
+    100,
+    250,
+    700,
+    1800,
+    3500,
+    6600
+   ]
+  },
+  {
+   "id": 87,
+   "name": "樂透",
+   "x": 1943,
+   "y": 743,
+   "neighbors": [
+    88,
+    86
+   ],
+   "sid": 0,
+   "kind": 9,
+   "flags": 0,
+   "type": "lottery"
+  },
+  {
+   "id": 88,
+   "name": "仙台",
+   "x": 1943,
+   "y": 816,
+   "neighbors": [
+    89,
+    87
+   ],
+   "sid": 2004,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "仙台",
+   "flag": 1536,
+   "price": 800,
+   "rents": [
+    150,
+    150,
+    400,
+    1000,
+    2400,
+    5000,
+    9000
+   ]
+  },
+  {
+   "id": 89,
+   "name": "仙台",
+   "x": 1943,
+   "y": 864,
+   "neighbors": [
+    90,
+    88
+   ],
+   "sid": 2005,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "仙台",
+   "flag": 1536,
+   "price": 800,
+   "rents": [
+    150,
+    150,
+    400,
+    1000,
+    2400,
+    5000,
+    9000
+   ]
+  },
+  {
+   "id": 90,
+   "name": "仙台",
+   "x": 1943,
+   "y": 911,
+   "neighbors": [
+    91,
+    89
+   ],
+   "sid": 2006,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "仙台",
+   "flag": 1536,
+   "price": 500,
+   "rents": [
+    150,
+    150,
+    400,
+    1000,
+    2400,
+    5000,
+    9000
+   ]
+  },
+  {
+   "id": 91,
+   "name": "仙台",
+   "x": 1943,
+   "y": 961,
+   "neighbors": [
+    92,
+    90
+   ],
+   "sid": 6004,
+   "kind": 0,
+   "flags": 0,
+   "sidName": "三井生命",
+   "flag": 256,
+   "companyId": 4,
+   "companyPrice": 1000,
+   "buildingId": 52,
+   "capital": 790000,
+   "type": "company"
+  },
+  {
+   "id": 92,
+   "name": "仙台",
+   "x": 1943,
+   "y": 1005,
+   "neighbors": [
+    93,
+    91
+   ],
+   "sid": 6004,
+   "kind": 0,
+   "flags": 0,
+   "sidName": "三井生命",
+   "flag": 256,
+   "companyId": 4,
+   "companyPrice": 1000,
+   "buildingId": 52,
+   "capital": 790000,
+   "type": "company"
+  },
+  {
+   "id": 93,
+   "name": "新聞",
+   "x": 1943,
+   "y": 1080,
+   "neighbors": [
+    94,
+    92
+   ],
+   "sid": 0,
+   "kind": 2,
+   "flags": 0,
+   "type": "news"
+  },
+  {
+   "id": 94,
+   "name": "福島",
+   "x": 1943,
+   "y": 1153,
+   "neighbors": [
+    95,
+    93
+   ],
+   "sid": 2007,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "福島",
+   "flag": 1536,
+   "price": 1500,
+   "rents": [
+    300,
+    300,
+    750,
+    2000,
+    4800,
+    10000,
+    18000
+   ]
+  },
+  {
+   "id": 95,
+   "name": "福島",
+   "x": 1943,
+   "y": 1200,
+   "neighbors": [
+    96,
+    94
+   ],
+   "sid": 2008,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "福島",
+   "flag": 1536,
+   "price": 1500,
+   "rents": [
+    300,
+    300,
+    750,
+    2000,
+    4800,
+    10000,
+    18000
+   ]
+  },
+  {
+   "id": 96,
+   "name": "福島",
+   "x": 1943,
+   "y": 1248,
+   "neighbors": [
+    97,
+    95
+   ],
+   "sid": 2009,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "福島",
+   "flag": 1536,
+   "price": 1500,
+   "rents": [
+    300,
+    300,
+    750,
+    2000,
+    4800,
+    10000,
+    18000
+   ]
+  },
+  {
+   "id": 97,
+   "name": "卡片",
+   "x": 1943,
+   "y": 1320,
+   "neighbors": [
+    96,
+    98
+   ],
+   "sid": 0,
+   "kind": 13,
+   "flags": 0,
+   "type": "free-card"
+  },
+  {
+   "id": 98,
+   "name": "東京",
+   "x": 1893,
+   "y": 1370,
+   "neighbors": [
+    99,
+    97
+   ],
+   "sid": 2010,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "東京",
+   "flag": 1792,
+   "price": 2500,
+   "rents": [
+    500,
+    500,
+    1200,
+    3000,
+    7500,
+    16000,
+    30000
+   ]
+  },
+  {
+   "id": 99,
+   "name": "東京",
+   "x": 1859,
+   "y": 1403,
+   "neighbors": [
+    98,
+    100
+   ],
+   "sid": 2011,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "東京",
+   "flag": 1792,
+   "price": 2500,
+   "rents": [
+    500,
+    500,
+    1200,
+    3000,
+    7500,
+    16000,
+    30000
+   ]
+  },
+  {
+   "id": 100,
+   "name": "東京",
+   "x": 1824,
+   "y": 1438,
+   "neighbors": [
+    101,
+    99
+   ],
+   "sid": 2012,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "東京",
+   "flag": 1792,
+   "price": 2500,
+   "rents": [
+    500,
+    500,
+    1200,
+    3000,
+    7500,
+    16000,
+    30000
+   ]
+  },
+  {
+   "id": 101,
+   "name": "東京",
+   "x": 1791,
+   "y": 1471,
+   "neighbors": [
+    100,
+    102
+   ],
+   "sid": 6005,
+   "kind": 0,
+   "flags": 0,
+   "sidName": "ＳＥＧＡ",
+   "flag": 1024,
+   "companyId": 3,
+   "companyPrice": 150,
+   "buildingId": 50,
+   "capital": 2400000,
+   "type": "company"
+  },
+  {
+   "id": 102,
+   "name": "東京",
+   "x": 1760,
+   "y": 1504,
+   "neighbors": [
+    103,
+    101
+   ],
+   "sid": 6005,
+   "kind": 0,
+   "flags": 0,
+   "sidName": "ＳＥＧＡ",
+   "flag": 1024,
+   "companyId": 3,
+   "companyPrice": 150,
+   "buildingId": 50,
+   "capital": 2400000,
+   "type": "company"
+  },
+  {
+   "id": 103,
+   "name": "東京",
+   "x": 1725,
+   "y": 1539,
+   "neighbors": [
+    104,
+    102
+   ],
+   "sid": 2013,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "東京",
+   "flag": 1792,
+   "price": 2500,
+   "rents": [
+    500,
+    500,
+    1200,
+    3000,
+    7500,
+    16000,
+    30000
+   ]
+  },
+  {
+   "id": 104,
+   "name": "東京",
+   "x": 1689,
+   "y": 1574,
+   "neighbors": [
+    105,
+    103
+   ],
+   "sid": 2014,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "東京",
+   "flag": 1792,
+   "price": 2500,
+   "rents": [
+    500,
+    500,
+    1200,
+    3000,
+    7500,
+    16000,
+    30000
+   ]
+  },
+  {
+   "id": 105,
+   "name": "東京",
+   "x": 1655,
+   "y": 1609,
+   "neighbors": [
+    106,
+    104
+   ],
+   "sid": 2015,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "東京",
+   "flag": 1792,
+   "price": 2500,
+   "rents": [
+    500,
+    500,
+    1200,
+    3000,
+    7500,
+    16000,
+    30000
+   ]
+  },
+  {
+   "id": 106,
+   "name": "百貨公司",
+   "x": 1608,
+   "y": 1656,
+   "neighbors": [
+    107,
+    105
+   ],
+   "sid": 6001,
+   "kind": 15,
+   "flags": 0,
+   "sidName": "三越百貨",
+   "flag": 512,
+   "companyId": 10,
+   "companyPrice": 0,
+   "buildingId": 54,
+   "capital": 176000,
+   "type": "shop"
+  },
+  {
+   "id": 107,
+   "name": "名古屋",
+   "x": 1536,
+   "y": 1656,
+   "neighbors": [
+    108,
+    106
+   ],
+   "sid": 2016,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "名古屋",
+   "flag": 0,
+   "price": 1500,
+   "rents": [
+    300,
+    300,
+    750,
+    2000,
+    4800,
+    10000,
+    18000
+   ]
+  },
+  {
+   "id": 108,
+   "name": "名古屋",
+   "x": 1487,
+   "y": 1656,
+   "neighbors": [
+    109,
+    107
+   ],
+   "sid": 2017,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "名古屋",
+   "flag": 0,
+   "price": 1500,
+   "rents": [
+    300,
+    300,
+    7500,
+    2000,
+    4800,
+    10000,
+    18000
+   ]
+  },
+  {
+   "id": 109,
+   "name": "名古屋",
+   "x": 1439,
+   "y": 1656,
+   "neighbors": [
+    0,
+    108
+   ],
+   "sid": 2018,
+   "kind": 0,
+   "flags": 0,
+   "type": "property",
+   "group": "名古屋",
+   "flag": 0,
+   "price": 1500,
+   "rents": [
+    300,
+    300,
+    750,
+    2000,
+    4800,
+    10000,
+    18000
+   ]
+  }
+ ]
+}
