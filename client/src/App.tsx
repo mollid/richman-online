@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { MAX_DAY_CHOICES, ONLINE_DEFAULT_MAX_DAYS, type GameState, type PlayerAction } from '@richman/shared';
+import { MAP_CHOICES, MAX_DAY_CHOICES, ONLINE_DEFAULT_MAX_DAYS, type GameState, type PlayerAction } from '@richman/shared';
 import { sfx } from './game/sfx.js';
 import {
   loadHotseatGame,
@@ -53,6 +53,23 @@ function DayLimitRow({ value, onChange }: { value: number | null; onChange: (day
   );
 }
 
+/**
+ * 地图选择（R5-b）。`null` = 自建的 64 格环（默认图），其余是解自 map.mkf 的原版图。
+ * 只在建局时生效：棋盘随状态一起下发，中途换图等于开另一局。
+ */
+function MapRow({ value, onChange }: { value: number | null; onChange: (mapId: number | null) => void }) {
+  return (
+    <div className="player-count-row day-limit-row">
+      <span className="setup-title">地图</span>
+      {MAP_CHOICES.map((m) => (
+        <button key={m.id ?? 'default'} className={value === m.id ? 'primary' : ''} onClick={() => onChange(m.id)}>
+          {m.name} · {m.cells} 格
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export default function App() {
   const [session, setSession] = useState<GameSession | null>(null);
   const [replayRecord, setReplayRecord] = useState<ReplayRecord | null>(null);
@@ -67,10 +84,10 @@ export default function App() {
   useEffect(() => registerAction('open_settings', () => setShowSettings(true)), [registerAction]);
   useEffect(() => registerAction('open_help', () => setShowHelp(true)), [registerAction]);
 
-  const startLocal = (playerCount: number, maxDays: number | null) => {
+  const startLocal = (playerCount: number, maxDays: number | null, mapId: number | null) => {
     session?.destroy();
     setConnectError('');
-    setSession(new LocalHotseatSession(playerCount, undefined, null, maxDays));
+    setSession(new LocalHotseatSession(playerCount, undefined, null, maxDays, mapId));
   };
 
   // UI-03 存储 / 读取：手动存 / 读档（仅热座模式）
@@ -109,11 +126,11 @@ export default function App() {
     }
   };
 
-  const connectRemote = async (playerName: string, roomId?: string, maxDays?: number | null) => {
+  const connectRemote = async (playerName: string, roomId?: string, maxDays?: number | null, mapId?: number | null) => {
     setConnecting(true);
     setConnectError('');
     try {
-      const next = await ColyseusSession.connect({ playerName, roomId: roomId?.trim() || undefined, maxDays });
+      const next = await ColyseusSession.connect({ playerName, roomId: roomId?.trim() || undefined, maxDays, mapId });
       session?.destroy();
       setSession(next);
     } catch (e) {
@@ -197,8 +214,8 @@ function SetupScreen({
   onOpenSettings,
   onOpenHelp,
 }: {
-  onStartLocal: (playerCount: number, maxDays: number | null) => void;
-  onConnect: (playerName: string, roomId?: string, maxDays?: number | null) => void;
+  onStartLocal: (playerCount: number, maxDays: number | null, mapId: number | null) => void;
+  onConnect: (playerName: string, roomId?: string, maxDays?: number | null, mapId?: number | null) => void;
   onResume: () => void;
   onWatchReplay: (recordId: string) => void;
   connecting: boolean;
@@ -214,6 +231,9 @@ function SetupScreen({
   // 天数上限（CORE-04 / §14 第 2 项）：热座默认不限，联机默认 60 天
   const [localMaxDays, setLocalMaxDays] = useState<number | null>(null);
   const [onlineMaxDays, setOnlineMaxDays] = useState<number | null>(ONLINE_DEFAULT_MAX_DAYS);
+  // 地图（R5-b）：null = 自建的 64 格环。热座与联机各记一份，只有建房者/开局者说了算
+  const [localMap, setLocalMap] = useState<number | null>(null);
+  const [onlineMap, setOnlineMap] = useState<number | null>(null);
   const [playerName, setPlayerName] = useState('');
   const [roomId, setRoomId] = useState('');
   const [rooms, setRooms] = useState<RoomSummary[]>([]);
@@ -312,7 +332,8 @@ function SetupScreen({
             ))}
           </div>
           <DayLimitRow value={localMaxDays} onChange={setLocalMaxDays} />
-          <button className="primary start-btn" onClick={() => onStartLocal(playerCount, localMaxDays)}>
+          <MapRow value={localMap} onChange={setLocalMap} />
+          <button className="primary start-btn" onClick={() => onStartLocal(playerCount, localMaxDays, localMap)}>
             开始游戏
           </button>
         </div>
@@ -359,10 +380,11 @@ function SetupScreen({
             onChange={(e) => setPlayerName(e.target.value)}
           />
           <DayLimitRow value={onlineMaxDays} onChange={setOnlineMaxDays} />
+          <MapRow value={onlineMap} onChange={setOnlineMap} />
           <button
             className="primary start-btn"
             disabled={!playerName.trim() || connecting}
-            onClick={() => onConnect(playerName.trim(), undefined, onlineMaxDays)}
+            onClick={() => onConnect(playerName.trim(), undefined, onlineMaxDays, onlineMap)}
           >
             {connecting ? '连接中…' : '创建房间'}
           </button>

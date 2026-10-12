@@ -14,8 +14,9 @@
     S = snap; st = S.state; view = S.view; A = view.actions;
     cur = st.players[st.currentPlayerIndex];
     me = st.players.find((p) => p.id === view.myPlayerId) || st.players[0];
-    /* 64 格 = 17×17 网格外圈（4×17−4）。四角落在格号 0 / 16 / 32 / 48，顺时针。 */
-    const L = 17;
+    /* 方环示意（没有 WebGL 时的兜底棋盘）：边长按格数现算，64 格正好是 17×17 外圈。
+       写死 17 的话，100+ 格的原版图会从这里开始往负坐标里排。 */
+    const L = Math.ceil(st.board.length / 4) + 1;
     RING = st.board.map((cell, i) => {
       if (i < L - 1) return { cell, col: i + 1, row: 1, edge: 'top' };
       if (i < 2 * (L - 1)) return { cell, col: L, row: i - (L - 2), edge: 'right' };
@@ -48,8 +49,9 @@
     start: ['🏁', '起点 · 经过领薪水'], property: ['🏠', '住宅用地'], commercial: ['🏬', '商业用地'],
     chance: ['🎋', '机会格'], news: ['📰', '新闻格'], 'free-card': ['🃏', '免费卡片格'],
     points: ['🎟️', '点券格'], lottery: ['🎰', '乐透行'], magic: ['🔮', '魔法屋'],
-    treasure: ['🎁', '宝箱'], tax: ['💼', '缴税格'], hospital: ['🏥', '医院'], jail: ['🚔', '监狱'],
+    tax: ['💼', '缴税格'], hospital: ['🏥', '医院'], jail: ['🚔', '监狱'],
     game: ['🎮', '游戏厅'], shop: ['🛍️', '商店'], bank: ['🏦', '银行'], god: ['⛩️', '神庙'], company: ['🏢', '公司企业'],
+    blank: ['', '空白格 · 什么都不发生'],
   };
   const GOD_EMOJI = {
     'land-god': '🏮', 'big-wealth': '💰', 'small-wealth': '🪙', 'big-fortune': '🍀', 'small-fortune': '🌱',
@@ -242,26 +244,56 @@
    * 64 格环 + 持有者着色 + 四名玩家圆点 + 近景取景框。画在一块 2 倍图 canvas 上。
    * 只在近景显示：全盘俯视时它纯属占地方。
    */
-  const MINI = { cell: 6, pad: 7, scale: 2 };
+  const MINI = { cell: 6, pad: 7, scale: 2, spacing: 2 };
+
+  /**
+   * 小地图几何。自建图沿用 17×17 方环；原版图按 `view.layout` 铺 ——
+   * 那是与 3D 场景**同一份**世界坐标（都由 shared 的 `boardLayout` 算出来）。
+   * 取景框和格子必须同源，否则近景里看着框偏了一格。画布边长按包围盒现算。
+   */
+  function miniGeom() {
+    const k = MINI.cell / MINI.spacing;              // 世界单位 → 小地图像素
+    const L = view.layout;
+    if (L && L.cells && L.cells.length === st.board.length) {
+      const xs = L.cells.map((p) => p.x);
+      const zs = L.cells.map((p) => p.z);
+      const midX = (Math.max(...xs) + Math.min(...xs)) / 2;
+      const midZ = (Math.max(...zs) + Math.min(...zs)) / 2;
+      const w = (Math.max(...xs) - Math.min(...xs)) * k + MINI.cell + MINI.pad * 2;
+      const h = (Math.max(...zs) - Math.min(...zs)) * k + MINI.cell + MINI.pad * 2;
+      const px = (x) => w / 2 + (x - midX) * k;
+      const pz = (z) => h / 2 + (z - midZ) * k;
+      return { w, h, k, at: (id) => [px(L.cells[id].x), pz(L.cells[id].z)], world: (tx, tz) => [px(tx), pz(tz)] };
+    }
+    const d = MINI.cell * 17 + MINI.pad * 2;
+    const at = (col, row) => [MINI.pad + (col - 1) * MINI.cell + MINI.cell / 2, MINI.pad + (row - 1) * MINI.cell + MINI.cell / 2];
+    return {
+      w: d, h: d, k,
+      at: (id) => { const r = RING[id]; return at(r.col, r.row); },
+      world: (tx, tz) => [MINI.pad + (tx / MINI.spacing + 8) * MINI.cell + MINI.cell / 2,
+        MINI.pad + (tz / MINI.spacing + 8) * MINI.cell + MINI.cell / 2],
+    };
+  }
+
   function drawMinimap() {
     const cv = document.querySelector('[data-minimap]');
     if (!cv || cv.hidden) return;
     const ctx = cv.getContext('2d');
-    const d = MINI.cell * 17 + MINI.pad * 2;
-    if (cv.width !== d * MINI.scale) { cv.width = d * MINI.scale; cv.height = d * MINI.scale; }
+    const g = miniGeom();
+    if (cv.width !== Math.round(g.w * MINI.scale) || cv.height !== Math.round(g.h * MINI.scale)) {
+      cv.width = Math.round(g.w * MINI.scale); cv.height = Math.round(g.h * MINI.scale);
+    }
     ctx.setTransform(MINI.scale, 0, 0, MINI.scale, 0, 0);
-    ctx.clearRect(0, 0, d, d);
-    const at = (col, row) => [MINI.pad + (col - 1) * MINI.cell + MINI.cell / 2, MINI.pad + (row - 1) * MINI.cell + MINI.cell / 2];
+    ctx.clearRect(0, 0, g.w, g.h);
     /* 底盘 */
     ctx.fillStyle = 'rgba(255,251,239,.9)';
     ctx.strokeStyle = 'rgba(122,101,71,.75)';
     ctx.lineWidth = 2;
-    if (ctx.roundRect) { ctx.beginPath(); ctx.roundRect(1, 1, d - 2, d - 2, 8); ctx.fill(); ctx.stroke(); }
-    else { ctx.fillRect(1, 1, d - 2, d - 2); ctx.strokeRect(1, 1, d - 2, d - 2); }
+    if (ctx.roundRect) { ctx.beginPath(); ctx.roundRect(1, 1, g.w - 2, g.h - 2, 8); ctx.fill(); ctx.stroke(); }
+    else { ctx.fillRect(1, 1, g.w - 2, g.h - 2); ctx.strokeRect(1, 1, g.w - 2, g.h - 2); }
     /* 格环 */
     for (const cell of st.board) {
-      const r = RING[cell.id];
-      const [cx, cy] = at(r.col, r.row);
+      const [cx, cy] = g.at(cell.id);
       const hex = cell.group && GROUP[cell.group] ? GROUP[cell.group] : (TYPE_MINI[cell.type] || '#fffbef');
       ctx.fillStyle = hex;
       ctx.fillRect(cx - MINI.cell / 2, cy - MINI.cell / 2, MINI.cell, MINI.cell);
@@ -273,20 +305,29 @@
         ctx.strokeRect(cx - MINI.cell / 2 + 0.5, cy - MINI.cell / 2 + 0.5, MINI.cell - 1, MINI.cell - 1);
       }
     }
+    /* TILE-31 宝箱（驻留实体）：按月换一格、走到才结算 ⇒ 小地图上必须有它，否则玩家只在日志里
+       见过「冒出一只宝箱」，却看不出它压在哪。画在格子下半部，避开玩家棋子那圈圆心。 */
+    if (st.treasureCellId !== null && st.treasureCellId !== undefined) {
+      const [cx, cy] = g.at(st.treasureCellId);
+      ctx.fillStyle = '#d9a227';
+      ctx.fillRect(cx - 2.2, cy + 0.8, 4.4, 3.2);
+      ctx.strokeStyle = '#7a5410';
+      ctx.lineWidth = 0.8;
+      ctx.strokeRect(cx - 2.2, cy + 0.8, 4.4, 3.2);
+    }
     /* 近景取景框：正交相机在地面上的可视范围 ≈ 宽 × (高/cos el)，再按方位角转一下。
        画出来比任何文字都直观 —— 一眼看出「现在只看得到这一段」。 */
     const cs = globalThis.D25World.cameraState();
     if (isoMode()) {
-      /* 世界单位 → 小地图像素：SPACING=2，一格 = MINI.cell 像素，所以 1 单位 = cell/2 像素。
+      /* 世界单位 → 小地图像素的换算由 `miniGeom` 给（原版图的定标与方环不同源）。
          宽高比取 world 报上来的 aspect（已夹过 ISO.maxAspect）—— 自己算舞台宽高比的话，
          超宽屏下相机的横向视野被夹过，框却还按舞台铺满，画出来比实际看得见的范围宽一截。 */
       const aspectBox = cs.aspect || (cv.parentElement && cv.parentElement.clientHeight
         ? cv.parentElement.clientWidth / cv.parentElement.clientHeight : 1.4);
-      const view = cs.view || 10.4;
-      const w = (view * aspectBox) * MINI.cell / 2;
-      const l = (view / Math.cos(Math.PI * 35.264 / 180)) * MINI.cell / 2;
-      const tx = MINI.pad + ((cs.tx / 2) + 8) * MINI.cell + MINI.cell / 2;
-      const ty = MINI.pad + ((cs.tz / 2) + 8) * MINI.cell + MINI.cell / 2;
+      const view2 = cs.view || 10.4;
+      const w = (view2 * aspectBox) * g.k;
+      const l = (view2 / Math.cos(Math.PI * 35.264 / 180)) * g.k;
+      const [tx, ty] = g.world(cs.tx || 0, cs.tz || 0);
       ctx.save();
       ctx.translate(tx, ty);
       ctx.rotate(((cs.az || 0) * Math.PI) / 180);
@@ -300,8 +341,7 @@
     /* 四名玩家 */
     for (const p of st.players) {
       const cell = st.board[p.position];
-      const r = RING[cell.id];
-      const [cx, cy] = at(r.col, r.row);
+      const [cx, cy] = g.at(cell.id);
       ctx.beginPath();
       ctx.arc(cx, cy, 3.1, 0, 6.3);
       ctx.fillStyle = '#fffbef';
@@ -323,7 +363,7 @@
      刻意比 3D 里的正式配色灰一档 —— 小地图是导航用的，不该跟棋盘抢注意力。 */
   const TYPE_MINI = {
     start: '#ffe08a', chance: '#ffd0e0', news: '#dfe9ff', 'free-card': '#e6e0ff',
-    points: '#fff0b8', lottery: '#d6f2e6', magic: '#f0d9ff', treasure: '#ffe9a8',
+    points: '#fff0b8', lottery: '#d6f2e6', magic: '#f0d9ff',
     tax: '#e8e2d2', hospital: '#ffe3e3', jail: '#e3e6ee', game: '#d9f0ff',
     shop: '#ffe6c8', bank: '#f2ead2', god: '#ffd9a8', company: '#d9c9a3',
   };
@@ -449,21 +489,35 @@
     if (moved.length !== 1) return false;
     const p = moved[0];
     const n = st.board.length || 64;
-    const dir = p.direction === -1 ? -1 : 1;
+    // heading 是邻接表下标：环上 0 = 逆时针、1 = 顺时针（引擎里 direction 的替身）
+    const dir = p.heading === 0 ? -1 : 1;
     const from0 = prev.get(p.id);
-    const steps = dir === 1 ? (p.position - from0 + n) % n : (from0 - p.position + n) % n;
-    if (steps < 1) return false;
-    // 行程可能比骰和长（神明把人又挪了几位、时光机、传送），也可能被路障截短。
-    // 两种都照走真路线：太长就只演最后几格，至少看得见棋子是「走进那一格」的。
-    const walk = Math.min(steps, HOP_MAX_CELLS);
-    const from = walk === steps ? from0 : (p.position - dir * walk + n) % n;
+    /* 主路：引擎记下了这一手**逐格走过**的格子（`state.movePath`），照播就行。
+       地图有分支之后，两帧之差根本推不出路线 —— 同一对起止点之间可以有好几条走法。
+       下面那套环上取模因此退成兜底，只服务没有路径可依据的位移（传送、神明挪位、时光机）。 */
+    const recorded = st.movePath && st.movePath.length > 0 && st.movePath[st.movePath.length - 1] === p.position
+      ? st.movePath : null;
+    let walk;      // 演出来的那几格（recorded 的尾巴，或环上推出来的序列）
+    let from;      // 演出起点（walk 第一格的前一格）
+    let cells;     // 交给 world 的真实格子序列；null = 让 world 按 from/steps/dir 自己推
+    if (recorded) {
+      const start = Math.max(0, recorded.length - HOP_MAX_CELLS);
+      cells = recorded.slice(start);
+      from = start > 0 ? recorded[start - 1] : from0;
+      walk = cells.length;
+    } else {
+      const steps = dir === 1 ? (p.position - from0 + n) % n : (from0 - p.position + n) % n;
+      if (steps < 1) return false;
+      walk = Math.min(steps, HOP_MAX_CELLS);
+      from = walk === steps ? from0 : (p.position - dir * walk + n) % n;
+    }
     /* 骰子只在「这一手第一次出现」时摇：`state.dice` 如今留到下一手才被覆盖（回合推进不清），
        不认脸的话传送、神明挪位那些也会把上一手的点数又摇一遍。 */
     const dice = st.dice || [];
     const key = `${st.turn}:${dice.join('+')}`;
-    const spin = dice.length > 0 && steps <= dice.reduce((a, b) => a + b, 0) && key !== spunDice;
+    const spin = dice.length > 0 && walk <= dice.reduce((a, b) => a + b, 0) && key !== spunDice;
     if (spin) spunDice = key;
-    return globalThis.D25World.playMove({ pid: p.id, from, steps: walk, dir, dice: spin ? dice : null });
+    return globalThis.D25World.playMove({ pid: p.id, from, steps: walk, dir, cells, dice: spin ? dice : null });
   }
 
   /** 演出结束（或被取消）后把攒下的换人聚焦放出去 —— 「跳完才交接镜头」的那一刀 */
@@ -525,13 +579,19 @@
   }
 
   /* ---------------- 格子明细：方环与 2.5D 共用一份文案 ---------------- */
+  /* 一家公司可能占两格（原版图就是如此），所以「这格是不是公司」一律按 footprint 问。
+     缺 footprint 的旧快照退回单格，不至于整张图认不出公司。 */
+  const companyFootprint = (c) => (c.footprint && c.footprint.length ? c.footprint : [c.cellId]);
+  const companyOnCell = (id) => st.companies.find((c) => companyFootprint(c).includes(id));
+
   function cellBits(id) {
     const cell = st.board[id];
     const typeName = CELL[cell.type][1];
-    const corp = st.companies.find((c) => c.cellId === id);
+    const corp = companyOnCell(id);
     const god = view.gods.find((g) => g.cellId === id);
     const bits = [`${cell.id} · ${cell.name} · ${typeName}`];
-    if (cell.price) bits.push(cell.type === 'company' ? `面值 🔔${money(corp?.sharePrice ?? cell.price)}` : `地价 🔔${money(cell.price * view.priceIndex)}`);
+    if (corp) bits.push(`面值 🔔${money(corp.sharePrice)}（这家公司占 ${companyFootprint(corp).join('·')} 两格，踩到哪一格都能认购）`);
+    else if (cell.price) bits.push(`地价 🔔${money(cell.price * view.priceIndex)}`);
     if (cell.baseRent) bits.push(`每级租金 🔔${money(cell.baseRent * view.priceIndex)}`);
     if (corp) {
       const held = Object.entries(corp.shares).map(([k, v]) => `${st.players.find((p) => p.id === k)?.name ?? k}×${v}`).join(' ') || '无人持股';
@@ -543,6 +603,7 @@
     const grade = st.players.flatMap((p) => p.properties).find((q) => q.cellId === id);
     if (grade) bits.push(`${grade.grade} 级${grade.facility ? ` · ${view.names.facilities[grade.facility]?.name ?? grade.facility}` : ''}`);
     if (god) bits.push(`神明驻留：${god.name}（剩 ${god.ttlDays} 天）· ${god.summary}`);
+    if (st.treasureCellId === id) bits.push(`宝箱驻留：踩到这一格领 ${view.treasurePoints} 点券（路过不算，本月只此一只）`);
     return bits;
   }
 
@@ -551,7 +612,7 @@
     const wrap = el('section', 'hud-board');
     const ring = el('div', 'hud-ring');
     const godAt = new Map(st.boardGods.map((g) => [g.cellId, g]));
-    const companyAt = new Map(st.companies.map((c) => [c.cellId, c]));
+    const companyAt = new Map(st.companies.flatMap((c) => companyFootprint(c).map((id) => [id, c])));
 
     for (const { cell, col, row } of RING) {
       const d = el('div', 'hud-cell hud-tip');
@@ -569,7 +630,7 @@
       if (godAt.has(cell.id)) d.classList.add('hud-cell--god');
 
       const mark = corp?.chairmanId ? '👑' : godAt.has(cell.id) ? (GOD_EMOJI[godAt.get(cell.id).godId] || '✨')
-        : cell.type === 'chance' ? '' : '';
+        : cell.id === st.treasureCellId ? '🎁' : cell.type === 'chance' ? '' : '';
       d.innerHTML = `<span class="hud-cell__e">${emoji}</span>` +
         (NAMED.has(cell.type) ? `<span class="hud-cell__n">${esc(cell.name)}</span>` : '') +
         (mark ? `<span class="hud-cell__mark">${mark}</span>` : '');
@@ -622,7 +683,7 @@
     const id = selCell == null ? cur.position : selCell;
     const cell = st.board[id];
     const [emoji, typeName] = CELL[cell.type];
-    const corp = st.companies.find((x) => x.cellId === id);
+    const corp = companyOnCell(id);
     const owner = view.owners[id];
     const isCur = id === cur.position;
     const box = el('div', 'hud-tile');
@@ -866,7 +927,7 @@
         <span class="c">${arrow} ${Math.abs(s.lastChangePct).toFixed(1)}%</span></div>
         <div class="hud-stock__meta">
         ${halt ? `<span class="hud-chip hud-chip--warn">${halt.kind === 'up' ? '涨停' : halt.kind === 'down' ? '跌停' : '停牌'} ${halt.daysLeft} 天</span>` : ''}
-        <span class="hud-chip">${s.candles.length} 根</span><span class="hud-chip">流通 ${money(s.floatShares)}</span></div>${sparkline(s)}`;
+        <span class="hud-chip">${s.candles.length} 根</span><span class="hud-chip" title="流通股本 ${money(s.floatShares)} 张，还没被买走的 ${money(s.remainingShares ?? s.floatShares)} 张 —— 可以被买光">可买 ${money(s.remainingShares ?? s.floatShares)}/${money(s.floatShares)}</span></div>${sparkline(s)}`;
       box.title = `开 ${s.price}｜当日成交含玩家 ${s.candles.at(-1)?.playerVolume ?? 0} 股\n吃单会把价格推离盘口（冲击成本），买得越多均价越高。`;
       bd.appendChild(box);
     }
@@ -881,7 +942,9 @@
         <div class="hud-tablewrap"><table class="ac-table"><thead><tr><th>标的</th><th>数量</th><th>现值</th><th>盈亏/占比</th></tr></thead><tbody>${rows.join('')}</tbody></table></div>`;
       bd.appendChild(t);
     }
-    bd.appendChild(el('div', 'hud-foot', '上市股只能动用存款 ✈️；地图 11 家公司的原始股用现金 🔔、按面值随时卖回、认购当回合锁一手。'));
+    bd.appendChild(el('div', 'hud-foot', st.companies.length
+      ? `上市股只能动用存款 ✈️；本图 ${st.companies.length} 家公司的原始股用现金 🔔、按面值随时卖回、认购当回合锁一手。`
+      : '上市股只能动用存款 ✈️。这张图没有公司企业，也就没有原始股可认购。'));
   }
 
   function renderBooks(hd, bd) {
@@ -919,7 +982,7 @@
     if (corp.length) {
       const rows = corp.map((c) => {
         const held = Object.entries(c.shares).map(([k, v]) => `${esc(st.players.find((p) => p.id === k)?.name ?? k)} ${v} 张`).join('、');
-        return `<tr><td>${esc(cellName(c.cellId))}<br><small>格 ${c.cellId}</small></td><td>🔔${money(c.sharePrice)}</td><td>${money(c.surplus)}</td>
+        return `<tr><td>${esc(c.name || cellName(c.cellId))}<br><small>格 ${companyFootprint(c).join('·')}</small></td><td>🔔${money(c.sharePrice)}</td><td>${money(c.surplus)}</td>
           <td>${c.chairmanId ? '👑' + esc(st.players.find((p) => p.id === c.chairmanId)?.name ?? '') : '空缺'}</td><td>${esc(held)}</td></tr>`;
       }).join('');
       bd.appendChild(el('div', '', `<div class="ac-divider"><span class="ac-divider__mark">🏢 公司经营权（每月 15 号按持股比例分盈余）</span></div>

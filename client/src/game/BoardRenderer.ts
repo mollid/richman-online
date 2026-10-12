@@ -69,7 +69,6 @@ const CELL_ICONS: Partial<Record<BoardCell['type'], string>> = {
   points: '🎫',
   lottery: '🎰',
   magic: '🔮',
-  treasure: '💰',
   company: '🏢',
 };
 
@@ -87,7 +86,6 @@ const TYPE_COLORS: Partial<Record<BoardCell['type'], number>> = {
   points: 0xfff59d,
   lottery: 0xffab91,
   magic: 0xd1c4e9,
-  treasure: 0xffd54f,
   news: 0xb0e0e6,
   company: 0xbcaaa4,
 };
@@ -511,6 +509,18 @@ export class BoardRenderer {
       mark.anchor.set(0.5);
       mark.position.set(pos.x, pos.y - TILE_H / 2 - 4);
       this.overlayLayer.addChild(mark);
+    }
+
+    // TILE-31 宝箱（R5 起是驻留实体，不再是固定格）：按月换一处、走到才结算，
+    // 所以玩家必须看得见它此刻在哪一格。摆在格子下沿，与上沿的 NPC、左上角的神明错开。
+    if (game.treasureCellId !== null) {
+      const pos = this.cellPositions[game.treasureCellId];
+      if (pos) {
+        const mark = new Text({ text: '🎁', style: { fontSize: 14 } });
+        mark.anchor.set(0.5);
+        mark.position.set(pos.x, pos.y + TILE_H / 2 - 6);
+        this.overlayLayer.addChild(mark);
+      }
     }
   }
 

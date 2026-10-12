@@ -101,6 +101,8 @@ export interface ReplayRecord extends ReplayRecordSummary {
   start_date?: DateSerial | null;
   /** 建局时的天数上限（W4）；缺省 = 不限。回放必须带着它，否则到期结算复现不出来 */
   max_days?: number | null;
+  /** 本局地图（缺省 / null = 自建 64 格环）；回放必须带着，否则原版图会复现成默认图 */
+  map_id?: number | null;
   actions: Array<{ turn: number; action: PlayerAction }>;
 }
 

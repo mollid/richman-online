@@ -52,6 +52,8 @@ export function ControlPanel({
   // R4：落格窗的那个出口（不在窗口里就是 null，按钮整颗不出现）
   const exitLabel = landingExitLabel(actions);
   const current = game.players[game.currentPlayerIndex];
+  // ECON-12：额满待舍弃时该动手的是卡主，未必是当前回合玩家（见 `PendingCard`）
+  const pendingOwner = game.players.find((p) => p.id === game.pendingCards[0]?.ownerId) ?? current;
   const [diceChoice, setDiceChoice] = useState<number | null>(null);
   // UI-13 认输两段式：先确认认输，再指定承接死神的复仇者
   const [surrendering, setSurrendering] = useState(false);
@@ -322,14 +324,15 @@ export function ControlPanel({
         </div>
       )}
 
-      {/* ECON-12 手牌额满：必须选择舍弃一张才能继续 */}
+      {/* ECON-12 手牌额满：必须选择舍弃一张才能继续。列的是**卡主**的手牌 ——
+          抽卡可以发生在别人的回合里（大福神显灵那类），按当前玩家列就会给出一只空手。 */}
       {actions.pendingCards.length > 0 && (
         <div className="discard-modal">
           <div className="discard-title">
-            手牌已满（{MAX_HAND_CARDS} 张），请选择舍弃一张以容纳新卡
+            {pendingOwner?.name ?? '玩家'} 手牌已满（{MAX_HAND_CARDS} 张），请选择舍弃一张以容纳新卡
           </div>
           <div className="discard-list">
-            {(current?.cards ?? []).map((cardId, i) => (
+            {(pendingOwner?.cards ?? []).map((cardId, i) => (
               <button
                 key={`${cardId}-${i}`}
                 className="mini"

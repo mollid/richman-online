@@ -2,12 +2,12 @@ import { useState } from 'react';
 import {
   actionRefusal,
   availableActions,
-  COMPANIES,
   gameDate,
   lockedSharesOf,
   maxAffordableShares,
   sellableSharesOf,
   stockExecPrice,
+  stockLimitState,
   stockImpactPct,
   type CompanyState,
   type GameState,
@@ -26,7 +26,7 @@ function fmt(n: number): string {
 /**
  * 股市面板（ECON-09 / help[14]「股票是一項不錯的投資，**您可以隨時進行買賣**」）。
  *
- * 面板里是一张 17 行的行情表：6 支虚拟股 + 11 家公司股（`corp-*`，CORP-14），
+ * 面板里是一张行情表：6 支虚拟股 + **这张图上的**公司股（`corp-*`，CORP-14；自建图 11 家，原版图按 mkf 自带 1~4 家），
  * 同一套行情机器（日切游走、日 K 线、冲击成本、停牌 / 休市），**买卖都走存款**。
  *
  * 公司股是**一本账**：面板买进去的持股与踩到公司格按**面值**（现金）认购的，记在同一本
@@ -139,6 +139,14 @@ export function StockPanel({
               company ? onAction({ type: 'SELL_SHARES', cellId: company.cellId, quantity: n }) : trade(s.id, 'SELL_STOCK', n);
             const suspended = suspendedIds.has(s.id);
             const canTrade = interactive && actions.canTradeStock && !suspended;
+            // 闸门问引擎（涨停买不进、跌停卖不出、锁定期、停牌都在那一侧），面板只复述理由 ——
+            // 自己判一遍就是第二套口径，正是「按钮亮着、点了报错」那个老 bug 类。
+            const limit = stockLimitState(s);
+            const buyGate = actionRefusal(game, { type: 'BUY_STOCK', stockId: s.id, quantity: 1 });
+            const sellGate = actionRefusal(
+              game,
+              company ? { type: 'SELL_SHARES', cellId: company.cellId, quantity: 1 } : { type: 'SELL_STOCK', stockId: s.id, quantity: 1 },
+            );
             const cap = maxBuy(s.id, s.price);
             const qty = Math.max(1, Math.min(customQty, Math.max(1, cap)));
             // 冲击提示：按结算价报数，玩家点之前就知道这笔会把价格推到哪里
@@ -159,6 +167,11 @@ export function StockPanel({
                     </span>
                   )}
                   {suspended && <span className="stock-flag">停牌</span>}
+                  {!suspended && limit !== 'flat' && (
+                    <span className="stock-flag" title={limit === 'up' ? '涨停：今日无法买进' : '跌停：今日无法卖出'}>
+                      {limit === 'up' ? '涨停' : '跌停'}
+                    </span>
+                  )}
                 </td>
                 <td>¥{fmt(s.price)}</td>
                 <td className={s.lastChangePct >= 0 ? 'up' : 'down'}>{fmtPct(s.lastChangePct)}</td>
@@ -174,11 +187,12 @@ export function StockPanel({
                 <td className="trade-cell">
                   <button
                     className="mini"
-                    disabled={!canTrade || cap < 1}
+                    disabled={!canTrade || !!buyGate || cap < 1}
                     title={
-                      cap < 1
-                        ? '存款不足（股票只能用存款购买）'
-                        : `买入 ${qty} 张：成交均价 ¥${fmt(buyUnit)}，共 ¥${fmt(buyUnit * qty)}；买盘把盘口推高约 ${impactPctText}`
+                      buyGate
+                        ?? (cap < 1
+                          ? '存款不足（股票只能用存款购买）'
+                          : `买入 ${qty} 张：成交均价 ¥${fmt(buyUnit)}，共 ¥${fmt(buyUnit * qty)}；买盘把盘口推高约 ${impactPctText}`)
                     }
                     onClick={(e) => {
                       e.stopPropagation();
@@ -189,8 +203,8 @@ export function StockPanel({
                   </button>
                   <button
                     className="mini"
-                    disabled={!canTrade || cap < 1}
-                    title={`存款最多能吃下 ${cap} 张（含冲击成本，买得越多均价越高）`}
+                    disabled={!canTrade || !!buyGate || cap < 1}
+                    title={buyGate ?? `存款最多能吃下 ${cap} 张（含冲击成本，买得越多均价越高）`}
                     onClick={(e) => {
                       e.stopPropagation();
                       trade(s.id, 'BUY_STOCK', cap);
@@ -200,13 +214,14 @@ export function StockPanel({
                   </button>
                   <button
                     className="mini"
-                    disabled={!canTrade || sellable < 1}
+                    disabled={!canTrade || sellable < 1 || !!sellGate}
                     title={
                       sellable < 1
                         ? locked > 0
                           ? `本回合到手的 ${fmt(locked)} 张要等下次行动才能转手`
                           : '无持仓'
-                        : `卖出 ${Math.min(qty, sellable)} 张：成交均价 ¥${fmt(sellUnit)}，收入进存款，抛压把盘口压低约 ${impactPctText}`
+                        : sellGate
+                          ?? `卖出 ${Math.min(qty, sellable)} 张：成交均价 ¥${fmt(sellUnit)}，收入进存款，抛压把盘口压低约 ${impactPctText}`
                     }
                     onClick={(e) => {
                       e.stopPropagation();
@@ -217,8 +232,8 @@ export function StockPanel({
                   </button>
                   <button
                     className="mini"
-                    disabled={!canTrade || sellable < 1}
-                    title={`清仓 ${sellable} 张（均价随抛压递减，一次倒完比分批卖更亏）`}
+                    disabled={!canTrade || sellable < 1 || !!sellGate}
+                    title={sellGate ?? `清仓 ${sellable} 张（均价随抛压递减，一次倒完比分批卖更亏）`}
                     onClick={(e) => {
                       e.stopPropagation();
                       sell(sellable);
@@ -274,7 +289,6 @@ export function StockPanel({
         </thead>
         <tbody>
           {game.companies.map((c) => {
-            const def = COMPANIES[c.kind];
             const holding = c.shares[current.id] ?? 0;
             const locked = lockedSharesOf(c, current.id);
             const sellable = sellableSharesOf(c, current.id);
@@ -283,8 +297,8 @@ export function StockPanel({
             return (
               <tr key={c.cellId} className={locked > 0 ? 'locked' : ''}>
                 <td>
-                  {def.name}
-                  <span className="stock-tile">{def.tile}</span>
+                  {c.name}
+                  <span className="stock-tile">{c.tile}</span>
                 </td>
                 <td>
                   ¥{fmt(c.sharePrice)} / <b className={market >= c.sharePrice ? 'up' : 'down'}>¥{fmt(market)}</b>
@@ -343,7 +357,7 @@ export function StockPanel({
       </div>
 
       <div className="stock-hint">
-        <b>股票只能用存款买卖</b>（含 11 支公司股），现金用于买地、升级，以及踩到公司格时按<b>面值</b>认购。
+        <b>股票只能用存款买卖</b>（含 {game.companies.length} 支公司股），现金用于买地、升级，以及踩到公司格时按<b>面值</b>认购。
         支付租金等支出时只会依次扣除<b>现金</b>与<b>存款</b>，<b>不会自动变卖你的股票或建筑</b>——
         若两者用尽仍付不出就会直接破产；想提前兑现，只能在股市面板主动卖出，或等随机事件（如「变卖所有股票求现」）。
         本面板在任何格型均可交易。

@@ -61,12 +61,12 @@ export function CompanyPanel({
   return (
     <div className="panel company-panel">
       <div className="panel-title">
-        {def.name} · {def.tile}
+        {company.name} · {company.tile}
       </div>
       <div className="company-hint">{def.charge}</div>
 
       <div className="company-meta">
-        <span>股票面值 ¥{def.sharePrice}/张</span>
+        <span>股票面值 ¥{company.sharePrice}/张</span>
         <span>董事长：{chairman?.name ?? '经营权空缺'}</span>
         <span>累积盈余 ¥{company.surplus.toLocaleString('zh-CN')}</span>
       </div>
@@ -118,7 +118,7 @@ export function CompanyPanel({
             title={`以现金按面值认购 ${Math.max(1, Math.floor(quantity))} 张；本次认购的要到下次行动才能在股市转手（按当日市价，收入进存款）`}
             onClick={buy}
           >
-            认购 ¥{(def.sharePrice * Math.max(0, Math.floor(quantity))).toLocaleString('zh-CN')}
+            认购 ¥{(company.sharePrice * Math.max(0, Math.floor(quantity))).toLocaleString('zh-CN')}
           </button>
         </div>
       )}

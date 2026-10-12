@@ -60,6 +60,7 @@ export class ColyseusSession implements GameSession {
     roomId?: string;
     seed?: number;
     maxDays?: number | null;
+    mapId?: number | null;
   }): Promise<ColyseusSession> {
     const client = new Client(serverUrl());
     const token = localStorage.getItem('richman.token') ?? undefined;
@@ -72,6 +73,8 @@ export class ColyseusSession implements GameSession {
           startDate: getSettings().startDate ?? undefined,
           // 建房者选的天数上限：null 要原样送达（那是「显式不限」），所以只在有值时才带这个键
           ...(opts.maxDays === undefined ? {} : { maxDays: opts.maxDays }),
+          // 地图同理：0 号是合法地图，不能用「有值才带」以外的真值判断
+          ...(opts.mapId === undefined ? {} : { mapId: opts.mapId }),
         });
     return new ColyseusSession(room, opts.playerName, emptyState());
   }
@@ -271,9 +274,11 @@ function emptyState(): GameState {
     spawnGods: false,
     godPairBanUntil: {},
     dice: null,
+    movePath: null,
     turn: 0,
     round: 1,
     seed: 0,
+    mapId: null,
     rngState: 0,
     log: [{ turn: 0, text: '正在同步房间状态…' }],
     winnerId: null,
@@ -302,6 +307,8 @@ function emptyState(): GameState {
     stockHaltAllDays: 0,
     loanBanDays: 0,
     npcs: [],
+    treasureCellId: null,
+    treasureMonth: 0,
     magic: null,
     landGodCooldownMonth: 0,
     pendingCards: [],

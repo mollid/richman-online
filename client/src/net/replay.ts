@@ -12,6 +12,7 @@ export class ReplaySession {
       seed: record.seed,
       startDate: record.start_date ?? undefined,
       maxDays: record.max_days ?? null,
+      mapId: record.map_id ?? null,
       players: record.players.map((p) => ({ player_name: p.player_name, color: p.color, player_key: p.player_key })),
       actions: record.actions,
     });

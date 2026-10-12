@@ -15,19 +15,20 @@
   };
   const TYPE_HEX = {
     start: 0xffe08a, chance: 0xffd0e0, news: 0xdfe9ff, 'free-card': 0xe6e0ff,
-    points: 0xfff0b8, lottery: 0xd6f2e6, magic: 0xf0d9ff, treasure: 0xffe9a8,
+    points: 0xfff0b8, lottery: 0xd6f2e6, magic: 0xf0d9ff,
     tax: 0xe8e2d2, hospital: 0xffe3e3, jail: 0xe3e6ee, game: 0xd9f0ff,
-    shop: 0xffe6c8, bank: 0xf2ead2, god: 0xffd9a8, company: 0xd9c9a3,
+    shop: 0xffe6c8, bank: 0xf2ead2, god: 0xffd9a8, company: 0xd9c9a3, blank: 0xe9e6dc,
   };
   const EMOJI = {
     start: '🏁', property: '🏠', commercial: '🏬', chance: '🎋', news: '📰', 'free-card': '🃏',
-    points: '🎟️', lottery: '🎰', magic: '🔮', treasure: '🎁', tax: '💼', hospital: '🏥',
-    jail: '🚔', game: '🎮', shop: '🛍️', bank: '🏦', god: '⛩️', company: '🏢',
+    points: '🎟️', lottery: '🎰', magic: '🔮', tax: '💼', hospital: '🏥',
+    jail: '🚔', game: '🎮', shop: '🛍️', bank: '🏦', god: '⛩️', company: '🏢', blank: '▫️',
   };
 
   let renderer, scene, camera, host, state, view, S;
   let perspCam = null, orthoCam = null, keyLight = null;
   let tileMeshes = [], decalByCell = new Map(), tokenGroups = new Map(), rimGroup = null;
+  let treasureMesh = null;           // TILE-31 宝箱（驻留实体），按帧跟随 view.treasureCellId
   let groundY = 0.6;                 // 草地实际顶面高度，buildWorld 里按几何实测
   let tileTop = 0.55;                // 格子实际顶面高度，同样实测（bevel 会把它抬到 depth 之上）
   let geoTile, geoDecal, geoBase, geoRim, geoPad, disposed = false, raf = 0, ro = null, paused = false;
@@ -69,6 +70,23 @@
     else if (i < 3 * (L - 1)) { col = L - (i - 2 * (L - 1)); row = L; }
     else { col = 1; row = L - (i - 3 * (L - 1)); }
     return { x: (col - 9) * SPACING, z: (row - 9) * SPACING };
+  }
+
+  /* 地图自带坐标时的世界布局（`view.layout`，由 shared 的 boardLayout 算）。
+     null = 这张图没带坐标（自建的 64 格环），全部几何退回上面那个方环算法。 */
+  let LAYOUT = null;
+
+  /** 格子 → 世界坐标：优先用地图自带几何，没有才退回方环 */
+  function cellPos(i) {
+    const p = LAYOUT && LAYOUT.cells[i];
+    return p ? { x: p.x, z: p.z } : ringPos(i);
+  }
+
+  /* 岛体那一摞（海 / 浅滩 / 浪花 / 沙底 / 草地 / 树）尺寸全是按 64 环的 ±16 写死的。
+     原版图按邻距定标后半径能到 54，不跟着放大格子就铺到海面之外、悬在空上。
+     自建图 LAYOUT 为 null ⇒ 系数恒为 1，画面与改动前逐像素相同。 */
+  function islandK() {
+    return LAYOUT ? Math.max(1, LAYOUT.radius / 22.6) : 1;
   }
 
   /* ---------- 贴面文字纹理 ---------- */
@@ -203,10 +221,22 @@
     return m;
   }
 
+  /* 一家公司可能占两格（原版图就是如此）：贴面按 footprint 认公司，两格都印出同一家的面值，
+     否则只有一格带价、另一格会被读成空地。缺 footprint 的旧快照退回单格。 */
+  const companyOnCell = (cellId) =>
+    state.companies.find((c) => (c.footprint && c.footprint.length ? c.footprint : [c.cellId]).includes(cellId));
+
   function buildWorld(S) {
     state = S.state; view = S.view;
+    LAYOUT = view.layout && view.layout.cells ? view.layout : null;
+    const IK = islandK();
+    /* 俯视的默认距离（70）与滚轮上限（130）都是按 64 环 ≈ 半径 22.6 定的。
+       棋盘放大后不跟着抬，「回到全盘」就只能看到上下两条边 —— 实测潮汕 103 格正是如此。
+       这里用赋值而不是累乘：重新挂载（换局）时不会越乘越远。 */
+    cam.dist = 70 * IK;
     /* 重新挂载（dispose 后再 mount）时清空上一轮的容器，否则贴面 / 棋子会逐轮累积 */
     tileMeshes = []; decalByCell = new Map(); tokenGroups = new Map(); rimGroup = null; focusRing = null;
+    treasureMesh = null;   // 上一轮场景已经重建，旧盒子留在变量里会把宝箱画在一个不存在的格上
     scene = new THREE.Scene();
     perspCam = new THREE.PerspectiveCamera(32, 1, 0.5, 260);
     orthoCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 400);
@@ -217,8 +247,8 @@
     key.position.set(16, 30, 12);
     key.castShadow = true;
     key.shadow.mapSize.set(1024, 1024);
-    key.shadow.camera.left = -34; key.shadow.camera.right = 34;
-    key.shadow.camera.top = 34; key.shadow.camera.bottom = -34;
+    key.shadow.camera.left = -34 * IK; key.shadow.camera.right = 34 * IK;
+    key.shadow.camera.top = 34 * IK; key.shadow.camera.bottom = -34 * IK;
     key.shadow.camera.far = 120; key.shadow.radius = 3; key.shadow.bias = -0.0008;
     keyLight = key;
     scene.add(key, key.target);
@@ -233,32 +263,32 @@
     const seaMap = groundTexture('#5cbbe2', ['#4aa6cf', '#8ed8f2', '#ffffff'], 260);
     /* 海面和岛体都是「一屏铺满」的大面，软件渲染下是纯填充率的账。
        MeshLambert 比 MeshStandard 省掉整套 PBR 的分段计算，对这种哑光大色块肉眼看不出差别。 */
-    const sea = new THREE.Mesh(new THREE.PlaneGeometry(96, 96),
+    const sea = new THREE.Mesh(new THREE.PlaneGeometry(96 * IK, 96 * IK),
       new THREE.MeshLambertMaterial({ map: seaMap }));
     sea.rotation.x = -Math.PI / 2; sea.position.y = -0.88; sea.receiveShadow = true;
     scene.add(sea);
-    const shoal = new THREE.Mesh(extrude(45, 45, 6, 0.5, true),
+    const shoal = new THREE.Mesh(extrude(45 * IK, 45 * IK, 6 * IK, 0.5, true),
       new THREE.MeshLambertMaterial({ color: 0x9ee0f5 }));
     shoal.position.y = -1.10; shoal.receiveShadow = true;   // 顶面 ≈ −0.55
     scene.add(shoal);
 
     /* 环岛浪花：贴在浅滩上、比岛体大一圈的白色薄环。
        岛的轮廓正是靠这一圈白线在近景里「读出来」的 —— 没有它，沙色岛体和青色浅滩会连成一片。 */
-    const foam = new THREE.Mesh(extrude(40.8, 40.8, 5, 0.12, false),
+    const foam = new THREE.Mesh(extrude(40.8 * IK, 40.8 * IK, 5 * IK, 0.12, false),
       new THREE.MeshBasicMaterial({ color: 0xf4fdff, transparent: true, opacity: 0.85 }));
     foam.position.y = -0.62;         // 顶面 −0.50，略高于浅滩，读成贴着岛的一圈浪
     scene.add(foam);
 
     /* 沙色底座：铺程序化细砂纹理。纯色在近景下会读成一块塑料板 */
     const sandMap = groundTexture('#f7ebc9', ['#e8d6a8', '#fff6dd'], 300);
-    geoBase = extrude(39, 39, 5, 1.6, true);
+    geoBase = extrude(39 * IK, 39 * IK, 5 * IK, 1.6, true);
     const base = new THREE.Mesh(geoBase, new THREE.MeshLambertMaterial({ map: sandMap }));
     base.position.y = -1.6; base.receiveShadow = true;
     scene.add(base);
 
     // 中央草地
     const grassMap = groundTexture('#9ad985', ['#7fbf68', '#b6e6a2'], 340);
-    const grass = new THREE.Mesh(extrude(28.6, 28.6, 4, 0.55, true),
+    const grass = new THREE.Mesh(extrude(28.6 * IK, 28.6 * IK, 4 * IK, 0.55, true),
       new THREE.MeshLambertMaterial({ map: grassMap }));
     grass.position.y = -0.02; grass.receiveShadow = true;
     scene.add(grass);
@@ -268,13 +298,24 @@
        高度按几何实测顶面推 —— ExtrudeGeometry 的 bevel 会把实际顶面抬到 depth 之上，
        写死 0.53/0.54 会被草地盖住（实测就是这样丢的）。 */
     groundY = new THREE.Box3().setFromObject(grass).max.y;
-    const plaza = new THREE.Mesh(new THREE.CircleGeometry(6.6, 44), mat(0xf4e8cd, { roughness: 0.94 }));
+    /* 原版图的路径会穿过岛的内陆，而草地台的顶面（实测 0.53）比格面（0.45）还高 ——
+       实测潮汕有六成格子整块埋在草里，全盘看下去只剩沙带上零星几格。
+       带自带坐标的图一律把草地降到与沙面同高：内陆读成一块平的公园绿地，格子永远浮在上面。
+       必须在广场 / 小径 / 树之前做，它们的高度全是从 `groundY` 推的。 */
+    if (LAYOUT && groundY > 0.4) {
+      // 0.12：高于沙面 0.05（否则两张大面共面，掠射角下糊出一片斑马状 z-fighting 条纹），
+      // 又低于格面 0.45（否则内陆的格子还是被埋）
+      const sink = groundY - 0.12;
+      grass.position.y -= sink;
+      groundY -= sink;
+    }
+    const plaza = new THREE.Mesh(new THREE.CircleGeometry(6.6 * IK, 44), mat(0xf4e8cd, { roughness: 0.94 }));
     plaza.rotation.x = -Math.PI / 2; plaza.position.y = groundY + 0.012; plaza.receiveShadow = true;
     scene.add(plaza);
-    const plazaRing = new THREE.Mesh(new THREE.RingGeometry(6.6, 7.25, 44), mat(0xdccaa2, { roughness: 0.94 }));
+    const plazaRing = new THREE.Mesh(new THREE.RingGeometry(6.6 * IK, 7.25 * IK, 44), mat(0xdccaa2, { roughness: 0.94 }));
     plazaRing.rotation.x = -Math.PI / 2; plazaRing.position.y = groundY + 0.009;
     scene.add(plazaRing);
-    const pathGeo = new THREE.PlaneGeometry(2.3, 8.0);
+    const pathGeo = new THREE.PlaneGeometry(2.3 * IK, 8.0 * IK);
     pathGeo.rotateX(-Math.PI / 2);
     const pathMat = mat(0xefe2c4, { roughness: 0.94 });
     for (let k = 0; k < 4; k++) {
@@ -309,9 +350,12 @@
     const hedgeGeo = new THREE.SphereGeometry(0.72, 12, 9);
     const hedgeMat = mat(pal.grass2);
     /* 环内 7 棵树 + 6 丛灌木：原来是 42 次 draw call，改实例化后 2 次。
-       摆放位置全部写死 —— 随机化会让每次刷新长得不一样，前后对比截图就失去意义。 */
+       摆放位置全部写死 —— 随机化会让每次刷新长得不一样，前后对比截图就失去意义。
+       坐标一律乘 `IK`：岛体随棋盘半径放大了，装饰留在原尺寸就会挤进棋盘路径中间
+       （实测第一版就是这样，环内树带直接长在格子上）。 */
     const trunkList = [], leafList = [];
-    const plantTree = (x, z, s, y0) => {
+    const plantTree = (bx, bz, s, y0) => {
+      const x = bx * IK, z = bz * IK;
       trunkList.push({ x, y: y0 + 0.85 * s, z, s });
       for (let k = 0; k < 5; k++) {
         leafList.push({ x, y: y0 + 1.75 * s, z, rx: 0.55, ry: (k / 5) * Math.PI * 2, rz: 0.32, s });
@@ -346,7 +390,7 @@
     instanced(trunkGeo, trunkMat, trunkList, true);
     instanced(leafGeo, leafMat, leafList, true);
     instanced(hedgeGeo, hedgeMat, [[-11.5, -11.5], [11.5, -11.5], [-11.5, 11.5], [11.5, 11.5], [2.4, -12.6], [-12.6, 3.2]]
-      .map(([x, z]) => ({ x, y: 0.35, z, s: [1.5, 0.8, 1.5] })), true);
+      .map(([x, z]) => ({ x: x * IK, y: 0.35, z: z * IK, s: [1.5, 0.8, 1.5] })), true);
 
     /* 礁石：半沉在浅滩 / 海面里，只露出一角。外侧 10 块沉水、四角 4 块搁在沙带边。
        y 值分开给：浅滩顶面在 −0.55，沙带顶面在 0.05，混用一个高度会有一半浮空或全淹。 */
@@ -365,7 +409,7 @@
       { x: -18.3, y: 0.28, z: 17.8, ry: 1.9, s: [0.90, 0.65, 0.80] },
       { x: 18.2, y: 0.28, z: -18.0, ry: 2.6, s: [0.75, 0.55, 0.90] },
       { x: -18.0, y: 0.28, z: -18.2, ry: 1.2, s: [0.85, 0.62, 0.78] },
-    ], true);
+    ].map((r) => ({ ...r, x: r.x * IK, z: r.z * IK })), true);
 
     /* ---------- 环内草丛 / 花丛 ----------
      * 战略俯视下它们只是些小色点，但能让「中间那片草地」不至于是一块纯色板。
@@ -375,7 +419,7 @@
     let ts = 0x5bf03635;
     const trnd = () => { ts = (ts * 1664525 + 1013904223) >>> 0; return ts / 4294967296; };
     for (let i = 0; i < 110; i++) {
-      const a = trnd() * Math.PI * 2, r = 8.6 + trnd() * 5.0;
+      const a = trnd() * Math.PI * 2, r = (8.6 + trnd() * 5.0) * IK;
       const x = Math.cos(a) * r, z = Math.sin(a) * r;
       /* 草丛高度要按缩放算：锥体的原点在「体中心」，固定 y 会让大株悬空、小株埋进土里 */
       const s = 0.55 + trnd() * 0.85;
@@ -431,9 +475,9 @@
     geoDecal.rotateX(-Math.PI / 2);
     /* 台座 64 个同材质 → 实例化成 1 次 draw call（关键：软件渲染下 64 次会吃掉近一半帧） */
     instanced(geoPad, mat(0xfffbef, { roughness: 0.9 }),
-      state.board.map((c) => { const p = ringPos(c.id); return { x: p.x, y: 0, z: p.z }; }), false);
+      state.board.map((c) => { const p = cellPos(c.id); return { x: p.x, y: 0, z: p.z }; }), false);
     for (const cell of state.board) {
-      const { x, z } = ringPos(cell.id);
+      const { x, z } = cellPos(cell.id);
       const hex = cell.group && GROUP_HEX[cell.group] !== undefined ? GROUP_HEX[cell.group] : (TYPE_HEX[cell.type] ?? 0xfffbef);
       const m = new THREE.Mesh(geoTile, mat(hex, { roughness: 0.7 }));
       m.position.set(x, 0, z);
@@ -442,7 +486,7 @@
       scene.add(m); tileMeshes.push(m);
 
       const price = cell.price ? Math.round(cell.price * view.priceIndex) : 0;
-      const corp = state.companies.find((c) => c.cellId === cell.id);
+      const corp = companyOnCell(cell.id);
       const sub = corp ? `🔔${corp.sharePrice}` : (cell.price ? `${price}` : '');
       const decal = new THREE.Mesh(geoDecal, new THREE.MeshBasicMaterial({
         map: tileTexture(cell, sub), transparent: true, depthWrite: false,
@@ -468,6 +512,27 @@
     buildFocusRing();
   }
 
+  /* TILE-31 宝箱（R5 起是驻留实体，不再是某一格的格型）：按月换一处、走到才结算，
+     所以它必须画在**当前那一格**上，而不是画死在棋盘里。场上没有宝箱就藏起来。 */
+  function syncTreasure() {
+    const cellId = view.treasureCellId;
+    if (cellId === null || cellId === undefined) {
+      if (treasureMesh) treasureMesh.visible = false;
+      return;
+    }
+    if (!treasureMesh) {
+      treasureMesh = new THREE.Mesh(
+        new THREE.BoxGeometry(TILE * 0.44, TILE * 0.3, TILE * 0.34),
+        new THREE.MeshLambertMaterial({ color: 0xd9a227 }),
+      );
+      treasureMesh.castShadow = true;
+      scene.add(treasureMesh);
+    }
+    const { x, z } = cellPos(cellId);
+    treasureMesh.position.set(x, tileTop + TILE * 0.15, z);
+    treasureMesh.visible = true;
+  }
+
   /* 持有者标色：早前把「着色块」放在 y=0.06 和「描边」放在 y=-0.03，都埋在格子体内，等于没画。
      改成在格子下半部套一圈更宽的彩色台座（plinth）—— 从外面能看见一圈持有者色的裙边。 */
   function paintOwners() {
@@ -477,7 +542,7 @@
       const decal = decalByCell.get(cell.id);
       const pid = view.owners[cell.id];
       if (!pid) { if (decal) decal.position.y = tileTop + 0.012; continue; }
-      const { x, z } = ringPos(cell.id);
+      const { x, z } = cellPos(cell.id);
       const plinth = new THREE.Mesh(geoRim, mat(new THREE.Color(cssOf(pid)), { roughness: 0.55 }));
       plinth.position.set(x, 0.085, z);
       plinth.castShadow = true;
@@ -597,7 +662,7 @@
 
       const list = byCell.get(p.position);
       const k = list.indexOf(p);
-      const { x, z } = ringPos(p.position);
+      const { x, z } = cellPos(p.position);
       const [ox, oz] = list.length > 1 ? OFFSETS[k % 4] : [0, 0];
       g.position.set(x + ox, 0, z + oz);
       g.userData.pid = p.id; g.userData.phase = k * 1.7;
@@ -656,7 +721,7 @@
     const vals = (values && values.length ? values : [1]).slice(0, 4);
     if (diceGroup.children.length !== vals.length) fillDice(vals.length, null);
     const near = camMode === 'iso';
-    const a = near ? ringPos(from) : { x: 0, z: 2.7 };
+    const a = near ? cellPos(from) : { x: 0, z: 2.7 };
     diceGroup.position.set(a.x + (near ? 0.8 : 0), near ? tileTop : groundY, a.z + (near ? 0.8 : 0));
     const cubes = diceGroup.children;
     for (let i = 0; i < cubes.length; i++) {
@@ -1080,7 +1145,7 @@
          在近景里会把视野从 10.4 直接推到 14.4（放大率掉 30%），滚一格就跳。所以分开给步长。 */
       cam.dist = camMode === 'iso'
         ? Math.min(ISO.viewMax, Math.max(ISO.viewMin, cam.dist + s * 0.7))
-        : Math.min(130, Math.max(42, cam.dist + s * 4));
+        : Math.min(130 * islandK(), Math.max(42, cam.dist + s * 4));
       applyCam();
     }, { passive: false });
     host.addEventListener('keydown', (e) => {
@@ -1211,6 +1276,7 @@
     /** 棋子跟着状态走（换人 / 移动后调用） */
     sync(Snap) {
       state = Snap.state; view = Snap.view;
+      LAYOUT = view.layout && view.layout.cells ? view.layout : null;
       for (const p of state.players) {
         const g = tokenGroups.get(p.id);
         if (!g) continue;
@@ -1220,17 +1286,18 @@
           if (p.position === hopQ.lastCell) continue;
           hopQ = null;
         }
-        const { x, z } = ringPos(p.position);
+        const { x, z } = cellPos(p.position);
         g.position.x = x; g.position.z = z;
         g.position.y = 0;
       }
+      syncTreasure();
     },
     paintOwners,
     redrawLabels() {
       for (const [cellId, decal] of decalByCell) {
         const cell = state.board[cellId];
         const price = cell.price ? Math.round(cell.price * view.priceIndex) : 0;
-        const corp = state.companies.find((c) => c.cellId === cell.id);
+        const corp = companyOnCell(cell.id);
         decal.material.map.dispose();
         decal.material.map = tileTexture(cell, corp ? `🔔${corp.sharePrice}` : (cell.price ? `${price}` : ''));
         decal.material.needsUpdate = true;
@@ -1245,18 +1312,22 @@
      * @returns {boolean} 真的开始演出了才返回 true（减弱动效偏好下返回 false，宿主直接落位）
      */
     playMove(opts) {
-      const { pid, from, steps, dir = 1, dice = null } = opts || {};
+      const { pid, from, steps, dir = 1, dice = null, cells = null } = opts || {};
       const g = tokenGroups.get(pid);
       if (!g || REDUCED || !(steps > 0)) return false;
+      /* `cells` = 引擎记下的这一手真实格子序列（`state.movePath` 的尾巴）⇒ 直接照它跳。
+         没有才按环上的 ±1 自己推 —— 那条只在自建图，或传送/神明挪位这类没有路径的位移里成立。 */
+      const walk = cells && cells.length ? cells : null;
       const n = state.board.length || 64;
-      const path = [ringPos(from)];
-      let pos = from;
-      for (let k = 0; k < steps; k++) {
-        pos = (pos + dir + n) % n;
-        path.push(ringPos(pos));
-      }
+      const path = walk ? walk.map((id) => cellPos(id)) : (() => {
+        const out = [cellPos(from)];
+        let pos = from;
+        for (let k = 0; k < steps; k++) { pos = (pos + dir + n) % n; out.push(cellPos(pos)); }
+        return out;
+      })();
+      const lastCell = walk ? walk[walk.length - 1] : (from + dir * steps + n) % n;
       /* `dice` 为空 = 这一手不是掷骰走路（神明挪位、传送那类）：不摇骰子，直接开走 */
-      hopQ = { pid, path, i: 0, t: 0, wait: dice ? DICE_ROLL_SEC : 0, lastCell: pos };
+      hopQ = { pid, path, i: 0, t: 0, wait: dice ? DICE_ROLL_SEC : 0, lastCell };
       if (dice) throwDice(dice, from);
       return true;
     },
@@ -1294,8 +1365,13 @@
       return out;
     },
     tileAnchor(cellId) {
-      const { x, z } = ringPos(cellId);
+      const { x, z } = cellPos(cellId);
       return { x, y: tileTop + 0.2, z };
+    },
+    /** 宝箱盒子当前画在哪（null = 场上没有）。表现层自检用：证明盒子落在 `view.treasureCellId` 那一格 */
+    treasureAnchor() {
+      if (!treasureMesh || !treasureMesh.visible) return null;
+      return { cellId: view.treasureCellId, x: treasureMesh.position.x, z: treasureMesh.position.z };
     },
     lastPointer: () => ({ ...lastPointer }),
     stats() {
@@ -1308,8 +1384,9 @@
       if (camMode === 'iso') { camMode = 'top'; cam.dist = distFromView(cam.dist); hooks.onCameraMode && hooks.onCameraMode(camMode); }
       releaseFollow();
       const P = CAM_PRESETS[preset] || CAM_PRESETS.reset;
-      Object.assign(cam, P);
-      topMemory = { az: P.az, el: P.el, dist: P.dist };
+      // 预设里的距离同样按 64 环定，随棋盘半径一起放大（见 buildWorld 里 cam.dist 那段）
+      Object.assign(cam, { ...P, dist: P.dist * islandK() });
+      topMemory = { az: P.az, el: P.el, dist: cam.dist };
       applyCam();
     },
     /** 切镜头模式：'top' 战略俯视（透视）/ 'iso' 近景等距（正交） */
@@ -1338,7 +1415,7 @@
       if (!camera || !host) return { count: 0, ids: [] };
       const v = new THREE.Vector3(), ids = [];
       for (const cell of state.board) {
-        const { x, z } = ringPos(cell.id);
+        const { x, z } = cellPos(cell.id);
         v.set(x, tileTop, z).project(camera);
         if (v.x >= -1 && v.x <= 1 && v.y >= -1 && v.y <= 1) ids.push(cell.id);
       }

@@ -348,10 +348,14 @@ export function AcHudLayer({
    * 收层只收**我们自己弹开的那一种** —— dock 上「加盖 / 特别融资」开的也是公司面板，
    * 不该替玩家关掉他主动要看的东西。 */
   const landing = snapshot.view.actions.landing as { cellId: number; venue: string | null } | null;
+  const { canDeposit, canWithdraw, canLoan, canRepayLoan } = snapshot.view.actions;
   const landingKind = useMemo(() => {
     if (!landing) return null;
     if (landing.venue === 'shop') return 'shop';
-    if (landing.venue === 'bank') return 'bank';
+    // 银行面板的正文就是那四件事（`BankPanel` 的 `atBank` 读的同一份）：一件都办不了时它什么都不渲染，
+    // 于是弹窗判据必须跟着正文一起收 —— 引擎把窗开着（企业银行董事长还能特别融资）时，
+    // 弹一层只有「关闭」的空壳不如让 dock 那排按钮自己说话。
+    if (landing.venue === 'bank') return canDeposit || canWithdraw || canLoan || canRepayLoan ? 'bank' : null;
     const cell = game.board[landing.cellId];
     if (!cell) return null;
     // 需要选目标 / 填金额的那几格才自动开面板；买地、加盖、保释这类 dock 上一个按钮就够
@@ -359,7 +363,7 @@ export function AcHudLayer({
     if (cell.type === 'magic') return 'magic';
     if (cell.type === 'lottery') return 'lottery';
     return null;
-  }, [landing, game.board]);
+  }, [landing, game.board, canDeposit, canWithdraw, canLoan, canRepayLoan]);
 
   const landingPromptRef = useRef<string | null>(null);
   const autoOpenedRef = useRef<string | null>(null);

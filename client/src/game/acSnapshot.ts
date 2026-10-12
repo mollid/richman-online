@@ -9,6 +9,7 @@ import {
   allAssetSummaries,
   allStockSummaries,
   availableActions,
+  boardLayout,
   CARDS,
   estateGroups,
   FACILITIES,
@@ -17,6 +18,7 @@ import {
   godSummary,
   ITEMS,
   priceIndex,
+  TREASURE_POINTS,
   type GameState,
 } from '@richman/shared';
 
@@ -45,7 +47,19 @@ export interface AcSnapshot {
      */
     canOpenStock: boolean;
     owners: AcOwners;
+    /**
+     * 棋盘几何（世界坐标）。`null` = 这张图没带坐标，渲染层退回「64 格 = 17×17 外圈」的老算法。
+     *
+     * 由 shared 的 `boardLayout` 算，3D 场景与右下小地图共用同一份 —— 两处各算一次必然错位。
+     */
+    layout: ReturnType<typeof boardLayout>;
     gods: Array<{ godId: string; cellId: number; ttlDays: number; bornDay: number; name: string; emoji: string; summary: string }>;
+    /**
+     * TILE-31 宝箱：驻留实体此刻在哪一格（null = 场上没有，本月已被拿走）。
+     * 点券数值一并给出 —— 表现层不自己写死规则里的数字。
+     */
+    treasureCellId: number | null;
+    treasurePoints: number;
     myPlayerId: string | null;
     currentCell: GameState['board'][number] | undefined;
     names: {
@@ -101,7 +115,10 @@ export function buildAcSnapshot(game: GameState, myPlayerId: string | null): AcS
       actions: availableActions(game),
       canOpenStock,
       owners,
+      layout: boardLayout(game.board),
       gods,
+      treasureCellId: game.treasureCellId,
+      treasurePoints: TREASURE_POINTS,
       myPlayerId: meId,
       currentCell: game.board[me?.position ?? 0],
       names: {
