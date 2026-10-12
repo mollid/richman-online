@@ -10,6 +10,7 @@ coverage/
 .scratch/
 # 原版游戏素材（版权原因不入库，仅用于解析数值表）
 docs/extraction/raw/
+docs/assets/raw/
 
 # 字体构建的下载缓存（源文件 17MB/个，不进仓库）
 .font-cache/
@@ -35,6 +36,8 @@ assets/*.ttf
 # WorkBuddy 的会话记忆与运行记录
 .workbuddy/
 .zwork/
+# tools/ 下 Python 逆向脚本的字节码缓存
+__pycache__/
 # playwright 无障碍树 dump（根目录散落的 entry.yaml / s1.yaml）
 /entry.yaml
 /s1.yaml
