@@ -11,7 +11,11 @@ import type { CompanyState, FacilityType, GameState, Player, PlayerAction } from
 /** AI 建设偏好：研究所（可研发道具）优先，其次购物中心/旅馆/加油站/公园 */
 const BUILD_PREFERENCE: FacilityType[] = ['lab', 'mall', 'hotel', 'gas', 'park'];
 
-/** AI 炒股时保留的存款安全垫（股票只能用存款买入，help[07]） */
+/**
+ * AI 炒股时保留的存款安全垫（股票只能用存款买入，help[07]）。
+ * 这是原版那条「资产检查（`FUN_004521aa(...) < 0xf` 时放弃）」在本作的等价物 ——
+ * 原版没给出这个数是多少，5000 是我们的选择。
+ */
 const STOCK_RESERVE_DEPOSIT = 5000;
 
 /** AI 现金低于此线就先变现原始股救急（CORP-14） */
@@ -112,7 +116,13 @@ export function botDecide(state: GameState, botId: string, rng: () => number): P
     // 股票只能用**存款**买入（help[07]）。行情池现在是 17 支（6 支虚拟 + 11 家公司挂进来的
     // `corp-*`，CORP-14），旧实现那种按 `me.cash` 推测买得起的写法每回都会撞上引擎的拒绝
     // ——买哪只、买几只一律问注册表。
-    if (availableActions(state).canTradeStock) {
+    //
+    // 原版 `FUN_0042bf03`：电脑每天只有 **1/3 概率**（`rand()%3==0`）考虑买股，且要先过资产检查。
+    // 我们原先每手都买 —— 在 R10 把流通量钉成 5000/10000 张之后，那等于 bot 一路把整张图的票
+    // 吃光，人类玩家打开面板就没货了。所以这一道闸门是**收紧**（照原版），不是新增行为。
+    // `rng` 是服务端 `botRngState` 那条独立的流，不碰 `state.rngState` ⇒ 骰子序列不受影响。
+    const considersStock = rng() < 1 / 3;
+    if (considersStock && availableActions(state).canTradeStock) {
       const sorted = [...state.stockMarket.stocks].sort((a, b) => a.price - b.price);
       for (const stock of sorted) {
         for (const quantity of [10, 5, 1]) {

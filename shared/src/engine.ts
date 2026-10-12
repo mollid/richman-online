@@ -35,6 +35,7 @@ import { landPrice, landRent, landPriceLevel, landUpgradeCost, mapLandPriceLevel
 import { boardGodAt, clearBoardGodsOnCells, detachGodForPossession, godSpawnHook, godSummonRefusal } from './godspawn.js';
 import {
   applyTradeImpact,
+  clampStockPrice,
   MARKET_DRIFT_PCT,
   sealDailyCandle,
   STOCK_DAY_LIMIT_PCT,
@@ -778,7 +779,7 @@ function tickStockMarket(state: GameState): void {
       }
       pct = Math.max(-STOCK_DAY_LIMIT_PCT, Math.min(STOCK_DAY_LIMIT_PCT, pct));
     }
-    const next = Math.max(STOCK_MIN_PRICE, Math.round(open * (1 + pct / 100)));
+    const next = clampStockPrice(open * (1 + pct / 100));
     stock.price = next;
     stock.lastChangePct = Math.round(((next - open) / Math.max(1, open)) * 100);
   });
@@ -3191,6 +3192,11 @@ function buyStock(state: GameState, action: Extract<PlayerAction, { type: 'BUY_S
   p.deposit -= total;
   stock.remainingShares -= action.quantity;   // 供给有限：买走的从流通盘里扣，可以买到没有
   const company = companyOfStock(state, stock.id);
+  // ECON-10：建仓成本按 stockId 记，公司股与虚拟股同一条账。原版的移动平均
+  // （`DAT_004971a4` =（旧成本值 + 本次成本）÷ 总持股）与「累计成本 ÷ 持股」是同一个数，
+  // 卖出时按比例结转均价不变 —— 所以这里只累加，除法留给展示层。
+  p.stockCost = p.stockCost ?? {};
+  p.stockCost[stock.id] = (p.stockCost[stock.id] ?? 0) + total;
   if (company) {
     // 一本账：面板买的也是这家公司的股东 —— 持股记进 `CompanyState.shares`（与踩格认购同一本），
     // 同样先进锁定期。否则「市价买一手 → 抢下董事长免付费 → 当场原价卖回」可以白嫖特权。
@@ -3200,9 +3206,6 @@ function buyStock(state: GameState, action: Extract<PlayerAction, { type: 'BUY_S
     recomputeCompanyChairman(state, company);
   } else {
     p.stocks[stock.id] = (p.stocks[stock.id] ?? 0) + action.quantity;
-    // ECON-10：记录建仓成本（累计投入），UI 用于展示浮动盈亏
-    p.stockCost = p.stockCost ?? {};
-    p.stockCost[stock.id] = (p.stockCost[stock.id] ?? 0) + total;
   }
   log(
     state,
@@ -3260,6 +3263,11 @@ function buyShares(state: GameState, action: Extract<PlayerAction, { type: 'BUY_
   p.cash -= cost;
   const subscribed = stockById(state, companyStockId(company.kind));
   if (subscribed) subscribed.remainingShares = Math.max(0, subscribed.remainingShares - action.quantity);
+  // 一级认购也是这只票的成本账（按面值、现金结算），转手时与面板买入那份一起按比例结转
+  if (subscribed) {
+    p.stockCost = p.stockCost ?? {};
+    p.stockCost[subscribed.id] = (p.stockCost[subscribed.id] ?? 0) + cost;
+  }
   company.shares[p.id] = (company.shares[p.id] ?? 0) + action.quantity;
   company.lockedShares[p.id] = lockedSharesOf(company, p.id) + action.quantity;
   if (company.firstHeldDayIndex[p.id] === undefined) company.firstHeldDayIndex[p.id] = state.calendar.elapsedDays;
@@ -3286,20 +3294,27 @@ function sellShares(state: GameState, action: Extract<PlayerAction, { type: 'SEL
   const holding = company.shares[p.id] ?? 0;
   const { execPrice } = applyTradeImpact(state, stock, action.quantity, 'sell');
   const total = execPrice * action.quantity;
+  // 结转与 sellStock 同一条口径：按持股比例扣成本，均价不变（原版的移动平均）
+  const costBefore = p.stockCost?.[stock.id] ?? 0;
+  const costOut = holding > 0 ? Math.round((costBefore * action.quantity) / holding) : 0;
   const left = holding - action.quantity;
   if (left === 0) {
     delete company.shares[p.id];
     delete company.firstHeldDayIndex[p.id];
     delete company.lockedShares[p.id];
+    if (p.stockCost) delete p.stockCost[stock.id];
   } else {
     company.shares[p.id] = left;
+    if (p.stockCost) p.stockCost[stock.id] = costBefore - costOut;
   }
   p.deposit += total; // 股市那侧的钱一律进出存款（现金只归买地、升级、踩格认购）
   stock.remainingShares = Math.min(stock.floatShares, stock.remainingShares + action.quantity);
+  const profit = total - costOut;
   log(
     state,
     `${p.name} 卖出 ${company.name} 原始股 ×${action.quantity}，按市价 ¥${execPrice.toLocaleString('zh-CN')} 成交，` +
-      `得存款 ¥${total.toLocaleString('zh-CN')}（持股 ${left}）`,
+      `得存款 ¥${total.toLocaleString('zh-CN')}（持股 ${left}）` +
+      (costOut > 0 ? `，${profit >= 0 ? '赚' : '亏'} ¥${Math.abs(profit).toLocaleString('zh-CN')}` : ''),
   );
   recomputeCompanyChairman(state, company);
 }

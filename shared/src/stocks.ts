@@ -26,6 +26,8 @@ export const STOCK_VOLUME_WAVE_GAIN = 0.08;
 export const STOCK_WICK_UNIT = 0.01;
 /** 股价地板（与 tickStockMarket 原有口径一致） */
 export const STOCK_MIN_PRICE = 5;
+/** 股价天花板（原版 `FUN_00428ec5` 的 9999，见 `clampStockPrice`） */
+export const STOCK_MAX_PRICE = 9999;
 
 /**
  * 单日涨跌停的硬边界（百分点）。原版 `涨跌 clamp 到 [-10.0, +10.0]`（FUN_004291d6），
@@ -43,6 +45,21 @@ export const STOCK_REVERSION_HIGH = 8;
 /** 今日这一支的涨停价 / 跌停价（sign = +1 涨、-1 跌），以**开盘价**为基准 */
 export function stockLimitPrice(openPrice: number, sign: 1 | -1): number {
   return Math.round(openPrice * (1 + (sign * STOCK_DAY_LIMIT_PCT) / 100));
+}
+
+/**
+ * 原版的价钳制（`FUN_00428ec5`）：下限 1.0、上限 9999。
+ *
+ * 下限沿用 `STOCK_MIN_PRICE`（5）而不是原版的 1.0 —— 那张表里最便宜的票是面值 15 的中國石油，
+ * 5 元是它三成，比原版托得早，这是我们的选择、不是原版的数。
+ * 上限这次接上：R10 之后面值最高的是 1440（麥當勞），9999 约是它的 6.9 倍，而均值回归在 8 倍就出手，
+ * 所以它是一条几乎不触发的安全网 —— 接它的理由是「成交价从此不会漂成天文数字」，不是为了复刻。
+ *
+ * 顺手把**取整**收到这一个出口上：原先只有日切那一步 round，成交冲击那条没有，
+ * 于是价格会带小数，再乘进 `stockExecPrice` 就把小数扣进存款里（玩家的存款变成 1234.5678）。
+ */
+export function clampStockPrice(value: number): number {
+  return Math.min(STOCK_MAX_PRICE, Math.max(STOCK_MIN_PRICE, Math.round(value)));
 }
 
 /**
@@ -197,7 +214,9 @@ export function stockImpactDelta(stock: Stock, shares: number): number {
 /** 这笔成交的结算价（冲击前后的中点）；校验与扣款都用它，两边才不会打架 */
 export function stockExecPrice(stock: Stock, shares: number, side: 'buy' | 'sell'): number {
   const delta = stockImpactDelta(stock, shares);
-  const post = Math.max(STOCK_MIN_PRICE, side === 'buy' ? stock.price + delta : stock.price - delta);
+  // 结算价里的「成交后价」必须走同一个钳制：否则一笔把盘口顶过 9999 的大买单，
+  // 结算价按越界的后价算、成交价却被 `clampStockPrice` 收回来，两个数说的不是同一件事。
+  const post = clampStockPrice(side === 'buy' ? stock.price + delta : stock.price - delta);
   return Math.round((stock.price + post) / 2);
 }
 
@@ -210,10 +229,7 @@ export function applyTradeImpact(
 ): { execPrice: number; moved: number } {
   const execPrice = stockExecPrice(stock, shares, side);
   const before = stock.price;
-  stock.price = Math.max(
-    STOCK_MIN_PRICE,
-    side === 'buy' ? before + stockImpactDelta(stock, shares) : before - stockImpactDelta(stock, shares),
-  );
+  stock.price = clampStockPrice(side === 'buy' ? before + stockImpactDelta(stock, shares) : before - stockImpactDelta(stock, shares));
   const candle = todayCandle(state, stock);
   candle.close = stock.price;
   candle.high = Math.max(candle.high, stock.price);

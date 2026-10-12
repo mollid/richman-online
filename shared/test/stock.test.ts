@@ -4,6 +4,7 @@ import {
   applyAction,
   availableActions,
   BOARD_SIZE,
+  clampStockPrice,
   createGame,
   applyFateEffect,
   FATE_CARDS,
@@ -15,6 +16,8 @@ import {
   stockImpactPct,
   stockLimitPrice,
   stockLimitState,
+  stockSummary,
+  STOCK_MIN_PRICE,
   totalAssets,
   type GameState,
   type PlayerAction,
@@ -799,5 +802,69 @@ describe('流通股可买光 + 地价定锚（反汇编实证第二波）', () =
     expect(stockOf(landed, 'media').lastChangePct).toBe(10);
     // 没涨过的那支从开盘推上去：80 → 88
     expect(stockOf(landed, 'food').price).toBe(88);
+  });
+});
+
+/**
+ * R11 收尾三件里的两件半：价格钳制收口（原版的 9999 天花板 + 处处取整）与
+ * 「公司股也记成本账」（此前只有虚拟股记，原始股那条分支被 `if (company)` 挡住了）。
+ */
+describe('价格钳制与成本账（R11）', () => {
+  const stockOf = (s: GameState, id: string) => s.stockMarket.stocks.find((x) => x.id === id)!;
+
+  it('clampStockPrice 上下都收口并取整 —— 结算价与成交价说的是同一个价', () => {
+    expect(clampStockPrice(12345.6)).toBe(9999);
+    expect(clampStockPrice(0.4)).toBe(STOCK_MIN_PRICE);
+    expect(clampStockPrice(132.5)).toBe(133);
+  });
+
+  it('一笔大卖单把盘口压到底就不再往下，且存款不会被扣出小数', () => {
+    const g = newGame(240);
+    const tech = stockOf(g, 'tech');
+    Object.assign(tech, { floatShares: 120, remainingShares: 120, price: 40, openPrice: 40 });
+    const p = g.players[g.currentPlayerIndex]!;
+    p.stocks.tech = 120;
+    p.stockCost = { tech: 12_000 };
+    const sold = applyAction(g, { type: 'SELL_STOCK', stockId: 'tech', quantity: 120 });
+    // 120 张 = 全部流通盘，抛压早就该触底了
+    expect(stockOf(sold, 'tech').price).toBe(STOCK_MIN_PRICE);
+    expect(Number.isInteger(sold.players[0]!.deposit)).toBe(true);
+    // 卖光即退出账本，成本也跟着清（不留一条 0 股的悬账）
+    expect(sold.players[0]!.stocks.tech ?? 0).toBe(0);
+    expect(sold.players[0]!.stockCost?.tech).toBeUndefined();
+  });
+
+  it('公司股两条进货渠道都记成本：面板按市价、踩格按面值，进同一条账', () => {
+    const g = withDeposit(newGame(241), 1_000_000);
+    const comp = stockOf(g, 'corp-computer');
+    Object.assign(comp, { price: 500, openPrice: 500, floatShares: 2000, remainingShares: 2000 });
+    const bought = applyAction(g, { type: 'BUY_STOCK', stockId: 'corp-computer', quantity: 10 });
+    const cost1 = bought.players[0]!.stockCost?.['corp-computer'] ?? 0;
+    // 冲击成本让 10 张的均价高于盘口 500 —— 记的必须是成交价而不是盘口价，否则盈亏是假的
+    expect(cost1).toBeGreaterThan(500 * 10);
+    expect(Number.isInteger(cost1)).toBe(true);
+
+    // 踩到公司格按面值认购 10 张（现金），累加进同一条账
+    const atDoor = standAt(bought, 0, 43);
+    atDoor.players[0]!.cash = 1_000_000;
+    const sub = applyAction(atDoor, { type: 'BUY_SHARES', cellId: 43, quantity: 10 });
+    expect(sub.players[0]!.stockCost?.['corp-computer']).toBe(cost1 + 400 * 10);
+    expect(sub.players[0]!.stocks['corp-computer'] ?? 0).toBe(0);   // 公司股的持股在股东名册上，不在这里
+  });
+
+  it('原始股按市价计值，所以报表给得出盈亏（旧口径按面值，profit 恒 0）', () => {
+    const g = newGame(242);
+    const comp = stockOf(g, 'corp-computer');
+    comp.price = 800;                       // 行情翻倍，而面值仍是 400
+    const company = g.companies.find((c) => c.kind === 'computer')!;
+    company.shares[g.players[0]!.id] = 10;
+    g.players[0]!.stockCost = { 'corp-computer': 4000 };   // 按面值认购过 10 张
+    const row = stockSummary(g, g.players[0]!).corpRows.find((r) => r.kind === 'computer')!;
+    expect(row.price).toBe(800);
+    expect(row.faceValue).toBe(400);
+    expect(row.marketValue).toBe(8000);
+    expect(row.profit).toBe(4000);
+    // 与 totalAssets 同口径（那边一直按市价计），别让报表与资产清单两个数
+    expect(stockSummary(g, g.players[0]!).marketValue).toBeGreaterThanOrEqual(8000);
   });
 });

@@ -938,14 +938,14 @@
       if (!sm || (!sm.rows.length && !sm.corpRows.length)) continue;
       const rows = [];
       for (const r of sm.rows) rows.push(`<tr><td>${esc(r.stockName)}</td><td>${r.quantity} 股</td><td>🔔${money(r.marketValue)}</td><td>${r.profit >= 0 ? '▲' : '▼'}${money(Math.abs(r.profit))}</td></tr>`);
-      for (const r of sm.corpRows) rows.push(`<tr><td>${esc(r.name)}<br><small>原始股 · 面值定价</small></td><td>${r.quantity} 张<br><small>锁 ${r.locked} / 卖 ${r.sellable}</small></td><td>🔔${money(r.marketValue)}</td><td>${r.chairman ? '👑' : ''}${r.holdingPct}%</td></tr>`);
+      for (const r of sm.corpRows) rows.push(`<tr><td>${esc(r.name)}<br><small>原始股 · 转手按市价</small></td><td>${r.quantity} 张<br><small>锁 ${r.locked} / 卖 ${r.sellable}</small></td><td>🔔${money(r.marketValue)}</td><td>${r.profit >= 0 ? '▲' : '▼'}${money(Math.abs(r.profit))}<br>${r.chairman ? '👑' : ''}${r.holdingPct}%</td></tr>`);
       const t = el('div', '');
       t.innerHTML = `<div class="ac-divider"><span class="ac-divider__mark">${avaOf(p)} ${esc(p.name)}</span></div>
         <div class="hud-tablewrap"><table class="ac-table"><thead><tr><th>标的</th><th>数量</th><th>现值</th><th>盈亏/占比</th></tr></thead><tbody>${rows.join('')}</tbody></table></div>`;
       bd.appendChild(t);
     }
     bd.appendChild(el('div', 'hud-foot', st.companies.length
-      ? `上市股只能动用存款 ✈️；本图 ${st.companies.length} 家公司的原始股用现金 🔔、按面值随时卖回、认购当回合锁一手。`
+      ? `上市股只能动用存款 ✈️；本图 ${st.companies.length} 家公司的原始股用现金 🔔 按面值认购、转手按市价卖回存款，认购当回合锁一手。`
       : '上市股只能动用存款 ✈️。这张图没有公司企业，也就没有原始股可认购。'));
   }
 

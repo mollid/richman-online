@@ -5,15 +5,16 @@
  *「資產清單：分別把每個角色的現金、存款、土地、房屋、股票及資產總值等資料顯示出來。
  *   地產清單：查詢擁有的土地、建設等資料。股票清單：查詢持有股票的明細資料。」
  *
- * 「股票」在这里是两档（CORP-14）：上市股按市价计、有涨跌与盈亏；地图上的公司原始股按
- * **面值**计、没有价差，能看的是「锁定 / 可卖 / 经营权」这三件事。两套明细分开给，
- * 因为列不同 —— 合成一张表要么给原始股编一个假的「盈亏 +0」，要么给上市股硬塞「锁定」列。
+ * 「股票」在这里是两档（CORP-14）：**一本股东账、两个价格**——上市股按日随机游走，原始股踩格时
+ * 按**面值**现金申购、转手却按**市价**进存款，所以两边都有涨跌与盈亏，只是列不同：原始股还多
+ * 「锁定 / 可卖 / 经营权」这三件事。清单分开给，合成一张表要么给原始股编一个假的「+0 盈亏」，
+ * 要么给上市股硬塞一列「锁定」。
  *
  * 全部为纯函数只读计算，不改 `GameState`、不消耗 RNG。
  */
 import { FACILITIES, gradeName, vehicleLabel } from './tiles.js';
 import { companySharePrice } from './stocks.js';
-import { lockedSharesOf, sellableSharesOf } from './companies.js';
+import { companyStockId, lockedSharesOf, sellableSharesOf } from './companies.js';
 import { propertyValue, scaled } from './economy.js';
 import type { CompanyKind, GameState, Player } from './types.js';
 
@@ -93,9 +94,14 @@ export interface CorpShareRow {
   name: string;
   tile: string;
   quantity: number;
-  /** 面值（也就是卖出单价） */
+  /** 行情现价（`corp-<kind>` 那一支的价）：原始股**转手按市价**，不按面值 */
   price: number;
+  /** 面值 = 踩公司格那一手的申购单价（现金） */
+  faceValue: number;
+  /** 累计成本：面板市价买入与踩格按面值认购，两处都记进同一条账 */
+  cost: number;
   marketValue: number;
+  profit: number;
   /** 本回合认购、还没解锁的张数 */
   locked: number;
   /** 现在就能挂进股市卖的张数 */
@@ -256,14 +262,22 @@ export function stockSummary(state: GameState, p: Player): StockSummary {
     const quantity = company.shares[p.id] ?? 0;
     if (quantity <= 0) continue;
     const outstanding = Object.values(company.shares).reduce((a, b) => a + b, 0);
+    const price = companySharePrice(state, company.kind, company.sharePrice);
+    const stockId = companyStockId(company.kind);
+    // 没有成本记录（例如只摆场景的局外状态）就退回按面值计，不至于把盈亏算成零成本白捡
+    const cost = p.stockCost?.[stockId] ?? company.sharePrice * quantity;
+    const marketValue = price * quantity;
     corpRows.push({
       cellId: company.cellId,
       kind: company.kind,
       name: company.name,
       tile: company.tile,
       quantity,
-      price: company.sharePrice,
-      marketValue: company.sharePrice * quantity,
+      price,
+      faceValue: company.sharePrice,
+      cost,
+      marketValue,
+      profit: marketValue - cost,
       locked: lockedSharesOf(company, p.id),
       sellable: sellableSharesOf(company, p.id),
       chairman: company.chairmanId === p.id,
@@ -273,6 +287,7 @@ export function stockSummary(state: GameState, p: Player): StockSummary {
   rows.sort((a, b) => b.marketValue - a.marketValue);
   corpRows.sort((a, b) => b.marketValue - a.marketValue);
   const corpValue = corpRows.reduce((a, r) => a + r.marketValue, 0);
+  const corpCost = corpRows.reduce((a, r) => a + r.cost, 0);
   const listedValue = rows.reduce((a, r) => a + r.marketValue, 0);
   const listedCost = rows.reduce((a, r) => a + r.cost, 0);
   return {
@@ -280,10 +295,10 @@ export function stockSummary(state: GameState, p: Player): StockSummary {
     playerName: p.name,
     rows,
     corpRows,
-    // 原始股按面值计值 ⇒ 成本与市值相等，进两边、不进盈亏
+    // 两档都按市价计值、各自带成本，所以盈亏是合起来算的（原始股按面值申购、转手按市价，价差是真的）
     marketValue: listedValue + corpValue,
-    cost: listedCost + corpValue,
-    profit: rows.reduce((a, r) => a + r.profit, 0),
+    cost: listedCost + corpCost,
+    profit: [...rows, ...corpRows].reduce((a, r) => a + r.profit, 0),
     corpValue,
   };
 }

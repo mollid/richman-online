@@ -171,7 +171,7 @@ export function ReportPanel({ game, myPlayerId }: { game: GameState; myPlayerId?
                     </tbody>
                   </table>
                 )}
-                {/* CORP-14：原始股没有价差，要看的是流动性（锁定 / 可卖）与经营权 */}
+                {/* CORP-14：原始股转手按市价，所以它也有盈亏；比上市股多的信息是流动性（锁定 / 可卖）与经营权 */}
                 {sum.corpRows.length > 0 && (
                   <table className="report-table report-table-corp">
                     <thead>
@@ -180,6 +180,7 @@ export function ReportPanel({ game, myPlayerId }: { game: GameState; myPlayerId?
                         <th>数量</th>
                         <th>面值</th>
                         <th>市值</th>
+                        <th>盈亏</th>
                         <th>锁定 / 可卖</th>
                         <th>持股</th>
                       </tr>
@@ -193,8 +194,9 @@ export function ReportPanel({ game, myPlayerId }: { game: GameState; myPlayerId?
                             {r.chairman && <span className="badge">董事长</span>}
                           </td>
                           <td>{r.quantity}</td>
-                          <td>{r.price}</td>
+                          <td>{r.faceValue}</td>
                           <td>¥{fmt(r.marketValue)}</td>
+                          <td className={r.profit >= 0 ? 'up' : 'down'}>{signed(r.profit)}</td>
                           <td>
                             {r.locked > 0 ? <span className="down">{r.locked}</span> : '0'} / {r.sellable}
                           </td>

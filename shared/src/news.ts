@@ -16,6 +16,7 @@
 
 import type { NewsEffectCtx } from './effect_ctx.js';
 import { propertyValue, scaled } from './economy.js';
+import { clampStockPrice } from './stocks.js';
 import type { Player } from './types.js';
 
 export type NewsCategory = 'no-fault' | 'government' | 'social' | 'traffic' | 'weather' | 'finance';
@@ -240,7 +241,7 @@ function stockSwing(ctx: NewsEffectCtx, sign: 1 | -1): string {
     // 按**开盘价**钉板，不是在现价上再乘一层：一支当天已经涨过 10% 的票再吃一发全面上涨，
     // 按现价乘就会走出 +21%，把行情那一侧的 ±10% 天花板从内部击穿。
     const open = s.openPrice || s.price;
-    s.price = Math.max(5, Math.round(open * (1 + (sign * STOCK_NEWS_PCT) / 100)));
+    s.price = clampStockPrice(open * (1 + (sign * STOCK_NEWS_PCT) / 100));
     s.lastChangePct = Math.round(((s.price - open) / Math.max(1, open)) * 100);
   }
   return `全市场${sign > 0 ? '上涨' : '下跌'} ${STOCK_NEWS_PCT}%`;

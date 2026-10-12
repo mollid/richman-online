@@ -156,3 +156,30 @@ describe('M9 AI 原始股变现（CORP-14）', () => {
   });
 });
 
+
+/**
+ * R11：原版的电脑买股 AI（`FUN_0042bf03`）每天只有 1/3 概率考虑买股。
+ * 我们此前每手都买 —— R10 把流通量钉成表里的 5000/10000 之后，那等于 bot 一路把整张图的票吃光。
+ */
+describe('bot 的买股闸门跟着原版收紧到 1/3', () => {
+  const fatBank = () => {
+    const g = applyAction(createGame(BOTS, 409), { type: 'START_GAME' });
+    g.players[0]!.deposit = 500_000;
+    g.players[0]!.cash = 500_000;
+    return g;
+  };
+
+  it('rng 落在 1/3 里才考虑建仓，落在外面直接掷骰', () => {
+    expect(botDecide(fatBank(), 'b1', () => 0.2)).toMatchObject({ type: 'BUY_STOCK' });
+    expect(botDecide(fatBank(), 'b1', () => 0.9)).toEqual({ type: 'ROLL_DICE' });
+  });
+
+  it('买哪一只仍然问注册表：没有流通量的那张票不会被 bot 撞上（引擎会拒）', () => {
+    const g = applyAction(createGame(BOTS, 410, { mapId: 1 }), { type: 'START_GAME' });   // 中國图：中國石油 0 张
+    g.players[0]!.deposit = 500_000;
+    g.players[0]!.cash = 500_000;
+    const action = botDecide(g, 'b1', () => 0) as Extract<PlayerAction, { type: 'BUY_STOCK' }> | null;
+    expect(action?.type).toBe('BUY_STOCK');
+    expect(action!.stockId).not.toBe(g.stockMarket.stocks.find((s) => s.name === '中國石油')!.id);
+  });
+});

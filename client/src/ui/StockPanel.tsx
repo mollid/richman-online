@@ -57,10 +57,16 @@ export function StockPanel({
   const date = gameDate(game);
   if (!current) return null;
 
-  const portfolioValue = Object.entries(current.stocks).reduce((sum, [id, qty]) => {
-    const stock = game.stockMarket.stocks.find((s) => s.id === id);
-    return sum + (stock?.price ?? 0) * qty;
-  }, 0);
+  const stockPrice = (id: string, fallback = 0) => game.stockMarket.stocks.find((s) => s.id === id)?.price ?? fallback;
+  const listedValue = Object.entries(current.stocks).reduce((sum, [id, qty]) => sum + stockPrice(id) * qty, 0);
+  // 一本账：上市股的持仓记在 `p.stocks`，公司股的持仓记在 `CompanyState.shares`，两边都按**市价**计。
+  // 成本那条账现在含「面板买上市股 + 面板买公司股 + 踩格按面值认购」三笔，市值只数上市股
+  // 就会凭空多出一整截假亏损。
+  const origValue = game.companies.reduce(
+    (sum, c) => sum + (c.shares[current.id] ?? 0) * stockPrice(`corp-${c.kind}`, c.sharePrice),
+    0,
+  );
+  const portfolioValue = listedValue + origValue;
   const portfolioCost = Object.values(current.stockCost ?? {}).reduce((sum, v) => sum + v, 0);
   const profit = portfolioValue - portfolioCost;
   const controlled = game.companies.filter((c) => c.chairmanId === current.id).length;
@@ -74,7 +80,6 @@ export function StockPanel({
   );
 
   // CORP-14：原始股三项独立展示（市值 / 可卖 / 待解锁）
-  const origValue = game.companies.reduce((sum, c) => sum + (c.shares[current.id] ?? 0) * c.sharePrice, 0);
   const origSellable = game.companies.reduce((sum, c) => sum + sellableSharesOf(c, current.id), 0);
   const origLocked = game.companies.reduce((sum, c) => sum + lockedSharesOf(c, current.id), 0);
 
@@ -337,7 +342,7 @@ export function StockPanel({
           <b>{controlled} 家</b>
         </div>
         <div className="stock-summary-row">
-          <span>原始股市值（按面值）</span>
+          <span>原始股市值（按市价）</span>
           <b>¥{fmt(origValue)}</b>
         </div>
         <div className="stock-summary-row">
