@@ -660,7 +660,7 @@ describe('M6 移动系统（路障/转向/乌龟）', () => {
     // R4：道具是自由操作，只能在**掷骰前**用 —— 于是旧规那句「放置不消耗回合，
     // 仍需显式结束回合」也一并消失了：掷骰本身就是交接。
     const used = applyAction(g, { type: 'USE_ITEM', itemId: 'roadblock', cellId: 4 });
-    expect(used.roadblocks).toEqual([4]);
+    expect(used.roadblocks).toEqual([{ cellId: 4, ownerId: 'p1' }]);
     expect(used.phase).toBe('awaiting_roll');
     expect(used.currentPlayerIndex).toBe(0);
 
@@ -675,23 +675,26 @@ describe('M6 移动系统（路障/转向/乌龟）', () => {
     expect(rolled2.log.some((e) => e.text.includes('撞上路障'))).toBe(true);
   });
 
-  it('转向卡：方向反转后向反方向移动', () => {
+  it('转向卡：指定单体掉头后向反方向移动（D-10，不再全场）', () => {
     const g = newGame(203);
     g.players[0]!.cards = ['turnaround'];
-    const used = applyAction(g, { type: 'USE_CARD', cardId: 'turnaround' });
-    expect(used.players[0]!.heading).toBe(0); // 邻接表下标 1 → 0 = 顺时针翻成逆时针
+    const used = applyAction(g, { type: 'USE_CARD', cardId: 'turnaround', targetPlayerId: g.players[1]!.id });
+    expect(used.players[1]!.heading).toBe(0); // 被指定者：邻接表下标 1 → 0 = 顺时针翻成逆时针
+    expect(used.players[0]!.heading).toBe(1); // 用卡者自己不受影响
+
     used.rngState = seedForSum(3);
-    used.players[0]!.position = 10;
+    used.currentPlayerIndex = 1;
+    used.players[1]!.position = 10;
     const rolled = applyAction(used, { type: 'ROLL_DICE' });
-    expect(rolled.players[0]!.position).toBe(7); // 10 - 3
+    expect(rolled.players[1]!.position).toBe(7); // 10 - 3
   });
 
-  it('乌龟卡：所有人 3 天内一次只走一步', () => {
+  it('乌龟卡：指定对手 3 天内一次只走一步（D-11，不再全场）', () => {
     const g = newGame(205);
     g.players[0]!.cards = ['turtle'];
-    const used = applyAction(g, { type: 'USE_CARD', cardId: 'turtle' });
-    expect(used.players[0]!.turtleTurns).toBe(3);
+    const used = applyAction(g, { type: 'USE_CARD', cardId: 'turtle', targetPlayerId: g.players[1]!.id });
     expect(used.players[1]!.turtleTurns).toBe(3);
+    expect(used.players[0]!.turtleTurns).toBe(0); // 用卡者自己不受影响
 
     // 切到 p2 掷骰：总和 7 → 实际只走 1 步，落到 11 号机会格
     used.rngState = seedForSum(7);

@@ -319,8 +319,12 @@ export interface Player {
   sleepwalkTurns: number;
   /** 乌龟卡（CARD-30）剩余天数：一次只走一步 */
   turtleTurns: number;
-  /** 工程车（ITEM-12）剩余回合：走到哪拆到哪 */
+  /** 工程车（ITEM-12）剩余天数：7 天上限（D-45 与 `bulldozerSteps` 双限、先到为准） */
   bulldozerTurns: number;
+  /** 工程车（ITEM-12）剩余步数：18 步上限（D-45） */
+  bulldozerSteps: number;
+  /** 开工程车期间被**暂停使用**的载具等级（机车 2 / 汽车 3）；工程车报废后原样恢复 */
+  bulldozerSavedDiceCount: number;
   /** 研究所研发队列（EST-09/10）：进行中的项目与剩余天数；null 表示空闲 */
   research: { itemId: string; remainDays: number } | null;
   /** 骰子个数（1 默认；机车 2；汽车 3） */
@@ -345,6 +349,12 @@ export interface Player {
    */
   unlucky: UnluckyStatus | null;
   bankrupt: boolean;
+  /**
+   * 破产后转做乞丐（EVT-04 / D-46）；被飞弹一类打击**炸飞退场**后置真：
+   * 不再原地乞讨，也不再是路过者必须施舍的对象。破产本身已把它排除出「在局玩家」，
+   * 所以这个标记只管乞丐身份，不参与胜负判定。
+   */
+  beggarGone: boolean;
   online: boolean;
 }
 
@@ -556,6 +566,17 @@ export interface ActiveBomb {
   stepsLeft: number;
 }
 
+/**
+ * 路面上由玩家放置的障碍（路障 / 地雷）。
+ *
+ * 为什么要记放置者：拆除卡与机器娃娃要分得清「谁埋的」，HUD 的格子详情也要写得出来源；
+ * 旧的 `number[]` 只存格号，这条信息在数据层就不存在，UI 想说也没得说。
+ */
+export interface Obstacle {
+  cellId: number;
+  ownerId: string;
+}
+
 /** 时光机（ITEM-10）用的轻量回合快照 */
 export interface RoundSnapshot {
   players: Array<{
@@ -634,10 +655,10 @@ export interface GameState {
   stockMarket: StockMarket;
   /** 遥控骰子等效果锁定的下一次骰子点数 */
   pendingFixedDice: number | null;
-  /** 路障所在格（其他玩家经过必须停下，锥筒随之消失） */
-  roadblocks: number[];
-  /** 地雷所在格（ITEM-03：踩中住院 3 天） */
-  mines: number[];
+  /** 路障（ITEM-02）：其他玩家经过必须停下，锥筒随之消失 */
+  roadblocks: Obstacle[];
+  /** 地雷（ITEM-03）：踩中住院 3 天 */
+  mines: Obstacle[];
   /** 进行中的定时炸弹（ITEM-04） */
   bombs: ActiveBomb[];
   /** 红卡/黑卡造成的涨跌停列表 */

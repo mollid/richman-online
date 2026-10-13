@@ -3,11 +3,13 @@ import {
   CARDS,
   ITEMS,
   actionRefusal,
+  actionTargets,
   applyAction,
   availableActions,
   createGame,
   landPrice,
   landUpgradeCost,
+  type TargetSpec,
 } from '../src/index.js';
 import { FACILITIES } from '../src/tiles.js';
 import { GOLDEN_PLAYERS, MONDAY, runGoldenMatch } from './helpers/golden_run.js';
@@ -26,6 +28,35 @@ import type { AvailableActions, BoardCell, GameState, Player, PlayerAction } fro
  * 遍历两类局面：① bot 对跑采到的中局状态（覆盖面广、含人工想不到的组合）；
  * ② 手工构造的边界局面（衰神买地 / 福神加倍投资 / 商业地实付价 / 梦游 / 例假日 / 未开放卡）。
  */
+
+/**
+ * 用同源候选把一个「不带目标」的动作补成真的能派单的那一套。
+ *
+ * `executable=false` 只出现在一种情况：这个动作确实需要某个维度、而该维度此刻没有候选
+ * —— 此时门控本来就不该把它列进可用手牌，交给上层那句「门控列为可用却拒绝」去抓。
+ */
+function withCandidateTargets(
+  base: PlayerAction,
+  state: GameState,
+  me: Player,
+  spec: TargetSpec,
+): { action: PlayerAction; executable: boolean } {
+  const t = actionTargets(state, me, spec);
+  const action = { ...base } as Record<string, unknown>;
+  let executable = true;
+  if (spec.cells) {
+    if (t.cells.length === 0) executable = false;
+    else action.cellId = t.cells[0];
+  }
+  if (spec.players && t.players.length > 0) action.targetPlayerId = t.players[0];
+  if (spec.stocks) {
+    if (t.stocks.length === 0) executable = false;
+    else action.stockId = t.stocks[0];
+  }
+  if (spec.facilities && t.facilities.length > 0) action.facility = t.facilities[0];
+  if (spec.dice && t.diceValues.length > 0) action.diceValue = t.diceValues[0];
+  return { action: action as PlayerAction, executable };
+}
 
 /** 由门控推导出的「应当可执行」动作；`executable=false` = 还需 UI 现场补目标参数 */
 function obligations(
@@ -56,9 +87,17 @@ function obligations(
   if (acts.canSurrender && acts.revengeCandidates.length > 0) {
     push({ type: 'SURRENDER', revengeTargetId: acts.revengeCandidates[0]!.id });
   }
-  // 卡片 / 道具的目标格与目标玩家由 UI 现场收集，这里只验「门控列出的这张卡确实被引擎接受」
-  for (const cardId of acts.usableCards) push({ type: 'USE_CARD', cardId }, false);
-  for (const itemId of acts.usableItems) push({ type: 'USE_ITEM', itemId }, false);
+  // W1：卡片 / 道具的目标参数不再是「由 UI 现场收集、这里只能验个空壳」——
+  // 合法性与候选同出一个谓词，所以能凑出一套**真的能派单**的动作，`executable` 第一次是真的。
+  // 某一维度确实没有候选时（例如拆除卡此刻既无建筑也无道具）保留 false：那种卡本来就不该被列进可用。
+  for (const cardId of acts.usableCards) {
+    const filled = withCandidateTargets({ type: 'USE_CARD', cardId }, state, me, CARDS[cardId]!.targetSpec);
+    push(filled.action, filled.executable);
+  }
+  for (const itemId of acts.usableItems) {
+    const filled = withCandidateTargets({ type: 'USE_ITEM', itemId }, state, me, ITEMS[itemId]!.targetSpec);
+    push(filled.action, filled.executable);
+  }
   // ECON-13：拍卖的三个动作 —— 竞买人不是 currentPlayer，actor 由注册表自己取（W3 新增 GIVE UP）
   if (acts.auction) {
     const bid: PlayerAction = { type: 'AUCTION_BID', amount: acts.auctionMinBid };

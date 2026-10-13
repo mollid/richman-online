@@ -243,11 +243,21 @@ function onLandingProperty(ctx: CellLandingCtx): LandingResult {
   if (c.price === undefined || c.baseRent === undefined) throw new Error(`未知格类型: ${c.type}`);
   const owned = ctx.cellOwner(state, c.id);
 
-  // 工程车（ITEM-12）：走到哪拆到哪
-  if (p.bulldozerTurns > 0 && owned && owned.player.id !== p.id && owned.property.grade > 1) {
-    owned.property.grade = (owned.property.grade - 1) as 1 | 2 | 3 | 4 | 5;
-    ctx.log(state, `工程车轰鸣，${owned.player.name} 的「${c.name}」被拆至 ${owned.property.grade} 级`);
-  }
+  // 工程车（ITEM-12 / D-45）：停在**他人有建筑**的地块上 ⇒ 过路费按拆前等级照付，随后夷为平地。
+  // 拆除动作收在 `finish` 这个出口包装里：下面「他人地产」那一段有 6 个出口（免租 / 同盟 / 查封 /
+  // 免费卡 / 零租金 / 正常付租），逐个出口都要拆一次，写在一处才不会漏掉某条免租路径。
+  const bulldoze =
+    p.bulldozerTurns > 0 && !!owned && owned.player.id !== p.id
+    && (owned.property.grade > 1 || owned.property.facility !== undefined);
+  const finish = (result: LandingResult): LandingResult => {
+    if (bulldoze && owned) {
+      owned.property.grade = 1;
+      owned.property.chain = false;
+      delete owned.property.facility;
+      ctx.log(state, `工程车轰鸣，${owned.player.name} 的「${c.name}」被夷为平地`);
+    }
+    return result;
+  };
 
   if (!owned) {
     // R4：买地是**单步窗** —— 买下或放弃都直接推进回合。买不成（钱不够 / 梦游 / 衰神 / 还站在出生格）
@@ -278,19 +288,19 @@ function onLandingProperty(ctx: CellLandingCtx): LandingResult {
         ? `正在停留中（剩余 ${owned.player.rentBlockedTurns} 天）`
         : `正在国外旅游（剩余 ${owned.player.abroadTurns} 天）`;
     ctx.log(state, `${owned.player.name} ${blocked}，无权收租`);
-    return 'advance';
+    return finish('advance');
   }
 
   // 同盟卡（CARD-29）：互不收过路费
   if (p.alliance && p.alliance.with === owned.player.id) {
     ctx.log(state, `${p.name} 与 ${owned.player.name} 处于同盟，互免过路费`);
-    return 'advance';
+    return finish('advance');
   }
 
   const effect = state.rentEffects.find((e) => e.cells.includes(c.id));
   if (effect?.kind === 'seal') {
     ctx.log(state, `「${c.name}」所在的街道被查封，本次免收过路费`);
-    return 'advance';
+    return finish('advance');
   }
   let rent = ctx.propertyRent(state, c, owned);
   if (effect?.kind === 'raise') {
@@ -305,11 +315,13 @@ function onLandingProperty(ctx: CellLandingCtx): LandingResult {
     rent *= bad;
     ctx.log(state, `${p.name} 霉运缠身，过路费被霉运抬高 ${bad} 倍`);
   }
-  if (rent <= 0) return 'advance';
+  if (rent <= 0) return finish('advance');
 
-  if (ctx.tryFreePass(state, p, rent)) return 'advance';
+  if (ctx.tryFreePass(state, p, rent)) return finish('advance');
+  // D-45：过路费按**拆前**等级结算 ⇒ 付完才轮到工程车动手，付不出照样破产
   ctx.log(state, `${p.name} 进入 ${owned.player.name} 的「${c.name}」，需付租金 ¥${rent}`);
   ctx.pay(state, p, rent, owned.player, { toDeposit: true, reason: 'rent' });
+  if (ctx.isGameOver(state)) return finish('stop');
   // NPC-04 窃取租金：记录本地上次收取的租金，供窃取租金型恶人作案
   owned.property.lastRent = rent;
 
@@ -329,7 +341,7 @@ function onLandingProperty(ctx: CellLandingCtx): LandingResult {
     ownerAlly!.deposit += allyHalf;
     ctx.log(state, `同盟联合收费：${allyHalf} 归盟友 ${ownerAlly!.name}，其余归 ${owned.player.name}`);
   }
-  return ctx.isGameOver(state) ? 'stop' : 'advance';
+  return finish('advance');
 }
 
 /**

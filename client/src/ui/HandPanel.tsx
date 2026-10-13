@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { availableActions, CARDS, FACILITIES, FACILITY_ORDER, ITEMS, MAX_HAND_CARDS, MAX_ITEM_COUNT } from '@richman/shared';
+import { availableActions, CARDS, FACILITIES, FACILITY_ORDER, ITEMS, MAX_HAND_CARDS, MAX_ITEM_COUNT, playersInViewport } from '@richman/shared';
 import type { FacilityType, GameState, PlayerAction } from '@richman/shared';
 
 /** 需要显式选择目标格（默认不取脚下）的卡片 */
@@ -19,7 +19,9 @@ export function HandPanel({ game, onAction, interactive = true }: { game: GameSt
   const actions = availableActions(game);
   if (!current || (current.cards.length === 0 && Object.keys(current.items).length === 0)) return null;
 
-  const others = game.players.filter((p) => p.id !== current.id && !p.bankrupt);
+  // D-43：「指定对手」的候选名单与引擎的视野校验共用同一份口径（近景窗 16 格内），
+  // 否则又会出现「按钮给得出、引擎该拒绝」的老毛病。飞弹/核弹/传送机是全局射程，不走这条。
+  const others = playersInViewport(game, current);
   const effectiveTarget = targetId && others.some((p) => p.id === targetId) ? targetId : others[0]?.id ?? '';
   const effectiveStock = game.stockMarket.stocks.some((s) => s.id === stockId) ? stockId : game.stockMarket.stocks[0]?.id ?? '';
 
@@ -39,7 +41,8 @@ export function HandPanel({ game, onAction, interactive = true }: { game: GameSt
   const anyCellTarget = heldItems.some((id) => ITEMS[id]!.target === 'cell');
   const cellOptions = anyCellTarget
     ? game.board
-    : game.board.filter((c) => c.type === 'property' || c.type === 'commercial' || game.mines.includes(c.id) || game.roadblocks.includes(c.id));
+    : game.board.filter((c) => c.type === 'property' || c.type === 'commercial'
+        || game.mines.some((o) => o.cellId === c.id) || game.roadblocks.some((o) => o.cellId === c.id));
   const needsCell = cardNeedsCell || itemNeedsCell;
   const currentCellName = game.board[current.position]?.name ?? `${current.position}`;
   // 改建卡（CARD-07）：目标为商业用地时还需选择要变更成的设施项目

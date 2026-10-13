@@ -1,6 +1,19 @@
-import { totalAssets } from '../../src/index.js';
+import { standBeforeCell, totalAssets } from '../../src/index.js';
 import { landingVenueOf } from '../../src/effect_ctx.js';
 import type { GameState, PlayerAction } from '../../src/index.js';
+
+/**
+ * 把某一格挪到当前行动者**正前方**（默认 2 步）—— 让「指定这一格」落在视野里。
+ *
+ * 为什么测试需要它：路障 / 地雷只能布在视野内（决策人定案，与 help [88][95]
+ * 「視窗範圍內的……道路」同源），而出生点是随机的。用例若直接指定一个远处格，
+ * 拿到的拒绝理由会是「不在视野内」而不是它真正想验的那一条。
+ * 与其为了迁就用例把规则改宽，不如把站位摆正 —— 规则归规则，站位归站位。
+ */
+export function cellAheadOfActor(state: GameState, cellId: number, steps = 2): GameState {
+  state.players[state.currentPlayerIndex]!.position = standBeforeCell(state, cellId, steps);
+  return state;
+}
 
 /**
  * 把所有人的出生点钉回 0 号起点（SP-01 之前的默认）。

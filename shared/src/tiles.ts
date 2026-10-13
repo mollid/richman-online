@@ -1,4 +1,4 @@
-import type { BoardCell, FacilityType, GameState, PlayerProperty } from './types.js';
+import type { BoardCell, FacilityType, GameState, Player, PlayerProperty } from './types.js';
 import { scaled } from './economy.js';
 import { walkWindow } from './board.js';
 
@@ -148,6 +148,17 @@ export const VIEWPORT_SIZE = 16;
 /** 以玩家当前位置为中心的视窗格集合（换地/换屋卡等「视窗内」目标用） */
 export function viewportCells(board: BoardCell[], position: number): number[] {
   return walkWindow(board, position, 7, 8);
+}
+
+/**
+ * 视野（近景窗 16 格）内的其他存活玩家 —— 卡片与道具的「指定对手」一律以此为准（D-43）。
+ *
+ * help [59][62][69][71][86] 对这些目标都明写「使用範圍：視窗範圍內的對手」，而引擎原先只排除
+ * 自己与已倒闭者；把判定收在这里，UI 的候选名单与引擎的拒绝理由才是同一句话。
+ */
+export function playersInViewport(state: GameState, self: Player): Player[] {
+  const cells = viewportCells(state.board, self.position);
+  return state.players.filter((q) => !q.bankrupt && q.id !== self.id && cells.includes(q.position));
 }
 
 /**

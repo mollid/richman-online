@@ -59,7 +59,15 @@ export interface EffectKit {
   activePlayers(state: GameState): Player[];
   isShopCell(c: BoardCell): boolean;
   isBankCell(c: BoardCell): boolean;
-  detonate(state: GameState, center: number, radius: number, hospitalDays: number, label: string): number;
+  /** `levels` = 每处房屋被拆掉的等级数（省略 = 夷为平地） */
+  detonate(
+    state: GameState,
+    center: number,
+    radius: number,
+    hospitalDays: number,
+    label: string,
+    levels?: number,
+  ): number;
   beginAuction(
     state: GameState,
     opts: { cellId: number; sellerId: string | null; trigger: AuctionTrigger; afterComplete: 'resume' | 'advance' },
@@ -133,11 +141,15 @@ export interface CardEffectCtx extends EngineCtx {
   action: CardAction;
   /** 当前卡片的定义（效果体需要自述名称、并按 id 区分红卡/黑卡等成对卡） */
   card: { id: string; name: string };
-  /** 必须显式指定目标格的动作参数（换地/换屋），缺失即报错 */
-  requireCellId(): number;
-  /** 任意土地/建筑目标，缺省取脚下 */
-  anyCellId(): number;
-  /** 目标对手（排除自己与已倒闭者） */
+  /**
+   * 已校验的目标格。
+   *
+   * 派单路径上 `assertLegal` 已经跑过同一个谓词，这里仍要"再问一次"是为了把
+   * 「没传目标」和「目标非法」都收敛成**同一句拒绝理由** —— 门控与效果体不再各写一套措辞。
+   * 旧的 `anyCellId()`「缺省取脚下」已删除：那会让没选值的卡静默打到脚下那格。
+   */
+  targetCell(): number;
+  /** 已校验的目标玩家（视野与存活由同一个谓词保证） */
   targetPlayer(): Player;
 }
 
@@ -146,8 +158,10 @@ export interface ItemEffectCtx extends EngineCtx {
   self: Player;
   action: ItemAction;
   item: { id: string; name: string };
-  /** 目标格，缺省取脚下 */
-  anyCellId(): number;
+  /** 已校验的目标格，理由同源，见 `CardEffectCtx.targetCell` */
+  targetCell(): number;
+  /** 已校验的目标玩家 */
+  targetPlayer(): Player;
 }
 
 /**

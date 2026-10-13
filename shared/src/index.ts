@@ -9,6 +9,7 @@ export * from './normalize.js';
 
 export * from './cards.js';
 export * from './items.js';
+export * from './targets.js';
 export * from './tiles.js';
 export * from './companies.js';
 export * from './gods.js';

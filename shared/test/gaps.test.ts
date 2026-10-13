@@ -202,8 +202,8 @@ describe('CARD-29 同盟：联合收费 + 陷害自动解除', () => {
   });
 });
 
-describe('ITEM-01 机器娃娃：清除特殊人物与神明', () => {
-  it('清除前方 9 步内的恶犬与在外恶人', () => {
+describe('ITEM-01 机器娃娃：清除路上障碍、恶犬与驻留神明', () => {
+  it('只清恶犬，四大恶人不受机器娃娃影响（D-32）', () => {
     const g = newGame();
     g.players[0]!.items = { 'robot-doll': 1 };
     const ahead = (g.players[0]!.position + 3) % BOARD_SIZE;
@@ -212,19 +212,19 @@ describe('ITEM-01 机器娃娃：清除特殊人物与神明', () => {
       { kind: 'thief', position: (ahead + 2) % BOARD_SIZE, ownerId: 'p2', daysLeft: 5, jailed: false },
     ];
     const r = applyAction(g, { type: 'USE_ITEM', itemId: 'robot-doll' });
-    expect(r.npcs).toHaveLength(0);
-    expect(r.log.some((l) => l.text.includes('特殊人物'))).toBe(true);
+    expect(r.npcs.map((n) => n.kind)).toEqual(['thief']);
+    expect(r.log.some((l) => l.text.includes('恶犬'))).toBe(true);
   });
 
-  it('清除前方 9 步内他人身上的神明', () => {
+  it('他人身上附身的神明不归机器娃娃管（D-27/D-32：附身神走送神卡）', () => {
     const g = newGame();
     g.players[0]!.items = { 'robot-doll': 1 };
     const ahead = (g.players[0]!.position + 4) % BOARD_SIZE;
     g.players[1]!.position = ahead;
     g.players[1]!.god = { godId: 'angel', remainingDays: 5 };
-    const r = applyAction(g, { type: 'USE_ITEM', itemId: 'robot-doll' });
-    expect(r.players[1]!.god).toBeNull();
-    expect(r.log.some((l) => l.text.includes('神明'))).toBe(true);
+    // 前方只剩一个附身神 ⇒ 没有可清的东西，动作被拒且不烧道具
+    expect(() => applyAction(g, { type: 'USE_ITEM', itemId: 'robot-doll' })).toThrow('前方 9 步内没有障碍物或特殊单位');
+    expect(g.players[1]!.god?.godId).toBe('angel');
   });
 
   it('在押恶人（jailed）不受机器娃娃影响', () => {
@@ -232,7 +232,7 @@ describe('ITEM-01 机器娃娃：清除特殊人物与神明', () => {
     g.players[0]!.items = { 'robot-doll': 1 };
     // 前方放一个路障保证动作可执行，另放一名在押恶人在别处
     const ahead = (g.players[0]!.position + 3) % BOARD_SIZE;
-    g.roadblocks = [ahead];
+    g.roadblocks = [{ cellId: ahead, ownerId: 'p2' }];
     g.npcs = [{ kind: 'thief', position: 26, ownerId: null, daysLeft: 0, jailed: true }];
     const r = applyAction(g, { type: 'USE_ITEM', itemId: 'robot-doll' });
     // 路障被清，在押恶人仍在

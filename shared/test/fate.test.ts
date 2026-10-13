@@ -181,10 +181,10 @@ describe('EVT-02 坐牢可被免罪卡抵消', () => {
   });
 });
 
-describe('EVT-04 倒闭者原地乞讨', () => {
-  it('路人经过原地乞讨的倒闭者，施舍 1000 元', () => {
+describe('EVT-04 倒闭者行乞（D-46）', () => {
+  it('停在乞丐那一格：施舍 (500~3000)×物价，随后乞丐换处行乞', () => {
     const g = newGame(31);
-    // p3 已倒闭并留在 4 号格乞讨；p1 从 3 号走 1 步经过
+    // p3 已倒闭并留在 4 号格行乞；p1 从 3 号走 1 步**停**在 4 号
     const beggar = g.players[2]!;
     beggar.bankrupt = true;
     beggar.cash = 0;
@@ -194,14 +194,40 @@ describe('EVT-04 倒闭者原地乞讨', () => {
     s.players[0]!.position = 3;
     s.players[0]!.diceCount = 1;
     s.pendingFixedDice = 1;
-    const before = s.rngState;
     const landed = applyAction(s, { type: 'ROLL_DICE' });
-    expect(landed.players[0]!.position).toBe(4);
-    expect(landed.players[0]!.cash).toBe(15000 - 1000);
-    expect(landed.players[2]!.cash).toBe(1000);
-    expect(landed.log.some((l) => l.text.includes('乞讨') && l.text.includes('施舍'))).toBe(true);
-    // 乞讨结算不消耗抽数
-    expect(landed.rngState).toBe(before);
+    const gave = 15000 - landed.players[0]!.cash;
+    expect(gave).toBeGreaterThanOrEqual(500);
+    expect(gave).toBeLessThanOrEqual(3000);
+    expect(landed.players[2]!.cash).toBe(gave); // 施舍归乞丐本人
+    // D-46：收完这一笔就换岗，不会赖在同一格反复收钱
+    expect(landed.players[2]!.position).not.toBe(4);
+    expect(landed.log.some((l) => l.text.includes('施舍'))).toBe(true);
+  });
+
+  it('路过乞丐格不算遇上；被炸飞的乞丐不再收施舍（D-46）', () => {
+    const g = newGame(32);
+    const beggar = g.players[2]!;
+    beggar.bankrupt = true;
+    beggar.cash = 0;
+    beggar.position = 4;
+    pinIndexOne(g);
+
+    // 从 3 号走 2 步：经过 4 号、停在 5 号 ⇒ 施舍不触发（与恶犬/宝箱同口径）
+    const pass = structuredClone(g);
+    pass.players[0]!.position = 3;
+    pass.players[0]!.diceCount = 1;
+    pass.pendingFixedDice = 2;
+    const passed = applyAction(pass, { type: 'ROLL_DICE' });
+    expect(passed.log.some((l) => l.text.includes('施舍'))).toBe(false);
+
+    // 炸飞过（beggarGone）⇒ 即便踩中也没有对象可施舍
+    const gone = structuredClone(g);
+    gone.players[2]!.beggarGone = true;
+    gone.players[0]!.position = 3;
+    gone.players[0]!.diceCount = 1;
+    gone.pendingFixedDice = 1;
+    const stepped = applyAction(gone, { type: 'ROLL_DICE' });
+    expect(stepped.log.some((l) => l.text.includes('施舍'))).toBe(false);
   });
 });
 

@@ -271,7 +271,7 @@ describe('经过即附身', () => {
 
   it('神明与路障同格时以路障优先（截停型效果先结算，不双触发）', () => {
     const { state, cellId } = godAhead(3, 'big-wealth', 0);
-    state.roadblocks = [...state.roadblocks, cellId];
+    state.roadblocks = [...state.roadblocks, { cellId, ownerId: 'p2' }];
     const rolled = applyAction(state, { type: 'ROLL_DICE', diceCount: 1 });
     expect(rolled.players[0]!.god).toBeNull(); // 只撞路障，没附身
     expect(boardGodAt(rolled, cellId)).toBeDefined(); // 神明仍在场上
@@ -302,16 +302,17 @@ describe('驻留神明的清退联动', () => {
     expect(used.log.some((l) => l.text.includes('驻留神明'))).toBe(true);
   });
 
-  it('没被附身时，送神卡可以请走前方 9 步内的驻留神明', () => {
+  it('送神卡不再兜底清前方的驻留神明（D-27：扫场归机器娃娃）', () => {
     const g = game(3, true);
     const me = g.players[g.currentPlayerIndex]!;
     const cellId = (me.position + 4) % BOARD_SIZE;
     putGodOnBoard(g, 'devil', cellId);
     g.phase = 'awaiting_roll'; // R4：卡片与道具属于自由操作，收到掷骰前那一段
     me.cards = ['send-god'];
-    const used = applyAction(g, { type: 'USE_CARD', cardId: 'send-god' });
-    expect(boardGodAt(used, cellId)).toBeUndefined();
-    expect(used.players[0]!.cards).not.toContain('send-god');
+    expect(() => applyAction(g, { type: 'USE_CARD', cardId: 'send-god' })).toThrow('身上既没有附身的神明，也没有定时炸弹');
+    // 动作被拒 ⇒ 原状态一字未动：神明还站在地上，卡也还在手里
+    expect(boardGodAt(g, cellId)).toBeDefined();
+    expect(me.cards).toContain('send-god');
   });
 
   it('前方什么都没有时，送神卡与机器娃娃都拒绝使用（不是空转一次）', () => {
@@ -320,7 +321,7 @@ describe('驻留神明的清退联动', () => {
     g.phase = 'awaiting_roll'; // R4：卡片与道具属于自由操作，收到掷骰前那一段
     me.cards = ['send-god'];
     me.items = { 'robot-doll': 1 };
-    expect(() => applyAction(g, { type: 'USE_CARD', cardId: 'send-god' })).toThrow('身上没有神明或定时炸弹，前方也没有驻留的神明');
+    expect(() => applyAction(g, { type: 'USE_CARD', cardId: 'send-god' })).toThrow('身上既没有附身的神明，也没有定时炸弹');
     expect(() => applyAction(g, { type: 'USE_ITEM', itemId: 'robot-doll' })).toThrow('前方 9 步内没有障碍物或特殊单位');
   });
 

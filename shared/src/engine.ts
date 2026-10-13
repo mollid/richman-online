@@ -91,6 +91,7 @@ import {
   facilityUpgradeable,
   gradeName,
   holdsWholeStreet,
+  playersInViewport,
   researchDef,
   streetCells,
 } from './tiles.js';
@@ -248,6 +249,8 @@ function basePlayer(def: PlayerDef, spawnAt: number): Player {
     sleepwalkTurns: 0,
     turtleTurns: 0,
     bulldozerTurns: 0,
+    bulldozerSteps: 0,
+    bulldozerSavedDiceCount: 1,
     research: null,
     diceCount: 1,
     alliance: null,
@@ -257,6 +260,7 @@ function basePlayer(def: PlayerDef, spawnAt: number): Player {
     custody: null,
     unlucky: null,
     bankrupt: false,
+    beggarGone: false,
     online: true,
   };
 }
@@ -561,6 +565,10 @@ function bankruptPlayer(state: GameState, p: Player): void {
   p.sleepwalkTurns = 0;
   p.turtleTurns = 0;
   p.bulldozerTurns = 0;
+  p.bulldozerSteps = 0;
+  p.bulldozerSavedDiceCount = 1;
+  // D-46：破产即转做乞丐 —— 出局（`bankrupt` 已把它排除出在局集合），但留在棋盘上原地行乞
+  p.beggarGone = false;
   p.research = null;
   p.diceCount = 1;
   p.alliance = null;
@@ -628,8 +636,38 @@ const PENGUIN_PAYOUT = [-200, 200, 800, 2000];
 const DOG_SPAWN_CHANCE = 0.12;
 /** NPC-05 恶犬：步行者被咬伤的住院天数 */
 const DOG_HOSPITAL_DAYS = 3;
-/** EVT-04 倒闭乞讨：路人施舍金额（固定金额，随物价指数缩放） */
-const BEGGAR_ALMS = 1000;
+/** EVT-04 倒闭乞讨：施舍金额区间（D-46，每次随机取一档再乘物价指数；旧口径为固定 1000） */
+const BEGGAR_ALMS_MIN = 500;
+const BEGGAR_ALMS_MAX = 3000;
+
+/**
+ * 乞丐收完施舍后的换岗（D-46）：挪去别处行乞，避免同一格被反复收钱。
+ * 只挑「没人站着」的格子（在局玩家与其他乞丐都算占位）；挑不动就留在原地，
+ * 宁可少挪一次，也不把两个单位叠在同一格上让落格结算互相咬。
+ */
+function relocateBeggar(state: GameState, beggar: Player): void {
+  const occupied = new Set(state.players.filter((q) => !q.beggarGone && q.id !== beggar.id).map((q) => q.position));
+  const free = state.board.map((cell) => cell.id).filter((id) => !occupied.has(id));
+  if (free.length === 0) return;
+  beggar.position = free[randomIndex(state, free.length)]!;
+  log(state, `${beggar.name} 道过谢，挪到「${state.board[beggar.position]!.name}」继续行乞`);
+}
+
+/**
+ * 工程车完工/报废（D-45）：18 步或 7 天任一先到，并把**暂停使用**的载具原样交还。
+ */
+function retireBulldozer(state: GameState, p: Player, reason: string): void {
+  p.bulldozerTurns = 0;
+  p.bulldozerSteps = 0;
+  const saved = p.bulldozerSavedDiceCount || 1;
+  p.bulldozerSavedDiceCount = 1;
+  if (p.diceCount <= 1 && saved > 1) {
+    p.diceCount = saved;
+    log(state, `${p.name} 的工程车${reason}报废，原先的载具恢复使用`);
+  } else {
+    log(state, `${p.name} 的工程车${reason}报废`);
+  }
+}
 
 /**
  * 三货币支付管道：**现金 → 存款 → 破产**。
@@ -1913,8 +1951,18 @@ function applyDisaster(
   apply(target);
 }
 
-/** 结算一次爆炸（飞弹 / 核子飞弹 / 定时炸弹）：范围内玩家住院 + 房屋倒塌 + 车辆损毁 */
-function detonate(state: GameState, center: number, radius: number, hospitalDays: number, label: string): number {
+/**
+ * 结算一次爆炸（飞弹 / 核子飞弹 / 定时炸弹）：范围内玩家住院 + 房屋受损 + 车辆损毁。
+ * `levels` = 每处房屋被拆掉的等级数（默认 `Infinity` = 夷为平地还原空地）。
+ */
+function detonate(
+  state: GameState,
+  center: number,
+  radius: number,
+  hospitalDays: number,
+  label: string,
+  levels = Number.POSITIVE_INFINITY,
+): number {
   const cells = blastArea(state, center, radius);
   const cellNames = cells.map((id) => state.board[id]?.name ?? `${id}`).join('、');
   log(state, `【${label}】${cellNames} 遭受轰炸！`);
@@ -1922,19 +1970,32 @@ function detonate(state: GameState, center: number, radius: number, hospitalDays
 
   for (const cellId of cells) {
     const owned = cellOwner(state, cellId);
-    if (!owned) continue;
-    if (owned.property.grade > 1) {
-      owned.property.grade = 1;
-      destroyed += 1;
-      log(state, `「${state.board[cellId]!.name}」的房屋被摧毁，还原为平地`);
-    }
+    if (!owned || owned.property.grade <= 1) continue;
+    const next = Math.max(1, owned.property.grade - levels);
+    const dropped = owned.property.grade - next;
+    owned.property.grade = next as 1 | 2 | 3 | 4 | 5;
+    destroyed += 1;
+    log(
+      state,
+      Number.isFinite(levels)
+        ? `「${state.board[cellId]!.name}」的房屋被拆低 ${dropped} 级（现为${gradeName(next)}）`
+        : `「${state.board[cellId]!.name}」的房屋被摧毁，还原为平地`,
+    );
   }
 
   for (const q of state.players) {
-    if (q.bankrupt) continue;
     if (!cells.includes(q.position)) continue;
+    if (q.bankrupt) {
+      // D-46：乞丐不在「在局玩家」里，但打击照样落在他头上 —— 炸飞即退场，此后不再行乞
+      if (!q.beggarGone) {
+        q.beggarGone = true;
+        log(state, `${q.name} 的乞讨摊被炸翻，从此退出乞讨`);
+      }
+      continue;
+    }
     q.skipTurns = Math.max(q.skipTurns, hospitalDays);
     q.custody = { kind: 'hospital', daysLeft: Math.max(q.skipTurns, hospitalDays) };
+    if (q.bulldozerTurns > 0) retireBulldozer(state, q, '被炸毁');
     q.bulldozerTurns = 0;
     q.diceCount = 1; // 车辆损毁
     blockRent(q, hospitalDays);
@@ -2121,10 +2182,10 @@ function consumeTurnDelay(state: GameState, p: Player): boolean {
     return true;
   }
 
-  // 工程车（ITEM-12）：开动 7 回合，逐回合递减
+  // 工程车（ITEM-12 / D-45）：7 天与 18 步双限、先到为准，完工后把暂停的载具交还
   if (p.bulldozerTurns > 0) {
     p.bulldozerTurns -= 1;
-    if (p.bulldozerTurns === 0) log(state, `${p.name} 的工程车报废了`);
+    if (p.bulldozerTurns === 0) retireBulldozer(state, p, '满 7 天');
   }
   return false;
 }
@@ -2186,8 +2247,6 @@ function rollDice(state: GameState, action: Extract<PlayerAction, { type: 'ROLL_
   let bittenByDog = false;
   /** 移动途中撞上的驻留神明所在格（null = 没撞上；路障等截停优先时保持 null） */
   let godCell: number | null = null;
-  /** EVT-04：途中遇到的原地乞讨者 */
-  let beggar: Player | null = null;
   for (let i = 0; i < steps; i++) {
     // 岔路口随机拐（原版规则）：环上排除「刚离开那格」后只剩一条路，因此不抽 RNG、回放逐位不变
     const stepped = stepAlong(state.board, pos, heading,
@@ -2197,23 +2256,20 @@ function rollDice(state: GameState, action: Extract<PlayerAction, { type: 'ROLL_
     path.push(pos);
     moved += 1;
     if (state.board[pos]?.type === 'start') crossedStart = true;
-    if (state.roadblocks.includes(pos)) {
-      state.roadblocks = state.roadblocks.filter((id) => id !== pos);
+    if (state.roadblocks.some((o) => o.cellId === pos)) {
+      state.roadblocks = state.roadblocks.filter((o) => o.cellId !== pos);
       const coneCell = state.board[pos]!;
       log(state, `${p.name} 撞上路障，被迫停在「${coneCell.name}」`);
       break;
     }
-    if (state.mines.includes(pos)) {
-      state.mines = state.mines.filter((id) => id !== pos);
+    if (state.mines.some((o) => o.cellId === pos)) {
+      state.mines = state.mines.filter((o) => o.cellId !== pos);
       steppedOnMine = true;
       log(state, `${p.name} 踩中地雷，被炸伤`);
       break;
     }
-    // EVT-04 倒闭与乞讨：倒闭者在原地乞讨，路过遇上一律施舍 1000 元
-    if (!beggar) {
-      const b = state.players.find((q) => q.bankrupt && q.position === pos);
-      if (b) beggar = b;
-    }
+    // 乞丐（EVT-04 / D-46）只认**踩中**那一格，与恶犬/宝箱同口径 ⇒ 不在这里判定，
+    // 挪到落定之后（见下方 `beggarOnLanding`），否则「路过乞讨格」也会被强制施舍。
     // GOD 现身机制（W2）：日切现身的驻留神明，**经过即附身**。
     // 排在路障 / 地雷 / 恶犬之后：那三者是截停型强效果，必须优先，
     // 否则「被路障截停在神明格」会既算截停又算附身，一个回合双触发。
@@ -2232,12 +2288,21 @@ function rollDice(state: GameState, action: Extract<PlayerAction, { type: 'ROLL_
   // 原地不动（停留卡）就没有路线可播：置 null，让表现层走它自己的兜底
   state.movePath = path.length > 0 ? path : null;
 
-  // EVT-04 倒闭与乞讨：路遇原地乞讨的倒闭者，施舍 1000 元（固定金额，随物价指数缩放）
+  // EVT-04 / D-46：**停在**乞丐那一格就必须施舍 `(500~3000) × 物价指数`，随后乞丐换一处继续行乞。
+  // 乞丐 = 已破产的玩家（`bankrupt` 已把它排除出在局集合），`beggarGone` 表示被炸飞后不再行乞。
+  const beggar = state.players.find((q) => q.bankrupt && !q.beggarGone && q.position === pos && q.id !== p.id);
   if (beggar) {
-    const alms = scaled(state, BEGGAR_ALMS);
-    log(state, `${p.name} 路遇在原处乞讨的 ${beggar.name}，施舍 ¥${alms}`);
+    const alms = scaled(state, BEGGAR_ALMS_MIN + randomIndex(state, BEGGAR_ALMS_MAX - BEGGAR_ALMS_MIN + 1));
+    log(state, `${p.name} 在「${state.board[pos]!.name}」遇上乞讨的 ${beggar.name}，施舍 ¥${alms}`);
     pay(state, p, alms, beggar, { reason: 'other' });
     if (isGameOver(state)) return;
+    relocateBeggar(state, beggar);
+  }
+
+  // 工程车（ITEM-12 / D-45）：18 步上限按**实际走到的步数**扣，与 7 天双限、先到为准
+  if (p.bulldozerTurns > 0) {
+    p.bulldozerSteps -= moved;
+    if (p.bulldozerSteps <= 0) retireBulldozer(state, p, '跑满 18 步');
   }
 
   // 定时炸弹（ITEM-04）：走满 38 步自动爆炸
@@ -3058,21 +3123,21 @@ function useCard(state: GameState, action: Extract<PlayerAction, { type: 'USE_CA
     self: p,
     action,
     card,
-    /** 需要显式传入的目标格（换地/换屋） */
-    requireCellId: (): number => {
-      const id = action.cellId;
-      if (id === undefined || !state.board[id]) throw new Error('请选择有效的目标格');
-      return id;
-    },
-    /** 任意土地/建筑目标，缺省取脚下 */
-    anyCellId: (): number => {
-      const id = action.cellId ?? p.position;
-      if (!state.board[id]) throw new Error('请选择有效的目标格');
-      return id;
+    /**
+     * 已校验的目标格：跑 def 的同一个谓词，拒绝理由原样抛出。
+     * 「缺省取脚下」的老行为已经删除 —— 那会让没选值的卡静默打到脚下那一格。
+     */
+    targetCell: (): number => {
+      const reason = card.targetSpec?.check?.(state, p, action) ?? null;
+      if (reason !== null) throw new Error(reason);
+      if (action.cellId === undefined || !state.board[action.cellId]) throw new Error('请选择有效的目标格');
+      return action.cellId;
     },
     targetPlayer: (): Player => {
+      const reason = card.targetSpec?.check?.(state, p, action) ?? null;
+      if (reason !== null) throw new Error(reason);
       const t = state.players.find((q) => q.id === action.targetPlayerId);
-      if (!t || t.id === p.id || t.bankrupt) throw new Error('请选择有效的目标玩家');
+      if (!t) throw new Error('请选择有效的目标玩家');
       return t;
     },
   });
@@ -3134,7 +3199,8 @@ function sellItem(state: GameState, action: Extract<PlayerAction, { type: 'SELL_
   const left = (p.items[item.id] ?? 0) - 1;
   if (left > 0) p.items[item.id] = left;
   else delete p.items[item.id];
-  const refund = Math.floor((item.cost ?? 0) / 2);
+  // 研究所非卖品没有 `cost`，变卖价走 `sellValue` 这个显式基准（D-45：工程车回收 135 点券）
+  const refund = item.sellValue ?? Math.floor((item.cost ?? 0) / 2);
   p.points += refund;
   log(state, `${p.name} 把「${item.name}」变卖给商店，回收 ${refund} 点券`);
 }
@@ -3154,11 +3220,19 @@ function useItem(state: GameState, action: Extract<PlayerAction, { type: 'USE_IT
     self: p,
     action,
     item,
-    /** 目标格，缺省取脚下 */
-    anyCellId: (): number => {
-      const id = action.cellId ?? p.position;
-      if (!state.board[id]) throw new Error('请选择有效的目标格');
-      return id;
+    /** 已校验的目标格（谓词与卡片同一个入口，见 `targets.ts`） */
+    targetCell: (): number => {
+      const reason = item.targetSpec?.check?.(state, p, action) ?? null;
+      if (reason !== null) throw new Error(reason);
+      if (action.cellId === undefined || !state.board[action.cellId]) throw new Error('请选择有效的目标格');
+      return action.cellId;
+    },
+    targetPlayer: (): Player => {
+      const reason = item.targetSpec?.check?.(state, p, action) ?? null;
+      if (reason !== null) throw new Error(reason);
+      const t = state.players.find((q) => q.id === action.targetPlayerId);
+      if (!t) throw new Error('请选择有效的目标玩家');
+      return t;
     },
   });
   consumeItem(p, item.id);
@@ -3553,8 +3627,9 @@ function checkUseCard(state: GameState, p: Player | null, action: ActionOf<'USE_
   if (card.phase !== 'post_roll' && state.phase !== 'awaiting_roll') return '该卡片只能在掷骰前使用';
   if (card.phase === 'post_roll' && state.phase !== 'awaiting_action') return '该卡片只能在掷骰后使用';
   if (!card.apply) return '未知卡片效果';
-  // 卡片自带的棋盘前提（如请神卡要有神可请）也在这里判，门控与 apply 因此同源
-  return card.guard?.(state, p) ?? null;
+  // 棋盘前提（如请神卡要有神可请）与**目标合法性**都在这一个谓词里 ——
+  // 门控与 `apply` 共用它（见 `targets.ts`），所以「列在可用手牌里却按下去报错」这类分叉结构上不可能再出现。
+  return card.targetSpec?.check?.(state, p, action) ?? null;
 }
 
 function checkDiscardCard(state: GameState, p: Player | null, action: ActionOf<'DISCARD_CARD'>): ActionRefusal {
@@ -3592,11 +3667,11 @@ function checkUseItem(state: GameState, p: Player | null, action: ActionOf<'USE_
   const item = ITEMS[action.itemId];
   if (!item) return '未知道具';
   if ((p.items[item.id] ?? 0) <= 0) return '没有这个道具';
-  // R4：道具全都在掷骰前（现存的 14 件里只有 1 件标 pre_roll，其余是 any；没有 post_roll 道具）
   // R4：道具全在掷骰前 —— 现存 14 件里没有 post_roll 道具，所以不必再留那条分支
   if (state.phase !== 'awaiting_roll') return '道具只能在掷骰前使用';
   if (!item.apply) return '未知道具效果';
-  return null;
+  // 与卡片同一个谓词入口（`targets.ts`）：路障/地雷的视野限制、载具互斥、时光机无快照…都在这里判
+  return item.targetSpec?.check?.(state, p, action) ?? null;
 }
 
 function checkBuyItem(state: GameState, p: Player | null, action: ActionOf<'BUY_ITEM'>): ActionRefusal {
