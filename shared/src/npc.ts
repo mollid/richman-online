@@ -31,6 +31,17 @@ export const VILLAINS: Record<VillainKind, VillainDef> = {
   'rent-thief': { kind: 'rent-thief', name: '窃取租金', desc: '窃取途经土地的租金或公司累积红利，收益归保释人' },
 };
 
+/**
+ * 特殊单位的展示名（HUD 与面板共用一份）。
+ *
+ * 为什么单独列：恶犬不在 `VILLAINS` 那张表里（它不由保释产生），但表现层要能一句话
+ * 说清「这格上蹲着什么」。两处各写各的名字，迟早出一格两个说法。
+ */
+export const NPC_NAMES: Record<string, string> = {
+  ...Object.fromEntries(VILLAIN_KINDS.map((k) => [k, VILLAINS[k].name])),
+  dog: '恶犬',
+};
+
 /** 保释金（固定金额，随物价指数缩放） */
 export const BAIL_FEE = 5000;
 /** 四大恶人出狱后活动天数 */

@@ -9,6 +9,7 @@
  * 后续可把这些面板逐个重做进 ac 皮肤。
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { actionRefusal } from '@richman/shared';
 import type { GameState, PlayerAction } from '@richman/shared';
 import { buildAcSnapshot } from '../game/acSnapshot.js';
 import { ControlPanel } from './ControlPanel.js';
@@ -20,13 +21,18 @@ import { TradePanel } from './TradePanel.js';
 import { AuctionPanel } from './AuctionPanel.js';
 import { NpcPanel } from './NpcPanel.js';
 import { CompanyPanel } from './CompanyPanel.js';
-import { HandPanel } from './HandPanel.js';
+import { HandPanel, type PickRequest } from './HandPanel.js';
 import './acHudClient.css';
 
 type AcHostTool = { label: string; title?: string; onClick?: () => void };
 type AcHostApi = {
   dispatch: ((a: PlayerAction) => void) | null;
   openPanel: ((kind: string) => void) | null;
+  /**
+   * 选格模式下 HUD 把点到的那一格原样交回（W2）。
+   * 合法性不在表现层判 —— 由 React 拿引擎的 `actionRefusal` 说一句话，两处永不分叉。
+   */
+  onPickCell: ((cellId: number) => void) | null;
   tag?: string;
   tools?: AcHostTool[];
   interactive?: boolean;
@@ -40,6 +46,8 @@ type AcHudGlobal = {
   /** 移动演出落定了吗（未挂载 / 方环示意时按「已落定」处理） */
   isSettled?: () => boolean;
   setHost: (h: Partial<AcHostApi>) => void;
+  /** 进入 / 退出「在棋盘上点一格」模式（null = 退出） */
+  setPickTargets?: (t: { cells: number[] } | null) => void;
   destroy: () => void;
   toast?: (t: string, tone?: string) => void;
 };
@@ -232,6 +240,59 @@ export function AcHudLayer({
   const [panel, setPanel] = useState<string | null>(null);
   const [fontMode, setFontMode] = useState<FontMode>(readFontMode);
 
+  /* ---------------- 选目标模式（W2）----------------
+   * 状态机只有三个结：面板发起 → HUD 报回一格 → 填满派单或退回继续选。
+   *
+   * 三条刻意的取舍：
+   * 1. **合法性在这里问引擎**（`actionRefusal`），不在表现层复制一套判断 —— 与 W1 同一个理由；
+   * 2. 点了非法格**留在选态**并播引擎那句理由，玩家马上就能改点另一格，不必回头再按一次「使用」；
+   * 3. 回合换了就退出：手里的请求是在上一位的局面下算出来的候选，留着它会派一个已经非法的动作。 */
+  const [pick, setPick] = useState<PickRequest | null>(null);
+  /** 上一次被拒的理由：留在横幅上看得见，不依赖 HUD 的 toast（脚本没加载完就没有 toast） */
+  const [pickHint, setPickHint] = useState('');
+  /**
+   * 发起选格：顺手收起弹层 —— 弹层带一层遮罩，不收起的话玩家看得见棋盘却点不到。
+   * 「面板侧移、选格时仍看得见其余手牌」是 W3 的布局活，本波先把通路走通。
+   */
+  const requestPick = useCallback((req: PickRequest) => {
+    setPick(req);
+    setPickHint('');
+    setPanel(null);
+  }, []);
+  const cancelPick = useCallback(() => {
+    setPick(null);
+    setPickHint('');
+  }, []);
+  const onPickCell = useCallback(
+    (cellId: number) => {
+      if (!pick) return;
+      const next = { ...pick.action, cellId } as PlayerAction;
+      const refusal = actionRefusal(game, next);
+      if (refusal !== null) {
+        // 非法格：把引擎那句话原样播出来，并**留在选态**让玩家改点另一格
+        setPickHint(refusal);
+        window.AC_HUD?.toast?.(refusal, 'warn');
+        return;
+      }
+      setPick(null);
+      setPickHint('');
+      onAction(next);
+    },
+    [pick, game, onAction],
+  );
+  useEffect(() => {
+    if (!pick) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      e.stopPropagation();
+      setPick(null);
+    };
+    // 捕获阶段拦一下：Esc 同时被弹层监听，选格时不该顺手把面板也关掉
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [pick]);
+  useEffect(() => setPick(null), [game.currentPlayerIndex, game.turn]);
+
   /* 口味类挂在 <html> 上。卸载时摘掉，避免离开对局后还把大厅的圆体换掉。
      顺手写进 localStorage 与 data 属性 —— 后者让自动化脚本能回读当前口味。 */
   useEffect(() => {
@@ -312,6 +373,7 @@ export function AcHudLayer({
     AC.setHost({
       dispatch,
       openPanel,
+      onPickCell,
       tag: isRemote ? '联机' : '热座',
       tools,
       interactive,
@@ -319,7 +381,9 @@ export function AcHudLayer({
       followCurrent: !isRemote,
     });
     AC.update(snapshot);
-  }, [ready, snapshot, dispatch, openPanel, tools, interactive, isRemote]);
+    /* 选格集合每次快照重推：候选是引擎算的，回合一动就可能变（例如对手走出了视野） */
+    AC.setPickTargets?.(pick ? { cells: pick.cells } : null);
+  }, [ready, snapshot, dispatch, openPanel, onPickCell, tools, interactive, isRemote, pick]);
 
   // 需要输入的阶段强制弹面板（小游戏 / 舍弃手牌 / 拍卖 / 结算）
   const forced = useMemo(() => {
@@ -447,7 +511,7 @@ export function AcHudLayer({
       case 'company':
         return <CompanyPanel game={game} onAction={onAction} interactive={interactive} />;
       case 'hand':
-        return <HandPanel game={game} onAction={onAction} interactive={interactive} />;
+        return <HandPanel game={game} onAction={onAction} interactive={interactive} requestPick={requestPick} pickingKey={pick?.key ?? null} />;
       case 'auction':
         return <AuctionPanel game={game} onAction={onAction} myPlayerId={myPlayerId} />;
       case 'control':
@@ -502,6 +566,16 @@ export function AcHudLayer({
         {!interactive && current && game.phase !== 'lobby' && game.phase !== 'game_over' && (
           <div className="ac-banner">
             {current.online ? `等待 ${current.name} 操作…` : `${current.name} 掉线了，稍后将自动托管…`}
+          </div>
+        )}
+        {/* 选格态横幅：说清「现在点棋盘是选目标」，并留一个不依赖键盘的出口与被拒理由 */}
+        {pick && (
+          <div className="ac-banner ac-banner--warn">
+            🎯 在棋盘上点一格 · {pick.label}
+            {pickHint && <span> · {pickHint}</span>}
+            <button className="ac-btn ac-btn--cream ac-btn--sm" onClick={cancelPick}>
+              取消 <span className="ac-sheet__esc">Esc</span>
+            </button>
           </div>
         )}
       </div>

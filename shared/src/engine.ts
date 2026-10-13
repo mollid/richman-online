@@ -95,6 +95,7 @@ import {
   researchDef,
   streetCells,
 } from './tiles.js';
+import { targetRefusal } from './targets.js';
 import {
   COMPANIES,
   COMPANY_LIST,
@@ -3629,7 +3630,7 @@ function checkUseCard(state: GameState, p: Player | null, action: ActionOf<'USE_
   if (!card.apply) return '未知卡片效果';
   // 棋盘前提（如请神卡要有神可请）与**目标合法性**都在这一个谓词里 ——
   // 门控与 `apply` 共用它（见 `targets.ts`），所以「列在可用手牌里却按下去报错」这类分叉结构上不可能再出现。
-  return card.targetSpec?.check?.(state, p, action) ?? null;
+  return targetRefusal(state, p, card.targetSpec, action);
 }
 
 function checkDiscardCard(state: GameState, p: Player | null, action: ActionOf<'DISCARD_CARD'>): ActionRefusal {
@@ -3671,7 +3672,7 @@ function checkUseItem(state: GameState, p: Player | null, action: ActionOf<'USE_
   if (state.phase !== 'awaiting_roll') return '道具只能在掷骰前使用';
   if (!item.apply) return '未知道具效果';
   // 与卡片同一个谓词入口（`targets.ts`）：路障/地雷的视野限制、载具互斥、时光机无快照…都在这里判
-  return item.targetSpec?.check?.(state, p, action) ?? null;
+  return targetRefusal(state, p, item.targetSpec, action);
 }
 
 function checkBuyItem(state: GameState, p: Player | null, action: ActionOf<'BUY_ITEM'>): ActionRefusal {

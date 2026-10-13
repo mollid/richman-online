@@ -162,6 +162,12 @@ body {
   background: radial-gradient(115% 85% at 50% 0%, #cfefff 0%, #eaf6df 46%, #f7ebc9 100%);
   box-shadow: 0 8px 22px rgba(122, 101, 71, .24), inset 0 0 0 5px rgba(255, 255, 255, .5);
 }
+/* 选格模式（W2）：切手型 + 一圈内描边，让玩家一眼看出「现在点棋盘是在选目标」而不是在看格子详情。
+   合法格的真正高亮要等 W3 —— 那时才用得上宿主推过来的 cells 集合，本波通路先通。 */
+.d25-stage--pick {
+  cursor: crosshair;
+  box-shadow: 0 8px 22px rgba(122, 101, 71, .24), inset 0 0 0 5px rgba(255, 235, 120, .95);
+}
 .d25-bar {
   position: absolute; left: 8px; top: 8px; z-index: 20;
   display: flex; gap: 6px; flex-wrap: wrap; align-items: center;

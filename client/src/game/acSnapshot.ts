@@ -17,6 +17,7 @@ import {
   GODS,
   godSummary,
   ITEMS,
+  NPC_NAMES,
   priceIndex,
   TREASURE_POINTS,
   type GameState,
@@ -24,6 +25,20 @@ import {
 
 /** 棋盘每格归属：cellId → playerId（小地图描边、dock 格块、world 上色共用） */
 export type AcOwners = Record<number, string>;
+
+/**
+ * 棋盘上的「活物」：玩家放的障碍、挂在身上的炸弹、路上走的特殊单位、破产后行乞的乞丐。
+ *
+ * 为什么要在这一层派生出来（而不是让 `hud.js` 自己扒 `GameState`）：点选与格子详情要能
+ * 一句话回答「这格上有什么、是谁放的」，而这个说法**只能有一份**。两处各扒一遍，
+ * 就会出现「面板显示的与引擎算的不是同一件事」—— 那正是本项目反复踩过的那类 bug。
+ */
+export interface AcEntities {
+  obstacles: Array<{ kind: 'roadblock' | 'mine'; cellId: number; ownerId: string; ownerName: string }>;
+  bombs: Array<{ playerId: string; cellId: number; stepsLeft: number; name: string }>;
+  npcs: Array<{ kind: string; cellId: number; ownerId: string | null; ownerName: string | null; jailed: boolean; name: string }>;
+  beggars: Array<{ playerId: string; cellId: number; name: string }>;
+}
 
 export interface AcSnapshot {
   state: GameState;
@@ -54,6 +69,8 @@ export interface AcSnapshot {
      */
     layout: ReturnType<typeof boardLayout>;
     gods: Array<{ godId: string; cellId: number; ttlDays: number; bornDay: number; name: string; emoji: string; summary: string }>;
+    /** 障碍 / 炸弹 / 特殊单位 / 乞丐（见 `AcEntities`） */
+    entities: AcEntities;
     /**
      * TILE-31 宝箱：驻留实体此刻在哪一格（null = 场上没有，本月已被拿走）。
      * 点券数值一并给出 —— 表现层不自己写死规则里的数字。
@@ -104,6 +121,34 @@ export function buildAcSnapshot(game: GameState, myPlayerId: string | null): AcS
     };
   });
 
+  /* 棋盘活物：一格上有什么、谁放的、还剩几步，全部在这里说清一次（口径唯一） */
+  const nameOf = (pid: string) => game.players.find((p) => p.id === pid)?.name ?? pid;
+  const entities: AcEntities = {
+    obstacles: [
+      ...game.roadblocks.map((o) => ({ kind: 'roadblock' as const, cellId: o.cellId, ownerId: o.ownerId, ownerName: nameOf(o.ownerId) })),
+      ...game.mines.map((o) => ({ kind: 'mine' as const, cellId: o.cellId, ownerId: o.ownerId, ownerName: nameOf(o.ownerId) })),
+    ],
+    // 挂身炸弹跟着携带者的位置走；找不到人时给 -1，渲染层按「不上屏」处理
+    bombs: game.bombs.map((b) => ({
+      playerId: b.playerId,
+      cellId: game.players.find((p) => p.id === b.playerId)?.position ?? -1,
+      stepsLeft: b.stepsLeft,
+      name: nameOf(b.playerId),
+    })),
+    npcs: game.npcs.map((n) => ({
+      kind: n.kind,
+      cellId: n.position,
+      ownerId: n.ownerId,
+      ownerName: n.ownerId ? nameOf(n.ownerId) : null,
+      jailed: n.jailed,
+      name: NPC_NAMES[n.kind] ?? n.kind,
+    })),
+    // 乞丐 = 破产且还没被炸飞的玩家（D-46），点选与详情都要能认出这一格站着要施舍的人
+    beggars: game.players
+      .filter((p) => p.bankrupt && !p.beggarGone)
+      .map((p) => ({ playerId: p.id, cellId: p.position, name: p.name })),
+  };
+
   return {
     state: game,
     view: {
@@ -117,6 +162,7 @@ export function buildAcSnapshot(game: GameState, myPlayerId: string | null): AcS
       owners,
       layout: boardLayout(game.board),
       gods,
+      entities,
       treasureCellId: game.treasureCellId,
       treasurePoints: TREASURE_POINTS,
       myPlayerId: meId,

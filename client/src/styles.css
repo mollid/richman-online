@@ -489,6 +489,41 @@ button.small {
   min-width: 0;
 }
 
+/* 行内目标胶囊（W2）：候选直接来自引擎的 `actionTargets`，所以亮着的每一颗都是「真能用的目标」。
+   灰掉的那几颗把引擎原句挂在 title 上（「X 不在视野内」），玩家看得见为什么点不了，不用猜。 */
+.param-row.chips {
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.chip {
+  padding: 3px 8px;
+  font-size: 11px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: rgba(38, 50, 56, 0.62);
+  color: inherit;
+  cursor: pointer;
+}
+
+.chip--on {
+  border-color: #ffd54f;
+  background: rgba(255, 213, 79, 0.18);
+}
+
+.chip--off {
+  opacity: 0.42;
+  cursor: not-allowed;
+  text-decoration: line-through;
+}
+
+/* 正在等玩家在棋盘上点一格的那一行 */
+.card-row.picking {
+  outline: 2px solid rgba(255, 213, 79, 0.7);
+  outline-offset: 2px;
+}
+
 .card-name {
   font-size: 13px;
   font-weight: 600;

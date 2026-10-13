@@ -105,14 +105,16 @@ describe('目标同源：候选枚举 ⇔ 门控校验', () => {
 });
 
 describe('目标必须显式给出（W1 删掉了「缺省取脚下」）', () => {
-  it('需要选格的卡不传 cellId ⇒ 门控就拒，而不是悄悄打到脚下', () => {
+  it('门控分两种问法：列表问「有没有得选」，派单缺目标会被挡下', () => {
     const g = armed(baseGame(), 'card', 'monster');
-    expect(actionRefusal(g, { type: 'USE_CARD', cardId: 'monster' })).toBe('请选择目标格');
-    // 旧实现会把脚下那格当目标 —— 脚下是机会格，于是抛的是「没有可摧毁的建筑」，
-    // 玩家看到的那句话与自己的操作毫无关系
-    const rolled = structuredClone(g);
-    rolled.players[rolled.currentPlayerIndex]!.position = 11;
-    expect(actionRefusal(rolled, { type: 'USE_CARD', cardId: 'monster' })).toBe('请选择目标格');
+    // 场上没有 grade≥2 的地产 ⇒ 列表口径要说「没得选」，dock 才能正确标灰（而不是「请选择目标格」这句答非所问）
+    expect(actionRefusal(g, { type: 'USE_CARD', cardId: 'monster' })).toBe('此刻没有可选的目标格');
+
+    // 给一块可拆的建筑 ⇒ 列表口径放行（它确实可用），但**裸派单**仍会被效果体挡下：
+    // 门控管不了「调用方没带目标」这种情况，由 `targetCell()` 抛出同一句话，绝不会静默打到脚下
+    g.players[1]!.properties = [{ cellId: 6, grade: 3 }];
+    expect(actionRefusal(g, { type: 'USE_CARD', cardId: 'monster' })).toBeNull();
+    expect(() => applyAction(g, { type: 'USE_CARD', cardId: 'monster' })).toThrow('请选择目标格');
   });
 
   it('脚下类卡（购地）指定别格 ⇒ 拒在「只能作用于落脚处」，不再靠忽略 cellId', () => {

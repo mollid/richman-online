@@ -1,218 +1,293 @@
 import { useState } from 'react';
-import { availableActions, CARDS, FACILITIES, FACILITY_ORDER, ITEMS, MAX_HAND_CARDS, MAX_ITEM_COUNT, playersInViewport } from '@richman/shared';
-import type { FacilityType, GameState, PlayerAction } from '@richman/shared';
+import { actionRefusal, actionTargets, availableActions, CARDS, FACILITIES, ITEMS, MAX_HAND_CARDS } from '@richman/shared';
+import type { FacilityType, GameState, PlayerAction, TargetSet, TargetSpec } from '@richman/shared';
 
-/** 需要显式选择目标格（默认不取脚下）的卡片 */
-const CARD_REQUIRES_CELL = new Set(['swap-land', 'swap-house', 'rebuild']);
-/** 需要显式选择目标格（默认不取脚下）的道具 */
-const ITEM_REQUIRES_CELL = new Set(['roadblock', 'mine', 'missile', 'nuke', 'teleporter']);
+/**
+ * 一次「要在棋盘上点一格」的请求。
+ *
+ * 半成品动作由面板填齐除 `cellId` 以外的全部参数，宿主只把点到的那一格补进去再派单 ——
+ * 谁发起谁组装，否则会变成「面板攒一半、宿主攒一半」的第三个东西。
+ */
+export type PickRequest = {
+  action: PlayerAction;
+  /** 横幅上那句话：让玩家知道此刻点棋盘是在干什么 */
+  label: string;
+  /** 引擎给的合法格（HUD 拿去做高亮；W2 只用来切手型光标） */
+  cells: number[];
+  /** 发起行的身份，用来把「正在选格」标在那一行上 */
+  key: string;
+};
 
-/** 手牌 / 道具面板：展示当前玩家的卡片与道具并提供使用入口（含目标/股票/格/骰点参数选择） */
-export function HandPanel({ game, onAction, interactive = true }: { game: GameState; onAction: (a: PlayerAction) => void; interactive?: boolean }) {
-  const [targetId, setTargetId] = useState('');
-  const [stockId, setStockId] = useState('');
-  const [cellId, setCellId] = useState<number | ''>('');
-  const [diceValue, setDiceValue] = useState(6);
-  const [facility, setFacility] = useState<FacilityType>('mall');
+/** 需要显式在棋盘上点一格的候选池。`foot` 就是脚下那一格，不必让玩家多此一举 */
+function wantsBoardPick(spec: { cells?: string }): boolean {
+  return !!spec.cells && spec.cells !== 'foot';
+}
+
+/**
+ * 手牌 / 道具面板（W2 起：目标不再由面板里的下拉框决定）。
+ *
+ * 三件事变了，理由同一个 —— 让界面问引擎，而不是自己猜：
+ * 1. **候选来自 `actionTargets`**。每一行向引擎要「此刻能作用在哪些格 / 哪些人 / 哪支股票」，
+ *    与门控共用一个谓词 ⇒ 列得出来的就派得出去。旧实现是一个裸数字 `<select>` 列全图 64 格，
+ *    选错了要等引擎抛异常才知道。
+ * 2. **格改成在棋盘上点**。点「使用」→ 进入选格态 → 点一格即派单；点非法格退回理由并留在选态。
+ * 3. **不再默认锁第一名可见对手**。旧实现 `effectiveTarget = others[0]`：玩家以为在给甲用卡，
+ *    实际打到乙。现在只有唯一候选才预选，多于一个必须自己点。
+ */
+export function HandPanel({
+  game,
+  onAction,
+  interactive = true,
+  requestPick,
+  pickingKey = null,
+}: {
+  game: GameState;
+  onAction: (a: PlayerAction) => void;
+  interactive?: boolean;
+  requestPick: (req: PickRequest) => void;
+  pickingKey?: string | null;
+}) {
+  /** 行内已选定的非棋盘参数（对手 / 股票 / 设施 / 骰点），键是行身份 */
+  const [chosen, setChosen] = useState<Record<string, string>>({});
+  const [hint, setHint] = useState('');
 
   const current = game.players[game.currentPlayerIndex];
-  const actions = availableActions(game);
   if (!current || (current.cards.length === 0 && Object.keys(current.items).length === 0)) return null;
 
-  // D-43：「指定对手」的候选名单与引擎的视野校验共用同一份口径（近景窗 16 格内），
-  // 否则又会出现「按钮给得出、引擎该拒绝」的老毛病。飞弹/核弹/传送机是全局射程，不走这条。
-  const others = playersInViewport(game, current);
-  const effectiveTarget = targetId && others.some((p) => p.id === targetId) ? targetId : others[0]?.id ?? '';
-  const effectiveStock = game.stockMarket.stocks.some((s) => s.id === stockId) ? stockId : game.stockMarket.stocks[0]?.id ?? '';
+  const acts = availableActions(game);
+  const nameOf = (pid: string) => game.players.find((p) => p.id === pid)?.name ?? pid;
 
-  const heldCards = current.cards.filter((id) => CARDS[id]);
-  const heldItems = Object.keys(current.items).filter((id) => ITEMS[id] && (current.items[id] ?? 0) > 0);
-  const itemCount = heldItems.reduce((n, id) => n + (current.items[id] ?? 0), 0);
-
-  const cardNeedsCell = heldCards.some((id) => {
-    const t = CARDS[id]!.target;
-    return t === 'land' || t === 'building';
-  });
-  const itemNeedsCell = heldItems.some((id) => {
-    const t = ITEMS[id]!.target;
-    return t === 'cell' || t === 'land';
-  });
-  // 有「任意格」目标道具（路障/地雷/飞弹/核弹/传送机）时列出全地图，否则只列土地与路面道具
-  const anyCellTarget = heldItems.some((id) => ITEMS[id]!.target === 'cell');
-  const cellOptions = anyCellTarget
-    ? game.board
-    : game.board.filter((c) => c.type === 'property' || c.type === 'commercial'
-        || game.mines.some((o) => o.cellId === c.id) || game.roadblocks.some((o) => o.cellId === c.id));
-  const needsCell = cardNeedsCell || itemNeedsCell;
-  const currentCellName = game.board[current.position]?.name ?? `${current.position}`;
-  // 改建卡（CARD-07）：目标为商业用地时还需选择要变更成的设施项目
-  const rebuildCard = heldCards.includes('rebuild');
-  const rebuildTargetCommercial = cellId !== '' && game.board[cellId as number]?.type === 'commercial';
-
-  const canAct = game.phase === 'awaiting_roll' || game.phase === 'awaiting_action';
-
-  const useCard = (cardId: string) => {
-    const card = CARDS[cardId]!;
-    const wantsCell = card.target === 'land' || card.target === 'building';
-    onAction({
-      type: 'USE_CARD',
-      cardId,
-      targetPlayerId: card.target === 'player' ? effectiveTarget : undefined,
-      stockId: card.needsStock ? effectiveStock : undefined,
-      cellId: wantsCell && cellId !== '' ? cellId : undefined,
-      facility: cardId === 'rebuild' && rebuildTargetCommercial ? facility : undefined,
-    });
+  type Row = {
+    key: string;
+    kind: 'card' | 'item';
+    id: string;
+    label: string;
+    desc: string;
+    count: number;
+    badge?: string;
+    /** 门控此刻是否放行（不含目标维度）—— 与引擎同一个答案 */
+    listed: boolean;
+    spec: TargetSpec;
   };
 
-  const useItem = (itemId: string) => {
-    const item = ITEMS[itemId]!;
-    const wantsCell = item.target === 'cell' || item.target === 'land';
-    onAction({
-      type: 'USE_ITEM',
-      itemId,
-      cellId: wantsCell && cellId !== '' ? cellId : undefined,
-      diceValue: item.needsDiceValue ? diceValue : undefined,
-    });
-  };
+  const rows: Row[] = [
+    ...current.cards
+      .filter((id): id is string => !!CARDS[id])
+      .map((id, i) => {
+        const card = CARDS[id]!;
+        return {
+          key: `card:${id}:${i}`,
+          kind: 'card' as const,
+          id,
+          label: card.name,
+          desc: card.description,
+          count: 1,
+          listed: acts.usableCards.includes(id),
+          spec: card.targetSpec,
+        };
+      }),
+    ...Object.keys(current.items)
+      .filter((id) => ITEMS[id] && (current.items[id] ?? 0) > 0)
+      .map((id) => {
+        const item = ITEMS[id]!;
+        return {
+          key: `item:${id}`,
+          kind: 'item' as const,
+          id,
+          label: item.name,
+          desc: item.description,
+          count: current.items[id] ?? 0,
+          badge: item.researchLevel !== null ? `研究所 Lv${item.researchLevel}` : undefined,
+          listed: acts.usableItems.includes(id),
+          spec: item.targetSpec,
+        };
+      }),
+  ];
+
+  /**
+   * 这一行此刻选中的对手。
+   *
+   * 两种问法分开处理（问的是引擎，不是猜的）：
+   * - **必填**（均贫 / 陷害 / 同盟…）：唯一候选才预选，多于一个必须玩家自己点；
+   * - **可选**（定时炸弹 / 传送机）：默认空着 = 对自己用，绝不自作主张把炸弹塞给旁边那个人。
+   */
+  function pickedPlayer(row: Row, set: TargetSet): string {
+    if (!row.spec.players) return '';
+    if (playerOptional(row, set)) return chosen[row.key] ?? '';
+    return chosen[row.key] ?? (set.players.length === 1 ? set.players[0]! : '');
+  }
+
+  /**
+   * 对手是可选项还是必填 —— 问引擎：不带目标的动作合不合法。
+   * 混起来会把「自装」这个选项吃掉。
+   */
+  function playerOptional(row: Row, set: TargetSet): boolean {
+    if (!row.spec.players) return false;
+    return actionRefusal(game, buildAction(row, set, '')) === null;
+  }
+
+  /** 把一行摊开成「候选 + 半成品动作 + 引擎此刻的意见」，渲染与派单读同一份 */
+  function resolve(row: Row): { action: PlayerAction; refusal: string | null; needBoard: boolean; set: TargetSet } {
+    const set = actionTargets(game, current!, row.spec);
+    const action = buildAction(row, set, pickedPlayer(row, set));
+    return { action, refusal: actionRefusal(game, action), needBoard: wantsBoardPick(row.spec), set };
+  }
+
+  function buildAction(row: Row, set: TargetSet, player: string): PlayerAction {
+    const extra: Record<string, unknown> = {};
+    if (player) extra.targetPlayerId = player;
+    if (row.spec.stocks) extra.stockId = chosen[row.key] || set.stocks[0];
+    if (row.spec.facilities) extra.facility = (chosen[row.key] || set.facilities[0]) as FacilityType;
+    if (row.spec.dice) extra.diceValue = Number(chosen[row.key]) || 6;
+    return (row.kind === 'card'
+      ? { type: 'USE_CARD', cardId: row.id, ...extra }
+      : { type: 'USE_ITEM', itemId: row.id, ...extra }) as PlayerAction;
+  }
+
+  function fire(row: Row) {
+    const { action, refusal, needBoard, set } = resolve(row);
+    if (needBoard) {
+      // 交给宿主进选格态：合法性由派单那一刻的引擎判，这里不预先拦
+      requestPick({ action, label: `${row.label} · 选目标格`, cells: set.cells, key: row.key });
+      return;
+    }
+    if (refusal !== null) {
+      setHint(`${row.label}：${refusal}`);
+      return;
+    }
+    setHint('');
+    onAction(action);
+  }
+
+  const cardRows = rows.filter((r) => r.kind === 'card');
+  const itemRows = rows.filter((r) => r.kind === 'item');
+  const itemCount = itemRows.reduce((n, r) => n + r.count, 0);
 
   return (
     <div className="panel hand-panel">
-      <div className="panel-title">卡片（{current.cards.length}/{MAX_HAND_CARDS}）</div>
-      {heldCards.length === 0 && <div className="empty-hint small">暂无卡片</div>}
-      {heldCards.map((cardId, i) => {
-        const card = CARDS[cardId]!;
-        const usable = interactive && actions.usableCards.includes(cardId);
-        const needsPlayer = card.target === 'player';
-        const needsCellHere = CARD_REQUIRES_CELL.has(cardId);
-        const targetOk = !needsPlayer || others.length > 0;
-        const cellOk = !needsCellHere || (cellId !== '' && cellId !== current.position);
-        const canUse = usable && targetOk && cellOk;
-        const tip = !usable
-          ? card.phase === 'pre_roll'
-            ? '仅掷骰前可用'
-            : card.phase === 'post_roll'
-              ? '仅掷骰后可用'
-              : '当前不可使用'
-          : !targetOk
-            ? '没有可选目标'
-            : !cellOk
-              ? '请选择目标格'
-              : '';
-        return (
-          <div key={i} className={`card-row ${canUse ? '' : 'disabled'}`}>
-            <div className="card-info">
-              <div className="card-name">{card.name}</div>
-              <div className="card-desc">{card.description}</div>
-            </div>
-            <button disabled={!canUse} title={tip} onClick={() => useCard(cardId)}>
-              使用
-            </button>
-            <button className="ghost small" disabled={!interactive || !canAct} title="舍弃这张卡片" onClick={() => onAction({ type: 'DISCARD_CARD', cardId })}>
-              弃
-            </button>
-          </div>
-        );
-      })}
+      <div className="panel-title">
+        卡片（{cardRows.length}/{MAX_HAND_CARDS}）
+      </div>
+      {cardRows.length === 0 && <div className="empty-hint small">暂无卡片</div>}
+      {cardRows.map(renderRow)}
 
       <div className="panel-title">道具（{itemCount}）</div>
-      {heldItems.length === 0 && <div className="empty-hint small">暂无道具</div>}
-      {heldItems.map((itemId) => {
-        const item = ITEMS[itemId]!;
-        const count = current.items[itemId] ?? 0;
-        const usable = interactive && actions.usableItems.includes(itemId);
-        const needsCellHere = ITEM_REQUIRES_CELL.has(itemId);
-        const cellOk = !needsCellHere || (cellId !== '' && cellId !== current.position);
-        const canUse = usable && cellOk;
-        const tip = !usable
-          ? item.phase === 'pre_roll'
-            ? '仅掷骰前可用'
-            : item.phase === 'post_roll'
-              ? '仅掷骰后可用'
-              : '当前不可使用'
-          : !cellOk
-            ? '请选择目标格'
-            : '';
-        return (
-          <div key={itemId} className={`card-row ${canUse ? '' : 'disabled'}`}>
-            <div className="card-info">
-              <div className="card-name">
-                {item.name} <span className="owned">×{count}</span>
-                {item.researchLevel !== null && <span className="price">研究所 Lv{item.researchLevel}</span>}
-              </div>
-              <div className="card-desc">{item.description}</div>
-            </div>
-            <button disabled={!canUse} title={tip} onClick={() => useItem(itemId)}>
-              使用
-            </button>
-          </div>
-        );
-      })}
+      {itemRows.length === 0 && <div className="empty-hint small">暂无道具</div>}
+      {itemRows.map(renderRow)}
 
-      {needsCell && (
+      {hint && (
         <div className="param-row">
-          <label>目标格</label>
-          <select value={cellId} onChange={(e) => setCellId(e.target.value === '' ? '' : Number(e.target.value))}>
-            <option value="">脚下（{currentCellName}）</option>
-            {cellOptions.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.id} {c.name}
-              </option>
-            ))}
-          </select>
-        </div>
-      )}
-
-      {rebuildCard && rebuildTargetCommercial && (
-        <div className="param-row">
-          <label>变更为</label>
-          <select value={facility} onChange={(e) => setFacility(e.target.value as FacilityType)}>
-            {FACILITY_ORDER.map((f) => (
-              <option key={f} value={f}>
-                {FACILITIES[f].name}
-              </option>
-            ))}
-          </select>
-        </div>
-      )}
-
-      {heldCards.some((id) => CARDS[id]!.target === 'player') && others.length > 0 && (
-        <div className="param-row">
-          <label>目标玩家</label>
-          <select value={effectiveTarget} onChange={(e) => setTargetId(e.target.value)}>
-            {others.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </select>
-        </div>
-      )}
-
-      {heldCards.some((id) => CARDS[id]!.needsStock) && (
-        <div className="param-row">
-          <label>股票</label>
-          <select value={effectiveStock} onChange={(e) => setStockId(e.target.value)}>
-            {game.stockMarket.stocks.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-              </option>
-            ))}
-          </select>
-        </div>
-      )}
-
-      {heldItems.some((id) => ITEMS[id]!.needsDiceValue) && (
-        <div className="param-row">
-          <label>骰点</label>
-          <select value={diceValue} onChange={(e) => setDiceValue(Number(e.target.value))}>
-            {[1, 2, 3, 4, 5, 6].map((v) => (
-              <option key={v} value={v}>
-                {v} 点
-              </option>
-            ))}
-          </select>
+          <span className="ac-note ac-note--warn">{hint}</span>
         </div>
       )}
     </div>
   );
+
+  function renderRow(row: Row) {
+    const { refusal, needBoard, set } = resolve(row);
+    const canUse = interactive && row.listed;
+    const picking = pickingKey === row.key;
+    const player = pickedPlayer(row, set);
+    const optional = playerOptional(row, set);
+    // 目标没挑齐时那句引擎理由就是提示文案 —— 界面不另编一套说法
+    const tip = !canUse ? row.desc : needBoard ? '点「使用」后在棋盘上点一格' : (refusal ?? '');
+
+    return (
+      <div key={row.key} className={`card-row ${canUse ? '' : 'disabled'} ${picking ? 'picking' : ''}`}>
+        <div className="card-info">
+          <div className="card-name">
+            {row.label} <span className="owned">×{row.count}</span>
+            {row.badge && <span className="price">{row.badge}</span>}
+          </div>
+          <div className="card-desc">{row.desc}</div>
+
+          {row.spec.players && (
+            <div className="param-row chips">
+              {/* 可选目标（自装炸弹 / 只身传送）要把「自己」这颗摆出来，否则唯一对手会被预选顶掉 */}
+              {optional && (
+                <button
+                  className={`chip ${player === '' ? 'chip--on' : ''}`}
+                  disabled={!canUse}
+                  title="不对对手用，只作用于自己"
+                  onClick={() => setChosen((m) => ({ ...m, [row.key]: '' }))}
+                >
+                  自己
+                </button>
+              )}
+              {set.players.map((pid) => (
+                <button
+                  key={pid}
+                  className={`chip ${player === pid ? 'chip--on' : ''}`}
+                  disabled={!canUse}
+                  title={`${nameOf(pid)} · 在视野内`}
+                  onClick={() => setChosen((m) => ({ ...m, [row.key]: pid }))}
+                >
+                  {nameOf(pid)}
+                </button>
+              ))}
+              {/* 视野外的人照样列出来，但灰着并带上引擎那句理由：玩家才知道「不是没这个人，是够不着」 */}
+              {set.rejectedPlayers.map((r) => (
+                <button key={r.id} className="chip chip--off" title={r.reason} disabled>
+                  {nameOf(r.id)}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {row.spec.stocks && (
+            <select
+              value={chosen[row.key] || set.stocks[0] || ''}
+              onChange={(e) => setChosen((m) => ({ ...m, [row.key]: e.target.value }))}
+            >
+              {set.stocks.map((s) => (
+                <option key={s} value={s}>
+                  {game.stockMarket.stocks.find((x) => x.id === s)?.name ?? s}
+                </option>
+              ))}
+            </select>
+          )}
+
+          {row.spec.facilities && (
+            <select
+              value={chosen[row.key] || set.facilities[0] || ''}
+              onChange={(e) => setChosen((m) => ({ ...m, [row.key]: e.target.value }))}
+            >
+              {set.facilities.map((f) => (
+                <option key={f} value={f}>
+                  变更为{FACILITIES[f].name}
+                </option>
+              ))}
+            </select>
+          )}
+
+          {row.spec.dice && (
+            <select
+              value={chosen[row.key] || '6'}
+              onChange={(e) => setChosen((m) => ({ ...m, [row.key]: e.target.value }))}
+            >
+              {set.diceValues.map((v) => (
+                <option key={v} value={v}>
+                  {v} 点
+                </option>
+              ))}
+            </select>
+          )}
+        </div>
+
+        <button disabled={!canUse} title={tip} onClick={() => fire(row)}>
+          {picking ? '选格中…' : needBoard ? '使用 · 选格' : '使用'}
+        </button>
+        {row.kind === 'card' && (
+          <button
+            className="ghost small"
+            disabled={!interactive}
+            title="舍弃这张卡片"
+            onClick={() => onAction({ type: 'DISCARD_CARD', cardId: row.id })}
+          >
+            弃
+          </button>
+        )}
+      </div>
+    );
+  }
 }

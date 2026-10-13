@@ -74,9 +74,31 @@ export interface TargetSet {
   diceValues: number[];
 }
 
-/** 空集：语义是「本动作不需要目标」，UI 据此直接派单而不进选态 */
+/** 无目标动作：语义是「本动作不需要目标」，UI 据此直接派单而不进选态 */
 export function emptyTargets(): TargetSet {
   return { cells: [], rejectedCells: [], players: [], rejectedPlayers: [], stocks: [], facilities: [], diceValues: [] };
+}
+
+/**
+ * 门控在「目标」这一维上的答复。**同一个谓词要回答两种问题**：
+ *
+ * - 没带任何目标（`availableActions` 在列「此刻哪些卡 / 道具有得用」）⇒ 问的是**有没有得选**；
+ * - 带了目标（真派单）⇒ 逐条校验，不行就给出那句理由。
+ *
+ * 少了这条分岔，dock 会把「需要先点一格」的道具一律标成不可用 —— 路障 / 地雷明明满地图都能放。
+ * W2 在浏览器里第一眼就撞上这个，所以它属于契约的一部分，不是补丁。
+ */
+export function targetRefusal(state: GameState, actor: Player, spec: TargetSpec, want: TargetFields): string | null {
+  const direct = spec.check?.(state, actor, want) ?? null;
+  if (direct === null) return null; // 不带目标也合法：自装定时炸弹、均富卡、请神卡…
+  const bare = want.cellId === undefined && want.targetPlayerId === undefined && want.stockId === undefined;
+  if (!bare) return direct;
+  const set = actionTargets(state, actor, spec);
+  if (set.cells.length || set.players.length || set.stocks.length) return null;
+  if (spec.cells) return '此刻没有可选的目标格';
+  if (spec.players) return '视野内没有可选的对手';
+  if (spec.stocks) return '行情池里没有可操作的股票';
+  return direct;
 }
 
 /** 视野内的存活候选玩家；`visible-or-self` 时把自己也算进来（停留卡） */

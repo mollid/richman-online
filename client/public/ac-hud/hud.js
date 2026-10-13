@@ -152,6 +152,13 @@
   let flatMode = FLAT0;
   const HAS_GL = !!globalThis.THREE && !!globalThis.PIXI && !!globalThis.D25World && !!globalThis.D25Overlay;
   let stage = null, tipEl = null, camChip = null, selCell = cur.position;
+  /**
+   * 选目标模式（W2）：宿主（React）进入「要在棋盘上点一格」时把合法格集合推过来。
+   * null = 不在选格态，此时点击只是「查看这一格的详情」（原有行为）。
+   * 高亮 / 淡出 / 悬停给理由那些是 W3 的视觉活，本波只把**通路**接通 —— 包括「非法格
+   * 也能被点」：合法性由引擎的谓词裁决，表现层不自己判第二套。
+   */
+  let pickCells = null;
 
   /* ---------------- 相机系统接线：聚焦 → 跟随 → 解锁 ----------------
    * world.js 持有状态机与补间；这里只做三件事：
@@ -436,7 +443,12 @@
       },
       onCameraMode: () => applyCamModeUI(),
       onHover: (id) => showTip(id),
-      onSelect: (id) => { if (HUD_LOCKED) return; if (id != null) { selCell = id; render(); } },
+      onSelect: (id) => {
+        if (HUD_LOCKED) return;
+        /* 选格态：把这一格原样交回宿主去判合法性并派单 —— 表现层不复制一套「能不能选」 */
+        if (pickCells && hostApi.onPickCell) { hostApi.onPickCell(id); return; }
+        if (id != null) { selCell = id; render(); }
+      },
       onLand: (pid, cellId) => globalThis.D25Overlay.float(`来到「${cellName(cellId)}」`, cellId, 'gold'),
       /* 一次移动演出收尾：把攒下来的「换人聚焦」放出去（见 playMovement / syncStage） */
       onMoveSettled: () => flushPendingFocus(),
@@ -1382,6 +1394,17 @@
      * 配下一格的决定。方环示意 / 没有 WebGL 时恒为「已落定」。
      */
     isSettled: () => !(globalThis.D25World && globalThis.D25World.isHopping && globalThis.D25World.isHopping()),
+    /**
+     * 进入 / 退出「在棋盘上点一格」模式（W2）。传 null 退出。
+     *
+     * `t.cells` 是引擎给的合法候选，本波只用来切手型光标与记账 —— 真正判合法性的是
+     * 派单时的那一个谓词，所以这里就算拿到空集合也不拦点击（玩家点错要知道为什么，
+     * 而不是「什么都点不动」）。淡出与高亮在 W3 接。
+     */
+    setPickTargets(t) {
+      pickCells = t && Array.isArray(t.cells) ? t.cells : null;
+      if (stage) stage.classList.toggle('d25-stage--pick', !!pickCells);
+    },
     /** 注入宿主能力：{ dispatch(action), openPanel(kind) } */
     setHost(h) { hostApi = Object.assign(hostApi, h || {}); },
     toast,
