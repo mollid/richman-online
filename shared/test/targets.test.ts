@@ -150,3 +150,37 @@ describe('目标必须显式给出（W1 删掉了「缺省取脚下」）', () =
     expect(set.rejectedPlayers.find((r) => r.id === far.id)!.reason).toContain('不在视野内');
   });
 });
+
+describe('使用时机只有一处判断（W4 / D-47）', () => {
+  /* W4 删掉了 `ItemDef.phase`、`CardDef.target` / `ItemDef.target` 与 `needsStock` / `needsDiceValue`：
+     它们要么从没被读过，要么与 `targetSpec` 说的是同一件事的两份声明 —— 两份声明迟早分叉。
+     这两条用例钉住"删了字段但规则还在"：时机判断只剩 `checkUseCard` / `checkUseItem` 里那两句。 */
+  it('道具一律掷骰前：13 件在落格窗里都被同一句话挡下', () => {
+    for (const id of ALL_ITEM_IDS) {
+      const early = armed(baseGame(), 'item', id);
+      expect(
+        actionRefusal(early, { type: 'USE_ITEM', itemId: id }),
+        `${id} 掷骰前不该被时机挡`,
+      ).not.toBe('道具只能在掷骰前使用');
+
+      const late = { ...early, phase: 'awaiting_action' as const };
+      expect(actionRefusal(late, { type: 'USE_ITEM', itemId: id }), `${id} 落格窗里该被拒`).toBe(
+        '道具只能在掷骰前使用',
+      );
+    }
+  });
+
+  it('卡片只有两档时机，且错位那一档必被引擎点名', () => {
+    const manual = ALL_CARD_IDS.filter((id) => !CARDS[id]!.auto && CARDS[id]!.available !== false);
+    for (const id of manual) {
+      const phase = CARDS[id]!.phase;
+      // 旧的第三档 `pre_roll` 与 `any` 走的是同一个分支，随字段一起删了：类型里不该再有第三个取值
+      expect(['any', 'post_roll'], `${id} 的时机取值`).toContain(phase);
+      const wrongPhase = phase === 'post_roll' ? 'awaiting_roll' : 'awaiting_action';
+      const g = { ...armed(baseGame(), 'card', id), phase: wrongPhase as GameState['phase'] };
+      expect(actionRefusal(g, { type: 'USE_CARD', cardId: id }), `${id} 错位时机该被拒`).toBe(
+        phase === 'post_roll' ? '该卡片只能在掷骰后使用' : '该卡片只能在掷骰前使用',
+      );
+    }
+  });
+});

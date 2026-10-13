@@ -3620,7 +3620,7 @@ function checkUseCard(state: GameState, p: Player | null, action: ActionOf<'USE_
   if (card.auto) return '该卡片为自动触发，不能主动使用';
   if (!card.available) return '该卡片尚未开放';
   if (state.phase !== 'awaiting_roll' && state.phase !== 'awaiting_action') return '当前不能使用卡片';
-  // R4：`any` 与 `pre_roll` 都收到掷骰前 —— 落格窗里不摆自由菜单。
+  // R4：卡片只有「掷骰前」与「掷骰后」两档（`CardPhase` 就这两个取值）。
   // `post_roll` 是唯一留在窗口里的一类：它们本身就是「对脚下这一格的回应」
   // （购地卡免买眼前这块地、改建卡改眼前这处设施、拍卖卡把眼前这块地拍出去……），
   // 拿掉它们等于把这五张卡变成手里按不动的死牌，所以这一波保留其可用性，
@@ -3668,7 +3668,8 @@ function checkUseItem(state: GameState, p: Player | null, action: ActionOf<'USE_
   const item = ITEMS[action.itemId];
   if (!item) return '未知道具';
   if ((p.items[item.id] ?? 0) <= 0) return '没有这个道具';
-  // R4：道具全在掷骰前 —— 现存 14 件里没有 post_roll 道具，所以不必再留那条分支
+  // R4：道具全在掷骰前。这条规则**只写在这里一次** —— 旧的 `ItemDef.phase` 字段从未被读过
+  // （14 件道具没有 post_roll），W4 删掉它，免得以后有人改了字段却发现行为没变。
   if (state.phase !== 'awaiting_roll') return '道具只能在掷骰前使用';
   if (!item.apply) return '未知道具效果';
   // 与卡片同一个谓词入口（`targets.ts`）：路障/地雷的视野限制、载具互斥、时光机无快照…都在这里判

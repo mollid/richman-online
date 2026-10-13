@@ -1,5 +1,4 @@
 import { MAX_ITEM_COUNT, pathAhead } from './board.js';
-import type { CardPhase } from './cards.js';
 import type { ItemEffectCtx } from './effect_ctx.js';
 import { MAX_GRADE, facilityUpgradeable } from './tiles.js';
 import { needCell, needPlayer, ownerOfCell, type TargetCheck, type TargetSpec } from './targets.js';
@@ -17,15 +16,6 @@ import { needCell, needPlayer, ownerOfCell, type TargetCheck, type TargetSpec } 
  * `ItemEffectCtx` 调用，新增一件道具只改本文件一处。
  */
 
-/**
- * 道具目标类型：
- * - none 无目标；
- * - cell 需选地图格；
- * - land 需选己方土地；
- * - player 需选一名对手（可留空表示不指定，用于炸弹留给自己 / 传送机只移自己）。
- */
-export type ItemTarget = 'none' | 'cell' | 'land' | 'player';
-
 export interface ItemDef {
   id: string;
   name: string;
@@ -37,16 +27,12 @@ export interface ItemDef {
    * 省略时按售价半价回收。
    */
   sellValue?: number;
-  phase: CardPhase;
-  target: ItemTarget;
   /**
    * 目标声明：候选从哪儿来 + **唯一那份**合法性谓词（见 `targets.ts`）。
    * 必填，理由同 `CardDef.targetSpec` —— 道具原本连 `guard` 都没有，
    * 「此处有玩家停留，不能埋雷」这类前提只能在 `apply` 里抛异常，门控完全看不见。
    */
   targetSpec: TargetSpec;
-  /** 需要指定骰子点数（遥控骰子） */
-  needsDiceValue?: boolean;
   /** 研究所研发等级；null 表示商店可售 */
   researchLevel: number | null;
   /**
@@ -150,8 +136,6 @@ export const ITEMS: Record<string, ItemDef> = {
     description: '打扫前方 9 步：路障 / 地雷 / 定时炸弹 / 恶犬 / 驻留神明（四大恶人与附身神明不受影响）',
     // 原价文档标注「待确认」，此处取 INTERIM 估值 60 点
     cost: 60,
-    phase: 'any',
-    target: 'none',
     targetSpec: { check: checkRobotDoll },
     researchLevel: null,
     apply: ({ state, self: p, log, clearBoardGods }) => {
@@ -191,8 +175,6 @@ export const ITEMS: Record<string, ItemDef> = {
     name: '路障',
     description: '在视野内的道路放置路障，经过者被截停',
     cost: 30,
-    phase: 'any',
-    target: 'cell',
     targetSpec: { cells: 'view', check: obstacleCheck('roadblocks') },
     researchLevel: null,
     apply: ({ state, self: p, targetCell, log }) => {
@@ -208,8 +190,6 @@ export const ITEMS: Record<string, ItemDef> = {
     name: '地雷',
     description: '在视野内的道路埋设地雷，踩中者住院 3 天（也可能害到自己）',
     cost: 25,
-    phase: 'any',
-    target: 'cell',
     targetSpec: { cells: 'view', check: obstacleCheck('mines') },
     researchLevel: null,
     apply: ({ state, self: p, targetCell, log }) => {
@@ -224,8 +204,6 @@ export const ITEMS: Record<string, ItemDef> = {
     name: '定时炸弹',
     description: '附身后走满 38 步自动爆炸，威力范围内人住院 5 天、房屋倒塌；也可直接丢给视野内的对手',
     cost: 25,
-    phase: 'any',
-    target: 'player',
     // 不选人 = 装自己身上，所以候选池是「视野内对手」而不是「必须选一个」
     targetSpec: { players: 'visible', check: checkTimeBomb },
     researchLevel: null,
@@ -246,8 +224,6 @@ export const ITEMS: Record<string, ItemDef> = {
     name: '机车',
     description: '骰子数增加至 2 个（前进更远）；已开汽车时改用机车，汽车收回道具栏',
     cost: 80,
-    phase: 'any',
-    target: 'none',
     targetSpec: { check: vehicleCheck(2) },
     researchLevel: null,
     apply: ({ state, self: p, log }) => {
@@ -268,8 +244,6 @@ export const ITEMS: Record<string, ItemDef> = {
     name: '汽车',
     description: '骰子数增加至 3 个（前进更远）；已骑机车时改用汽车，机车收回道具栏',
     cost: 150,
-    phase: 'any',
-    target: 'none',
     targetSpec: { check: vehicleCheck(3) },
     researchLevel: null,
     apply: ({ state, self: p, log }) => {
@@ -287,8 +261,6 @@ export const ITEMS: Record<string, ItemDef> = {
     name: '飞弹',
     description: '轰炸目标格 3×3 范围，范围内房屋各拆低一级，被炸者住院 3 天',
     cost: 100,
-    phase: 'any',
-    target: 'cell',
     // 射程全局：help [91] 明写「使用範圍：地圖上的任何地點」，故不套视野限制
     targetSpec: { cells: 'any', check: needCell('any') },
     researchLevel: null,
@@ -304,10 +276,7 @@ export const ITEMS: Record<string, ItemDef> = {
     name: '遥控骰子',
     description: '控制下一次掷骰的点数（1-6）',
     cost: 30,
-    phase: 'pre_roll',
-    target: 'none',
     targetSpec: { dice: true, check: checkRemoteDice },
-    needsDiceValue: true,
     researchLevel: null,
     apply: ({ state, self: p, action, log }) => {
       // ITEM-08：控制下一次掷骰点数（点数范围由 `checkRemoteDice` 把住）
@@ -320,8 +289,6 @@ export const ITEMS: Record<string, ItemDef> = {
     name: '机器工人',
     description: '在自家土地上免费加盖一级房屋',
     cost: null,
-    phase: 'any',
-    target: 'land',
     targetSpec: { cells: 'own-land', check: checkRobotWorker },
     researchLevel: 1,
     apply: ({ state, self: p, targetCell, cellOwner, log }) => {
@@ -339,8 +306,6 @@ export const ITEMS: Record<string, ItemDef> = {
     name: '时光机',
     description: '回到过去：所有人回复为上一回合的状态',
     cost: null,
-    phase: 'any',
-    target: 'none',
     targetSpec: { check: checkTimeMachine },
     researchLevel: 2,
     apply: ({ state, self: p, log }) => {
@@ -363,8 +328,6 @@ export const ITEMS: Record<string, ItemDef> = {
     name: '传送机',
     description: '瞬间移动到地图上的指定空道路；也可把视野内的一名对手一并传送过去',
     cost: null,
-    phase: 'any',
-    target: 'cell',
     targetSpec: { cells: 'any', players: 'visible', check: checkTeleporter },
     researchLevel: 3,
     apply: ({ state, self: p, action, targetCell, activePlayers, log }) => {
@@ -392,8 +355,6 @@ export const ITEMS: Record<string, ItemDef> = {
     cost: null,
     // D-45：研究所 Lv4 的非卖品，但占一个道具栏、可在商店变卖回收 135 点券
     sellValue: 135,
-    phase: 'any',
-    target: 'none',
     targetSpec: { check: checkBulldozer },
     researchLevel: 4,
     apply: ({ state, self: p, log }) => {
@@ -416,8 +377,6 @@ export const ITEMS: Record<string, ItemDef> = {
     name: '核子飞弹',
     description: '全图任选目标，7 格范围内人屋俱毁，被炸者住院 3 天',
     cost: null,
-    phase: 'any',
-    target: 'cell',
     // 射程全局（D-37），与飞弹同为「地圖上的任何地點」
     targetSpec: { cells: 'any', check: needCell('any') },
     researchLevel: 5,

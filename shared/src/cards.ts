@@ -31,11 +31,14 @@ import type { FacilityType, GameState, Player } from './types.js';
  * 新增一张卡只改本文件一处，效果与其校验不会分处两地而各说各话。
  */
 
-/** 卡片可用时机 */
-export type CardPhase = 'pre_roll' | 'post_roll' | 'any';
-
-/** 卡片目标类型（决定 UI 需要收集哪些参数） */
-export type CardTarget = 'none' | 'player' | 'land' | 'building' | 'stock';
+/**
+ * 卡片可用时机。
+ *
+ * 只有这一维是真的被引擎读的（`checkUseCard` 用它分掷骰前 / 掷骰后）。旧的 `pre_roll`
+ * 取值删掉了：R4 把「落格窗里不摆自由菜单」收成一条硬规则后，`pre_roll` 与 `any`
+ * 在代码里走的是同一个分支（`phase !== 'post_roll'`），留两个名字只会让人以为有区别。
+ */
+export type CardPhase = 'any' | 'post_roll';
 
 export interface CardDef {
   id: string;
@@ -44,14 +47,6 @@ export interface CardDef {
   /** 商店售价（点券） */
   cost: number;
   phase: CardPhase;
-  /**
-   * 旧的目标类型标签，只被面板文案读取。
-   * W2 之后界面一律改问 `actionTargets`，这个字段在 W4 删除 —— 它无法表达
-   * 「视野内」「同类」「仅脚下」这些真实约束，正是当年门控与引擎分叉的源头。
-   */
-  target: CardTarget;
-  /** 需要选择股票（红卡/黑卡） */
-  needsStock?: boolean;
   /** 自动触发（不可主动使用） */
   auto?: boolean;
   /** 反制它的卡片 id（仅用于 UI 提示） */
@@ -290,7 +285,6 @@ export const CARDS: Record<string, CardDef> = {
     description: '将所有人的现金平分（余数归使用者）',
     cost: 200,
     phase: 'any',
-    target: 'none',
     targetSpec: noTarget(needsOtherPlayers),
     available: true,
     apply: ({ state, self: p, log }) => {
@@ -308,7 +302,6 @@ export const CARDS: Record<string, CardDef> = {
     description: '将指定对手与自己的现金平分（余数归使用者）',
     cost: 200,
     phase: 'any',
-    target: 'player',
     targetSpec: VISIBLE_PLAYER_SPEC,
     available: true,
     apply: ({ state, self: p, targetPlayer, log }) => {
@@ -326,7 +319,6 @@ export const CARDS: Record<string, CardDef> = {
     description: '以市价强制收购脚下他人的土地（连同房屋一并取得）',
     cost: 35,
     phase: 'post_roll',
-    target: 'land',
     targetSpec: { cells: 'foot', check: checkBuyLand },
     available: true,
     apply: ({ state, self: p, cellOwner, pay, log }) => {
@@ -351,7 +343,6 @@ export const CARDS: Record<string, CardDef> = {
     description: '以脚下土地换取同类型（住宅换住宅 / 商业换商业）的其他土地',
     cost: 25,
     phase: 'post_roll',
-    target: 'land',
     targetSpec: { cells: 'land', check: checkSwap('土地') },
     available: true,
     apply: ({ state, self: p, targetCell, propOf, cellOwner, log }) => {
@@ -375,7 +366,6 @@ export const CARDS: Record<string, CardDef> = {
     description: '以脚下房屋换取同类型的其他房屋（仅房屋等级互换，地权不变）',
     cost: 20,
     phase: 'post_roll',
-    target: 'land',
     targetSpec: { cells: 'land', check: checkSwap('房屋') },
     available: true,
     apply: ({ state, self: p, targetCell, propOf, cellOwner, log }) => {
@@ -398,7 +388,6 @@ export const CARDS: Record<string, CardDef> = {
     description: '使指定对手的行进方向 180° 反转',
     cost: 20,
     phase: 'any',
-    target: 'player',
     targetSpec: VISIBLE_PLAYER_SPEC,
     available: true,
     apply: ({ state, self: p, targetPlayer, log }) => {
@@ -417,7 +406,6 @@ export const CARDS: Record<string, CardDef> = {
     description: '住宅：一般建筑 ⇄ 连锁店互转（改建后不能再加盖）；商业用地：变更设施项目',
     cost: 15,
     phase: 'post_roll',
-    target: 'land',
     targetSpec: { cells: 'foot', facilities: true, check: checkRebuild },
     available: true,
     apply: ({ state, self: p, action, cellOwner, log }) => {
@@ -445,7 +433,6 @@ export const CARDS: Record<string, CardDef> = {
     description: '拍卖选定的土地，所得归使用者（使用者本人不参与竞价）',
     cost: 20,
     phase: 'post_roll',
-    target: 'land',
     targetSpec: { cells: 'land', check: checkAuction },
     available: true,
     apply: ({ state, self: p, targetCell, cellOwner, beginAuction, log }) => {
@@ -465,7 +452,6 @@ export const CARDS: Record<string, CardDef> = {
     description: '指定路段的所有房屋各加盖一层',
     cost: 160,
     phase: 'any',
-    target: 'land',
     targetSpec: { cells: 'land', check: checkStreet('upgradable') },
     available: true,
     apply: ({ state, self: p, targetCell, cellOwner, routeSegment, log }) => {
@@ -496,7 +482,6 @@ export const CARDS: Record<string, CardDef> = {
     description: '指定路段的建筑夷为平地（地权不变，原主仍持有空地）',
     cost: 180,
     phase: 'any',
-    target: 'land',
     targetSpec: { cells: 'land', check: checkStreet('derelictible') },
     available: true,
     apply: ({ state, self: p, targetCell, cellOwner, routeSegment, log }) => {
@@ -525,7 +510,6 @@ export const CARDS: Record<string, CardDef> = {
     description: '彻底摧毁一栋建筑，还原为平地',
     cost: 60,
     phase: 'any',
-    target: 'building',
     targetSpec: { cells: 'land', check: checkMonster },
     available: true,
     apply: ({ state, self: p, targetCell, cellOwner, log }) => {
@@ -541,7 +525,6 @@ export const CARDS: Record<string, CardDef> = {
     description: '建筑拆除一个等级；也可拆除路面道具（地雷 / 路障）',
     cost: 15,
     phase: 'any',
-    target: 'building',
     // 候选池 = 地块 ∪ 路障/地雷所在格，所以棋盘高亮时这三类一起亮
     targetSpec: { cells: 'land-or-obstacle', check: checkDemolish },
     available: true,
@@ -566,7 +549,6 @@ export const CARDS: Record<string, CardDef> = {
     description: '抢走对手的一张卡片或一个道具',
     cost: 25,
     phase: 'any',
-    target: 'player',
     targetSpec: { players: 'visible', check: checkSnatch },
     available: true,
     apply: ({ state, self: p, targetPlayer, randomIndex, consumeCard, consumeItem, log }) => {
@@ -595,7 +577,6 @@ export const CARDS: Record<string, CardDef> = {
     description: '使对手下一次前进时停留在原地',
     cost: 20,
     phase: 'any',
-    target: 'player',
     targetSpec: { players: 'visible-or-self', check: checkHold },
     available: true,
     apply: ({ state, self: p, action, log }) => {
@@ -620,7 +601,6 @@ export const CARDS: Record<string, CardDef> = {
     description: '所有对手睡眠 5 天，丧失收租权利',
     cost: 100,
     phase: 'any',
-    target: 'none',
     targetSpec: noTarget(needsOtherPlayers),
     available: true,
     apply: ({ state, self: p, blockRent, log }) => {
@@ -639,7 +619,6 @@ export const CARDS: Record<string, CardDef> = {
     description: '指定对手梦游 5 天：丧失收租与买地权利',
     cost: 25,
     phase: 'any',
-    target: 'player',
     targetSpec: VISIBLE_PLAYER_SPEC,
     counteredBy: ['absolve', 'shift-blame', 'revenge'],
     available: true,
@@ -658,7 +637,6 @@ export const CARDS: Record<string, CardDef> = {
     description: '使指定对手坐牢 5 天，丧失收租权利',
     cost: 20,
     phase: 'any',
-    target: 'player',
     targetSpec: VISIBLE_PLAYER_SPEC,
     counteredBy: ['absolve', 'shift-blame', 'revenge'],
     available: true,
@@ -677,7 +655,6 @@ export const CARDS: Record<string, CardDef> = {
     description: '被害入狱、被陷害、被催眠时自动拖害你的人一起下水',
     cost: 20,
     phase: 'any',
-    target: 'none',
     targetSpec: noTarget(),
     auto: true,
     available: true,
@@ -688,7 +665,6 @@ export const CARDS: Record<string, CardDef> = {
     description: '遭遇灾难时自动转嫁给他人，让其代为受过',
     cost: 40,
     phase: 'any',
-    target: 'none',
     targetSpec: noTarget(),
     auto: true,
     available: true,
@@ -699,7 +675,6 @@ export const CARDS: Record<string, CardDef> = {
     description: '租金 / 罚金 / 税金超过 2000 × 物价指数（或超过剩余资金）时自动抵用一次',
     cost: 25,
     phase: 'any',
-    target: 'none',
     targetSpec: noTarget(),
     auto: true,
     available: true,
@@ -710,7 +685,6 @@ export const CARDS: Record<string, CardDef> = {
     description: '自动抵消一次牢狱之灾（含陷害 / 梦游 / 乌龟卡）',
     cost: 25,
     phase: 'any',
-    target: 'none',
     targetSpec: noTarget(),
     auto: true,
     available: true,
@@ -722,7 +696,6 @@ export const CARDS: Record<string, CardDef> = {
     description: '送走附身的神明；也可拆走身上的定时炸弹',
     cost: 10,
     phase: 'any',
-    target: 'none',
     targetSpec: noTarget(checkSendGod),
     available: true,
     apply: ({ state, self: p, log }) => {
@@ -746,7 +719,6 @@ export const CARDS: Record<string, CardDef> = {
     description: '请来最靠近自己的神明附身',
     cost: 20,
     phase: 'any',
-    target: 'none',
     // 旧的 `guard` 字段并进这里：棋盘前提与目标合法性本来就是同一件事，分两处写就会分叉
     targetSpec: noTarget((state) => godSummonRefusal(state)),
     available: true,
@@ -765,9 +737,7 @@ export const CARDS: Record<string, CardDef> = {
     description: '炒作指定公司股价，其股票涨停板 3 天',
     cost: 60,
     phase: 'any',
-    target: 'stock',
     targetSpec: { stocks: true, check: checkStock },
-    needsStock: true,
     counteredBy: ['black-card'],
     available: true,
     apply: applyStockHalt,
@@ -778,9 +748,7 @@ export const CARDS: Record<string, CardDef> = {
     description: '打压指定公司股价，其股票跌停板 3 天',
     cost: 30,
     phase: 'any',
-    target: 'stock',
     targetSpec: { stocks: true, check: checkStock },
-    needsStock: true,
     counteredBy: ['red-card'],
     available: true,
     apply: applyStockHalt,
@@ -792,7 +760,6 @@ export const CARDS: Record<string, CardDef> = {
     description: '强制收取指定者 20% 的现金税',
     cost: 35,
     phase: 'any',
-    target: 'player',
     targetSpec: VISIBLE_PLAYER_SPEC,
     counteredBy: ['free-pass', 'shift-blame'],
     available: true,
@@ -821,7 +788,6 @@ export const CARDS: Record<string, CardDef> = {
     description: '5 天内整条街加倍收取过路费',
     cost: 35,
     phase: 'any',
-    target: 'land',
     targetSpec: { cells: 'land', check: checkStreetLand },
     counteredBy: ['seal-rent'],
     available: true,
@@ -833,7 +799,6 @@ export const CARDS: Record<string, CardDef> = {
     description: '5 天内整条街免收过路费',
     cost: 35,
     phase: 'any',
-    target: 'land',
     targetSpec: { cells: 'land', check: checkStreetLand },
     counteredBy: ['raise-rent'],
     available: true,
@@ -845,7 +810,6 @@ export const CARDS: Record<string, CardDef> = {
     description: '与指定对手同盟 7 天：互相不收过路费',
     cost: 40,
     phase: 'any',
-    target: 'player',
     targetSpec: VISIBLE_PLAYER_SPEC,
     available: true,
     apply: ({ state, self: p, targetPlayer, log }) => {
@@ -861,7 +825,6 @@ export const CARDS: Record<string, CardDef> = {
     description: '使指定对手 3 天内一次只走一步',
     cost: 70,
     phase: 'any',
-    target: 'player',
     targetSpec: VISIBLE_PLAYER_SPEC,
     counteredBy: ['absolve'],
     available: true,
