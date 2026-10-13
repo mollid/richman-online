@@ -404,11 +404,13 @@ describe('波 2 道具效果', () => {
     expect(used.pendingFixedDice).toBe(5);
   });
 
-  it('定时炸弹附身（38 步后爆炸）', () => {
+  it('定时炸弹是布设类：放到格上，不是自己背上（D-48）', () => {
     const g = newGame(907);
     g.players[0]!.items = { 'time-bomb': 1 };
-    const used = applyAction(g, { type: 'USE_ITEM', itemId: 'time-bomb' });
-    expect(used.bombs).toEqual([{ playerId: 'p1', stepsLeft: 38 }]);
+    cellAheadOfActor(g, 9);
+    const used = applyAction(g, { type: 'USE_ITEM', itemId: 'time-bomb', cellId: 9 });
+    expect(used.trapBombs).toEqual([{ cellId: 9, ownerId: 'p1' }]);
+    expect(used.bombs).toEqual([]);
   });
 
   it('飞弹轰炸范围内：房屋各拆低一级、被炸者住院 3 天（D-36）', () => {

@@ -34,7 +34,8 @@ export type AcOwners = Record<number, string>;
  * 就会出现「面板显示的与引擎算的不是同一件事」—— 那正是本项目反复踩过的那类 bug。
  */
 export interface AcEntities {
-  obstacles: Array<{ kind: 'roadblock' | 'mine'; cellId: number; ownerId: string; ownerName: string }>;
+  /** `kind: 'bomb'` = 布设在格上、还没人被附身的定时炸弹（D-48），描边取放置者色 */
+  obstacles: Array<{ kind: 'roadblock' | 'mine' | 'bomb'; cellId: number; ownerId: string; ownerName: string }>;
   bombs: Array<{ playerId: string; cellId: number; stepsLeft: number; name: string }>;
   npcs: Array<{ kind: string; cellId: number; ownerId: string | null; ownerName: string | null; jailed: boolean; name: string }>;
   beggars: Array<{ playerId: string; cellId: number; name: string }>;
@@ -127,6 +128,8 @@ export function buildAcSnapshot(game: GameState, myPlayerId: string | null): AcS
     obstacles: [
       ...game.roadblocks.map((o) => ({ kind: 'roadblock' as const, cellId: o.cellId, ownerId: o.ownerId, ownerName: nameOf(o.ownerId) })),
       ...game.mines.map((o) => ({ kind: 'mine' as const, cellId: o.cellId, ownerId: o.ownerId, ownerName: nameOf(o.ownerId) })),
+      // 布设在格上的炸弹（D-48）：与路障地雷同一类「谁放的」要说得出来源
+      ...game.trapBombs.map((o) => ({ kind: 'bomb' as const, cellId: o.cellId, ownerId: o.ownerId, ownerName: nameOf(o.ownerId) })),
     ],
     // 挂身炸弹跟着携带者的位置走；找不到人时给 -1，渲染层按「不上屏」处理
     bombs: game.bombs.map((b) => ({

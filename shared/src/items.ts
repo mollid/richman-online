@@ -16,6 +16,14 @@ import { needCell, needPlayer, ownerOfCell, type TargetCheck, type TargetSpec } 
  * `ItemEffectCtx` 调用，新增一件道具只改本文件一处。
  */
 
+/**
+ * 定时炸弹的引信（ITEM-04 / help「附身后走满 38 步自动爆炸」）。
+ *
+ * 记在道具侧而不是引擎里：这是这张道具自己的数值。`engine.ts` 在踩中与倒数时读它，
+ * 描述文案也读它 —— 改一个数不会让说明和行为分家。
+ */
+export const BOMB_FUSE_STEPS = 38;
+
 export interface ItemDef {
   id: string;
   name: string;
@@ -48,15 +56,19 @@ export interface ItemDef {
 // ---------------------------------------------------------------------------
 
 /** 路障 / 地雷：只能在**视野内**布设（决策人定案，与 help [88][95]「視窗範圍內的……道路」同源），且那一格不能站着别的玩家 */
-function obstacleCheck(kind: 'roadblocks' | 'mines'): TargetCheck {
-  const what = kind === 'mines' ? '地雷' : '路障';
+/**
+ * 布设类道具（路障 / 地雷 / 定时炸弹）共用的三条格前提：在视野内、这格上还没有同类、
+ * 没有别人正停在这里。措辞按道具给（「不能埋设地雷」+「不能放置定时炸弹」读起来才是人话），
+ * 规则本身三件共用 —— 一个实现三处用，就不会出现"路障有视野限制而地雷忘了"。
+ */
+function obstacleCheck(kind: 'roadblocks' | 'mines' | 'trapBombs', what: string, verb: string): TargetCheck {
   return (state, actor, want) => {
     const base = needCell('view')(state, actor, want);
     if (base) return base;
     const id = want.cellId!;
     if (state[kind].some((o) => o.cellId === id)) return `此处已有${what}`;
     if (state.players.some((q) => !q.bankrupt && q.id !== actor.id && q.position === id)) {
-      return `此处有玩家停留，不能${kind === 'mines' ? '埋设' : '设置'}${what}`;
+      return `此处有玩家停留，不能${verb}${what}`;
     }
     return null;
   };
@@ -66,7 +78,9 @@ function obstacleCheck(kind: 'roadblocks' | 'mines'): TargetCheck {
 const checkRobotDoll: TargetCheck = (state, actor) => {
   const ahead = pathAhead(state.board, actor.position, actor.heading, 9);
   const hasObstacle =
-    state.roadblocks.some((o) => ahead.includes(o.cellId)) || state.mines.some((o) => ahead.includes(o.cellId));
+    state.roadblocks.some((o) => ahead.includes(o.cellId)) ||
+    state.mines.some((o) => ahead.includes(o.cellId)) ||
+    state.trapBombs.some((o) => ahead.includes(o.cellId));
   const hasBomb = state.bombs.some((b) =>
     state.players.some((q) => q.id === b.playerId && !q.bankrupt && ahead.includes(q.position)),
   );
@@ -80,16 +94,6 @@ function vehicleCheck(level: 2 | 3): TargetCheck {
   return (_state, actor) =>
     actor.diceCount === level ? (level === 2 ? '已经骑在机车上了' : '已经开上汽车了') : null;
 }
-
-/** 定时炸弹：不传目标 = 装自己身上；传了就必须是视野内、身上没炸弹的对手 */
-const checkTimeBomb: TargetCheck = (state, actor, want) => {
-  if (want.targetPlayerId === undefined) {
-    return state.bombs.some((b) => b.playerId === actor.id) ? '身上已有定时炸弹' : null;
-  }
-  const base = needPlayer()(state, actor, want);
-  if (base) return base;
-  return state.bombs.some((b) => b.playerId === want.targetPlayerId) ? '对方身上已有定时炸弹' : null;
-};
 
 /** 传送机：目标格必须空着且不是脚下；带人时那人得在视野内 */
 const checkTeleporter: TargetCheck = (state, actor, want) => {
@@ -145,8 +149,11 @@ export const ITEMS: Record<string, ItemDef> = {
       const ahead = pathAhead(state.board, p.position, p.heading, 9);
       const beforeRoad = state.roadblocks.length;
       const beforeMine = state.mines.length;
+      const beforeTrap = state.trapBombs.length;
       state.roadblocks = state.roadblocks.filter((o) => !ahead.includes(o.cellId));
       state.mines = state.mines.filter((o) => !ahead.includes(o.cellId));
+      // 布设出来的定时炸弹（D-48）也算路上障碍，一样踢得走；已经在人身上的那颗不归它管
+      state.trapBombs = state.trapBombs.filter((o) => !ahead.includes(o.cellId));
       let defused = 0;
       for (const q of state.players) {
         if (q.bankrupt || !ahead.includes(q.position)) continue;
@@ -156,7 +163,8 @@ export const ITEMS: Record<string, ItemDef> = {
           defused += 1;
         }
       }
-      const cleared = beforeRoad - state.roadblocks.length + (beforeMine - state.mines.length) + defused;
+      const cleared =
+        beforeRoad - state.roadblocks.length + (beforeMine - state.mines.length) + (beforeTrap - state.trapBombs.length) + defused;
       const beforeDog = state.npcs.length;
       state.npcs = state.npcs.filter((n) => n.kind !== 'dog' || n.jailed || !ahead.includes(n.position));
       const kickedDogs = beforeDog - state.npcs.length;
@@ -175,7 +183,7 @@ export const ITEMS: Record<string, ItemDef> = {
     name: '路障',
     description: '在视野内的道路放置路障，经过者被截停',
     cost: 30,
-    targetSpec: { cells: 'view', check: obstacleCheck('roadblocks') },
+    targetSpec: { cells: 'view', check: obstacleCheck('roadblocks', '路障', '设置') },
     researchLevel: null,
     apply: ({ state, self: p, targetCell, log }) => {
       // ITEM-02：在视野内、没有他人停留的道路上设置路障（可挡自己也可害别人）。
@@ -190,7 +198,7 @@ export const ITEMS: Record<string, ItemDef> = {
     name: '地雷',
     description: '在视野内的道路埋设地雷，踩中者住院 3 天（也可能害到自己）',
     cost: 25,
-    targetSpec: { cells: 'view', check: obstacleCheck('mines') },
+    targetSpec: { cells: 'view', check: obstacleCheck('mines', '地雷', '埋设') },
     researchLevel: null,
     apply: ({ state, self: p, targetCell, log }) => {
       // ITEM-03：埋设地雷，踩中者住院 3 天（也可能害到自己）
@@ -202,21 +210,16 @@ export const ITEMS: Record<string, ItemDef> = {
   'time-bomb': {
     id: 'time-bomb',
     name: '定时炸弹',
-    description: '附身后走满 38 步自动爆炸，威力范围内人住院 5 天、房屋倒塌；也可直接丢给视野内的对手',
+    description: `放到视野内的格子上，谁踩中谁背走；附身后走满 ${BOMB_FUSE_STEPS} 步自动爆炸，威力范围内人住院 5 天、房屋倒塌`,
     cost: 25,
-    // 不选人 = 装自己身上，所以候选池是「视野内对手」而不是「必须选一个」
-    targetSpec: { players: 'visible', check: checkTimeBomb },
+    // ITEM-04 / D-48：原版是**布设**到「视窗内无他人停留的道路」，与路障 / 地雷同一条通路；
+    // 「直接丢给某个玩家」从来不是原版的操作（那是甩锅，见 engine.ts 的同格转移）。
+    targetSpec: { cells: 'view', check: obstacleCheck('trapBombs', '定时炸弹', '放置') },
     researchLevel: null,
-    apply: ({ state, self: p, action, targetPlayer, log }) => {
-      // ITEM-04：附身走满 38 步爆炸；若指定 targetPlayerId 则直接转手丢给该玩家
-      if (action.targetPlayerId) {
-        const victim = targetPlayer();
-        state.bombs = [...state.bombs, { playerId: victim.id, stepsLeft: 38 }];
-        log(state, `${p.name} 把定时炸弹丢给了 ${victim.name}（38 步后爆炸）`);
-        return;
-      }
-      state.bombs = [...state.bombs, { playerId: p.id, stepsLeft: 38 }];
-      log(state, `${p.name} 装上定时炸弹（38 步后爆炸），快蹭给别人！`);
+    apply: ({ state, self: p, targetCell, log }) => {
+      const id = targetCell();
+      state.trapBombs = [...state.trapBombs, { cellId: id, ownerId: p.id }];
+      log(state, `${p.name} 在「${state.board[id]!.name}」放下定时炸弹（踩到的人背走，${BOMB_FUSE_STEPS} 步后爆炸）`);
     },
   },
   motorbike: {

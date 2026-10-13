@@ -242,7 +242,8 @@ describe('移动路径记进状态（movePath）', () => {
           seen += 1;
           // 第一步必须从脚下这格的邻居出发（路径不含起点）
           expect(s.board[from0]!.neighbors).toContain(path[0]);
-          // 路障 / 地雷 / 撞神会截停（恶犬与宝箱只认踩中，不截停），所以只能断「不超过骰和」
+          // 路障会截停、撞神会在那一格 break（地雷与炸弹踩中生效但不拦人，D-49），
+          // 所以这里只能断「不超过骰和」
           expect(path.length).toBeLessThanOrEqual(s.dice!.reduce((a, b) => a + b, 0));
           continue;
         }

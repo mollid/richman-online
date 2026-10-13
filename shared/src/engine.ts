@@ -49,7 +49,7 @@ import {
 } from './stocks.js';
 import { CARDS, CHANCE_CARD_POOL, SHOP_CARD_IDS } from './cards.js';
 import { resolveLanding } from './cell_handlers.js';
-import { ITEMS, SHOP_ITEM_IDS, STARTING_ITEMS } from './items.js';
+import { BOMB_FUSE_STEPS, ITEMS, SHOP_ITEM_IDS, STARTING_ITEMS } from './items.js';
 import type { CellLandingCtx, EffectKit, GodEffectCtx } from './effect_ctx.js';
 import { landingVenueOf } from './effect_ctx.js';
 import { nextRandom, rollDie } from './rng.js';
@@ -325,6 +325,7 @@ export function createGame(players: PlayerDef[], seed = Date.now() % 2147483647,
     pendingFixedDice: null,
     roadblocks: [],
     mines: [],
+    trapBombs: [],
     bombs: [],
     stockHalts: [],
     rentEffects: [],
@@ -2246,6 +2247,8 @@ function rollDice(state: GameState, action: Extract<PlayerAction, { type: 'ROLL_
   const path: number[] = [];
   let steppedOnMine = false;
   let bittenByDog = false;
+  /** 本次移动中**踩到**的布设炸弹：不截停（只有路障拦人），但附上之后剩下的步数才开始倒数 */
+  let pickedBombAt = -1;
   /** 移动途中撞上的驻留神明所在格（null = 没撞上；路障等截停优先时保持 null） */
   let godCell: number | null = null;
   for (let i = 0; i < steps; i++) {
@@ -2267,14 +2270,25 @@ function rollDice(state: GameState, action: Extract<PlayerAction, { type: 'ROLL_
       state.mines = state.mines.filter((o) => o.cellId !== pos);
       steppedOnMine = true;
       log(state, `${p.name} 踩中地雷，被炸伤`);
-      break;
+      // 不截停：地雷是「踩中生效」，不是拦截 —— 全场只有路障会拦下移动（D-49）。
+      // 送医与「这一格不结算」留在循环外那段，走的步数照旧走完。
+    }
+    /* 布设的定时炸弹（ITEM-04 / D-48）：**踩中即附身**，但不截停 —— 只有路障有拦截功能，
+       其他道具没有。附上之后剩下的路才开始算那 38 步，所以记下踩中的步序。
+       身上已经背着一颗的人再接第二颗会让倒数说不清（`bombs` 只认第一条），那枚就留在原地。 */
+    const trap = state.trapBombs.find((o) => o.cellId === pos);
+    if (trap && !state.bombs.some((b) => b.playerId === p.id)) {
+      state.trapBombs = state.trapBombs.filter((o) => o !== trap);
+      state.bombs = [...state.bombs, { playerId: p.id, stepsLeft: BOMB_FUSE_STEPS }];
+      pickedBombAt = moved;
+      log(state, `${p.name} 踩到「${state.board[pos]!.name}」上的定时炸弹，被迫背起来（${BOMB_FUSE_STEPS} 步后爆炸）`);
     }
     // 乞丐（EVT-04 / D-46）只认**踩中**那一格，与恶犬/宝箱同口径 ⇒ 不在这里判定，
     // 挪到落定之后（见下方 `beggarOnLanding`），否则「路过乞讨格」也会被强制施舍。
     // GOD 现身机制（W2）：日切现身的驻留神明，**经过即附身**。
-    // 排在路障 / 地雷 / 恶犬之后：那三者是截停型强效果，必须优先，
-    // 否则「被路障截停在神明格」会既算截停又算附身，一个回合双触发。
-    // 因此这里只记格号并 break，附身留到循环外结算 —— 被前三者截停时本行根本不会执行。
+    // 排在路障之后：路障会 break，「被路障截停在神明格」不该既算截停又算附身（一个回合双触发）。
+    // 地雷（D-49）与炸弹都不再拦人，所以它们与附身同回合发生是正常结果。
+    // 因此这里只记格号并 break，附身留到循环外结算。
     if (boardGodAt(state, pos)) {
       godCell = pos;
       break;
@@ -2306,10 +2320,11 @@ function rollDice(state: GameState, action: Extract<PlayerAction, { type: 'ROLL_
     if (p.bulldozerSteps <= 0) retireBulldozer(state, p, '跑满 18 步');
   }
 
-  // 定时炸弹（ITEM-04）：走满 38 步自动爆炸
+  /* 定时炸弹（ITEM-04）：引信按**背在身上走过的步数**扣。
+     本次中途才踩到的那颗，踩中之前的步数不该算进它的倒数。 */
   const bomb = state.bombs.find((b) => b.playerId === p.id);
   if (bomb) {
-    bomb.stepsLeft -= moved;
+    bomb.stepsLeft -= pickedBombAt >= 0 ? moved - pickedBombAt : moved;
     if (bomb.stepsLeft <= 0) {
       state.bombs = state.bombs.filter((b) => b !== bomb);
       detonate(state, pos, 1, 5, '定时炸弹爆炸');
@@ -2319,16 +2334,21 @@ function rollDice(state: GameState, action: Extract<PlayerAction, { type: 'ROLL_
     log(state, `${p.name} 身上的定时炸弹还剩 ${Math.max(0, bomb.stepsLeft)} 步`);
   }
 
-  if (steppedOnMine) {
-    p.skipTurns = Math.max(p.skipTurns, 3);
-    blockRent(p, 3);
-    log(state, `${p.name} 住院 3 天，且暂时无法收租`);
-    advanceTurn(state);
-    return;
+  /* 甩锅（D-48，help「碰到别人可丢给他」）：背着炸弹的人走到别人那一格 ⇒ 炸弹换人背。
+     引信不重置，只是接手 —— 所以原地那位最怕来人，而背包的那个最想撞上去。
+     已经在背炸弹的人不能再塞第二颗（倒数只认第一条，两颗会算不清）。 */
+  if (bomb && bomb.stepsLeft > 0) {
+    const victim = state.players.find(
+      (q) => q.id !== p.id && !q.bankrupt && q.position === pos && !state.bombs.some((b) => b.playerId === q.id),
+    );
+    if (victim) {
+      bomb.playerId = victim.id;
+      log(state, `${p.name} 在「${state.board[pos]!.name}」撞上 ${victim.name}，把定时炸弹甩给了对方（还剩 ${bomb.stepsLeft} 步）`);
+    }
   }
 
   // NPC-05 恶犬与 TILE-31 宝箱都只认**踩中**那一格（用户规则：路过不算撞上）。
-  // 所以它们不在移动循环里，而在落定之后 —— 循环只管路障与地雷这类截停型效果。
+  // 所以它们不在移动循环里，而在落定之后 —— 循环里只有路障真的拦人（D-49）。
   const dogIdx = state.npcs.findIndex((n) => n.kind === 'dog' && n.position === pos);
   if (dogIdx >= 0) {
     const dogCell = state.board[pos]!;
@@ -2376,6 +2396,17 @@ function rollDice(state: GameState, action: Extract<PlayerAction, { type: 'ROLL_
       advanceTurn(state);
       return;
     }
+  }
+
+  /* 地雷（ITEM-03 / D-49）：踩中即生效，但**不拦下这一手** —— 上面那些"只认踩中"的结算
+     （乞丐 / 恶犬 / 宝箱 / 神明附身）照常在落点上办完，然后人才被送去医院。
+     住院期间不再办理这一格的落格事务（不买地、不缴租、不开店）。 */
+  if (steppedOnMine) {
+    p.skipTurns = Math.max(p.skipTurns, 3);
+    blockRent(p, 3);
+    log(state, `${p.name} 住院 3 天，且暂时无法收租`);
+    advanceTurn(state);
+    return;
   }
 
   // 行进显灵·落格类（GOD-01 土地公侵占 / GOD-10 天使加盖 / GOD-11 恶魔拆屋）

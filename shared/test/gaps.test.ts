@@ -3,6 +3,7 @@ import {
   applyAction,
   availableActions,
   BOARD_SIZE,
+  BOMB_FUSE_STEPS,
   createGame,
   DEATH_DURATION_DAYS,
   godDef,
@@ -12,7 +13,7 @@ import {
   type GameState,
   type PlayerDef,
 } from '../src/index.js';
-import { pinIndexOne, putGodOnBoard, standAt as openLandingWindow } from './helpers/state.js';
+import { cellAheadOfActor, pinIndexOne, putGodOnBoard, standAt as openLandingWindow } from './helpers/state.js';
 
 /**
  * 波 10a 缺口补齐测试（对应需求项）：
@@ -20,7 +21,7 @@ import { pinIndexOne, putGodOnBoard, standAt as openLandingWindow } from './help
  * - CARD-29 同盟：联合收费各得一半 + 陷害盟友自动解除；
  * - GOD-01 土地公：隔月才再出现（help [40]）；
  * - ITEM-01 机器娃娃：清除前方 9 步内的特殊人物与神明；
- * - ITEM-04 定时炸弹：可丢给他人；
+ * - ITEM-04 定时炸弹：布设到格上 → 踩中附身 → 同格甩锅（D-48）；
  * - ITEM-11 传送机：可移动他人；
  * - TILE-08/09 医院：住院每日医药费 + 门外办理出院（help [37]）；
  * - ECON-12：手牌额满须选择舍弃；
@@ -242,34 +243,146 @@ describe('ITEM-01 机器娃娃：清除路上障碍、恶犬与驻留神明', ()
   });
 });
 
-describe('ITEM-04 定时炸弹：可丢给他人', () => {
-  it('指定目标时炸弹直接转到对方身上', () => {
-    const g = newGame();
-    g.players[0]!.items = { 'time-bomb': 1 };
-    const r = applyAction(g, { type: 'USE_ITEM', itemId: 'time-bomb', targetPlayerId: 'p2' });
-    expect(r.bombs).toHaveLength(1);
-    expect(r.bombs[0]!.playerId).toBe('p2');
-    expect(r.bombs[0]!.stepsLeft).toBe(38);
-    expect(r.log.some((l) => l.text.includes('丢给了'))).toBe(true);
+describe('ITEM-03 地雷：踩中生效，但不拦人（D-49）', () => {
+  /** 20 号起固定走 6 步，路上 23 号放一样东西 */
+  function walkPast(state: GameState, thing: 'mines' | 'roadblocks'): GameState {
+    const s = structuredClone(state);
+    s.players.forEach((q, i) => {
+      q.position = [2, 40, 55][i]!;
+      q.bankrupt = false;
+    });
+    s[thing] = [{ cellId: 23, ownerId: 'p2' }];
+    s.pendingFixedDice = 6;
+    const p = s.players[s.currentPlayerIndex]!;
+    p.diceCount = 1;
+    p.position = 20;
+    return s;
+  }
+
+  it('踩雷之后仍把这一手走完：落点是 26，不是雷所在的 23', () => {
+    const rolled = applyAction(walkPast(newGame(), 'mines'), { type: 'ROLL_DICE' });
+    expect(rolled.players[0]!.position).toBe(26);
+    expect(rolled.mines).toEqual([]);
+    expect(rolled.players[0]!.skipTurns).toBe(3);
+    // 住院就不要再办这一格的事（不买地、不缴租）
+    expect(rolled.phase).not.toBe('awaiting_action');
   });
 
-  it('不指定目标时炸弹留在自己身上', () => {
-    const g = newGame();
+  it('对照：同一条路上只有路障真的会把人拦下', () => {
+    const rolled = applyAction(walkPast(newGame(), 'roadblocks'), { type: 'ROLL_DICE' });
+    expect(rolled.players[0]!.position).toBe(23);
+    expect(rolled.roadblocks).toEqual([]);
+    expect(rolled.players[0]!.skipTurns).toBe(0);
+  });
+});
+
+describe('ITEM-04 定时炸弹：放格 → 踩中才附身 → 同格甩锅（D-48）', () => {
+  /**
+   * 站位是本文件这几条用例的骨架，全部钉死：
+   * p1=2、p2=40、p3=55，行动一律发生在 20~26 这段路上 —— 除用例自己安排的相遇，
+   * 谁都不会正好站在谁的落点上（那会触发甩锅，把断言搅浑）。
+   */
+  function parked(state: GameState): GameState {
+    const s = structuredClone(state);
+    s.players.forEach((q, i) => {
+      q.position = [2, 40, 55][i]!;
+      q.bankrupt = false;
+    });
+    return s;
+  }
+
+  /** 把当前行动者摆到 `from`，并固定一颗骰子走 `dice` 步（掷骰本身 0 抽数） */
+  function walkFrom(state: GameState, from: number, dice: number): GameState {
+    const s = structuredClone(state);
+    s.pendingFixedDice = dice;
+    const p = s.players[s.currentPlayerIndex]!;
+    p.diceCount = 1;
+    p.position = from;
+    return s;
+  }
+
+  it('使用只让地上多一颗：引信没点，谁也没背', () => {
+    const g = parked(newGame());
     g.players[0]!.items = { 'time-bomb': 1 };
-    const r = applyAction(g, { type: 'USE_ITEM', itemId: 'time-bomb' });
-    expect(r.bombs[0]!.playerId).toBe('p1');
+    cellAheadOfActor(g, 9);
+    const used = applyAction(g, { type: 'USE_ITEM', itemId: 'time-bomb', cellId: 9 });
+    expect(used.trapBombs).toEqual([{ cellId: 9, ownerId: 'p1' }]);
+    expect(used.bombs).toEqual([]);
+    // 旧那句「裸着按 = 装自己身上」不再成立 —— 它是选格动作，缺目标就该被门控挡下
+    expect(() => applyAction(g, { type: 'USE_ITEM', itemId: 'time-bomb' })).toThrow('请选择目标格');
   });
 
-  it('非法目标被拒（自己/不存在/已倒闭/对方已有）', () => {
-    const g = newGame();
-    g.players[0]!.items = { 'time-bomb': 1 };
-    expect(() => applyAction(g, { type: 'USE_ITEM', itemId: 'time-bomb', targetPlayerId: 'p1' })).toThrow();
-    expect(() => applyAction(g, { type: 'USE_ITEM', itemId: 'time-bomb', targetPlayerId: 'nobody' })).toThrow();
-    g.players[2]!.bankrupt = true;
-    expect(() => applyAction(g, { type: 'USE_ITEM', itemId: 'time-bomb', targetPlayerId: 'p3' })).toThrow();
-    g.players[2]!.bankrupt = false;
-    g.bombs = [{ playerId: 'p2', stepsLeft: 10 }];
-    expect(() => applyAction(g, { type: 'USE_ITEM', itemId: 'time-bomb', targetPlayerId: 'p2' })).toThrow();
+  it('踩中那一格才附身，而且**不截停**：只有路障有拦截功能', () => {
+    const g = parked(newGame());
+    g.trapBombs = [{ cellId: 23, ownerId: 'p1' }];
+    g.currentPlayerIndex = 1; // 小美去踩：20 起走 6 步，途中经过 23
+    const rolled = applyAction(walkFrom(g, 20, 6), { type: 'ROLL_DICE' });
+    expect(rolled.players[1]!.position).toBe(26);
+    expect(rolled.trapBombs).toEqual([]);
+    expect(rolled.bombs).toEqual([{ playerId: 'p2', stepsLeft: BOMB_FUSE_STEPS - 3 }]);
+    expect(rolled.log.some((l) => l.text.includes('被迫背起来'))).toBe(true);
+  });
+
+  it('引信从踩中那一刻起算：踩得早烧得多，踩在最后一步一分不烧', () => {
+    const early = parked(newGame());
+    early.trapBombs = [{ cellId: 21, ownerId: 'p1' }];
+    const e = applyAction(walkFrom(early, 20, 6), { type: 'ROLL_DICE' });
+    expect(e.bombs[0]!.stepsLeft).toBe(BOMB_FUSE_STEPS - 5);
+
+    const lastly = parked(newGame());
+    lastly.trapBombs = [{ cellId: 26, ownerId: 'p1' }];
+    const l = applyAction(walkFrom(lastly, 20, 6), { type: 'ROLL_DICE' });
+    expect(l.players[0]!.position).toBe(26);
+    expect(l.bombs[0]!.stepsLeft).toBe(BOMB_FUSE_STEPS);
+  });
+
+  it('背着炸弹的人走到别人那一格 ⇒ 炸弹换人背，剩余步数不清零', () => {
+    const g = parked(newGame());
+    g.players[1]!.position = 26; // 小美正好在落点上
+    g.bombs = [{ playerId: 'p1', stepsLeft: 20 }];
+    const rolled = applyAction(walkFrom(g, 20, 6), { type: 'ROLL_DICE' });
+    expect(rolled.bombs).toEqual([{ playerId: 'p2', stepsLeft: 14 }]);
+    expect(rolled.log.some((l) => l.text.includes('甩给了'))).toBe(true);
+  });
+
+  it('对方身上已经有一颗时甩不出去（倒数只认第一条，两颗会算不清）', () => {
+    const g = parked(newGame());
+    g.players[1]!.position = 26;
+    g.bombs = [{ playerId: 'p1', stepsLeft: 20 }, { playerId: 'p2', stepsLeft: 7 }];
+    const rolled = applyAction(walkFrom(g, 20, 6), { type: 'ROLL_DICE' });
+    expect(rolled.bombs.find((b) => b.playerId === 'p1')!.stepsLeft).toBe(14);
+    expect(rolled.bombs.find((b) => b.playerId === 'p2')!.stepsLeft).toBe(7);
+  });
+
+  it('已经在背的人再踩到地上那颗 ⇒ 留在原地，不出现一人两颗', () => {
+    const g = parked(newGame());
+    g.bombs = [{ playerId: 'p1', stepsLeft: 30 }];
+    g.trapBombs = [{ cellId: 23, ownerId: 'p2' }];
+    const rolled = applyAction(walkFrom(g, 20, 6), { type: 'ROLL_DICE' });
+    expect(rolled.trapBombs).toEqual([{ cellId: 23, ownerId: 'p2' }]);
+    expect(rolled.bombs).toEqual([{ playerId: 'p1', stepsLeft: 24 }]);
+  });
+
+  it('走满引信才炸：落点 3×3 内爆炸并结束这一手', () => {
+    const g = parked(newGame());
+    g.bombs = [{ playerId: 'p1', stepsLeft: 3 }];
+    const rolled = applyAction(walkFrom(g, 20, 3), { type: 'ROLL_DICE' });
+    expect(rolled.bombs).toEqual([]);
+    expect(rolled.log.some((l) => l.text.includes('定时炸弹爆炸'))).toBe(true);
+  });
+
+  it('机器娃娃与拆除卡都清得掉地上那颗（D-42 / D-48）', () => {
+    const swept = parked(newGame());
+    swept.trapBombs = [{ cellId: 7, ownerId: 'p2' }];
+    swept.players[0]!.items = { 'robot-doll': 1 };
+    const used = applyAction(swept, { type: 'USE_ITEM', itemId: 'robot-doll' });
+    expect(used.trapBombs).toEqual([]);
+
+    const cards = parked(newGame());
+    cards.trapBombs = [{ cellId: 40, ownerId: 'p2' }];
+    cards.players[0]!.cards = ['demolish'];
+    const removed = applyAction(cards, { type: 'USE_CARD', cardId: 'demolish', cellId: 40 });
+    expect(removed.trapBombs).toEqual([]);
   });
 });
 

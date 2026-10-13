@@ -137,7 +137,15 @@ export function candidateCells(state: GameState, actor: Player, pool: CellPool):
     case 'own-land':
       return actor.properties.map((q) => q.cellId);
     case 'land-or-obstacle':
-      return [...new Set([...land, ...state.roadblocks.map((o) => o.cellId), ...state.mines.map((o) => o.cellId)])];
+      return [
+        ...new Set([
+          ...land,
+          ...state.roadblocks.map((o) => o.cellId),
+          ...state.mines.map((o) => o.cellId),
+          // 布设的定时炸弹也是路面道具，拆除卡一样拆得掉（D-48）
+          ...state.trapBombs.map((o) => o.cellId),
+        ]),
+      ];
   }
 }
 

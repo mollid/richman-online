@@ -288,6 +288,7 @@ function emptyState(): GameState {
     pendingFixedDice: null,
     roadblocks: [],
     mines: [],
+    trapBombs: [],
     bombs: [],
     stockHalts: [],
     rentEffects: [],

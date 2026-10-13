@@ -200,7 +200,7 @@ const checkMonster: TargetCheck = (state, p, want) => {
   return null;
 };
 
-/** 拆除卡（CARD-12）：地产降一级，或清掉路障 / 地雷 */
+/** 拆除卡（CARD-12）：地产降一级，或清掉路障 / 地雷 / 布设的定时炸弹（D-42 + D-48） */
 const checkDemolish: TargetCheck = (state, p, want) => {
   const base = needCell('land-or-obstacle')(state, p, want);
   if (base) return base;
@@ -209,6 +209,7 @@ const checkDemolish: TargetCheck = (state, p, want) => {
   if (owned && owned.property.grade > 1) return null;
   if (state.mines.some((o) => o.cellId === id)) return null;
   if (state.roadblocks.some((o) => o.cellId === id)) return null;
+  if (state.trapBombs.some((o) => o.cellId === id)) return null;
   return '目标没有可拆除的建筑或道具';
 };
 
@@ -540,6 +541,9 @@ export const CARDS: Record<string, CardDef> = {
       } else if (state.roadblocks.some((o) => o.cellId === id)) {
         state.roadblocks = state.roadblocks.filter((o) => o.cellId !== id);
         log(state, `${p.name} 使用「拆除卡」，清除了「${state.board[id]!.name}」的路障`);
+      } else if (state.trapBombs.some((o) => o.cellId === id)) {
+        state.trapBombs = state.trapBombs.filter((o) => o.cellId !== id);
+        log(state, `${p.name} 使用「拆除卡」，拆掉了「${state.board[id]!.name}」上布设的定时炸弹`);
       }
     },
   },
