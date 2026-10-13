@@ -2,8 +2,8 @@ import { useState } from 'react';
 import { availableActions, CARDS, FACILITIES, FACILITY_ORDER, ITEMS, MAX_HAND_CARDS, MAX_ITEM_COUNT } from '@richman/shared';
 import type { FacilityType, GameState, PlayerAction } from '@richman/shared';
 
-/** 需要显式选择目标格（默认不取脚下）的卡片；改建卡/购地卡按原版使用时机只能对「脚下」使用 */
-const CARD_REQUIRES_CELL = new Set(['swap-land', 'swap-house']);
+/** 需要显式选择目标格（默认不取脚下）的卡片 */
+const CARD_REQUIRES_CELL = new Set(['swap-land', 'swap-house', 'rebuild']);
 /** 需要显式选择目标格（默认不取脚下）的道具 */
 const ITEM_REQUIRES_CELL = new Set(['roadblock', 'mine', 'missile', 'nuke', 'teleporter']);
 
@@ -20,19 +20,12 @@ export function HandPanel({ game, onAction, interactive = true }: { game: GameSt
   if (!current || (current.cards.length === 0 && Object.keys(current.items).length === 0)) return null;
 
   const others = game.players.filter((p) => p.id !== current.id && !p.bankrupt);
+  const effectiveTarget = targetId && others.some((p) => p.id === targetId) ? targetId : others[0]?.id ?? '';
+  const effectiveStock = game.stockMarket.stocks.some((s) => s.id === stockId) ? stockId : game.stockMarket.stocks[0]?.id ?? '';
+
   const heldCards = current.cards.filter((id) => CARDS[id]);
   const heldItems = Object.keys(current.items).filter((id) => ITEMS[id] && (current.items[id] ?? 0) > 0);
   const itemCount = heldItems.reduce((n, id) => n + (current.items[id] ?? 0), 0);
-  // 卡片目标必选（回落第一个对手；停留卡可选「自己」）；道具目标可留空（炸弹/传送机作用于自己）
-  const holdCard = heldCards.includes('hold');
-  const effectiveTarget =
-    targetId && (targetId === current.id || others.some((p) => p.id === targetId))
-      ? targetId
-      : holdCard
-        ? current.id // 只有停留卡时默认作用于自己（原地再停留）
-        : others[0]?.id ?? '';
-  const itemTarget = targetId && others.some((p) => p.id === targetId) ? targetId : '';
-  const effectiveStock = game.stockMarket.stocks.some((s) => s.id === stockId) ? stockId : game.stockMarket.stocks[0]?.id ?? '';
 
   const cardNeedsCell = heldCards.some((id) => {
     const t = CARDS[id]!.target;
@@ -49,9 +42,9 @@ export function HandPanel({ game, onAction, interactive = true }: { game: GameSt
     : game.board.filter((c) => c.type === 'property' || c.type === 'commercial' || game.mines.includes(c.id) || game.roadblocks.includes(c.id));
   const needsCell = cardNeedsCell || itemNeedsCell;
   const currentCellName = game.board[current.position]?.name ?? `${current.position}`;
-  // 改建卡（CARD-07）：按原版只能改建「脚下」的土地；脚下为商业用地时还需选择要变更成的设施项目
+  // 改建卡（CARD-07）：目标为商业用地时还需选择要变更成的设施项目
   const rebuildCard = heldCards.includes('rebuild');
-  const rebuildTargetCommercial = game.board[current.position]?.type === 'commercial';
+  const rebuildTargetCommercial = cellId !== '' && game.board[cellId as number]?.type === 'commercial';
 
   const canAct = game.phase === 'awaiting_roll' || game.phase === 'awaiting_action';
 
@@ -63,8 +56,7 @@ export function HandPanel({ game, onAction, interactive = true }: { game: GameSt
       cardId,
       targetPlayerId: card.target === 'player' ? effectiveTarget : undefined,
       stockId: card.needsStock ? effectiveStock : undefined,
-      // 改建卡固定作用于脚下格，不携带目标选择
-      cellId: cardId !== 'rebuild' && wantsCell && cellId !== '' ? cellId : undefined,
+      cellId: wantsCell && cellId !== '' ? cellId : undefined,
       facility: cardId === 'rebuild' && rebuildTargetCommercial ? facility : undefined,
     });
   };
@@ -76,8 +68,6 @@ export function HandPanel({ game, onAction, interactive = true }: { game: GameSt
       type: 'USE_ITEM',
       itemId,
       cellId: wantsCell && cellId !== '' ? cellId : undefined,
-      // ITEM-04 炸弹 / ITEM-11 传送机：可选指定一名对手；留空则作用于自己
-      targetPlayerId: item.target === 'player' ? itemTarget || undefined : undefined,
       diceValue: item.needsDiceValue ? diceValue : undefined,
     });
   };
@@ -186,22 +176,6 @@ export function HandPanel({ game, onAction, interactive = true }: { game: GameSt
         <div className="param-row">
           <label>目标玩家</label>
           <select value={effectiveTarget} onChange={(e) => setTargetId(e.target.value)}>
-            {holdCard && <option value={current.id}>自己（原地停留）</option>}
-            {others.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </select>
-        </div>
-      )}
-
-      {/* ITEM-04 炸弹 / ITEM-11 传送机：可选对手，留空则作用于自己 */}
-      {heldItems.some((id) => ITEMS[id]!.target === 'player') && (
-        <div className="param-row">
-          <label>道具目标</label>
-          <select value={itemTarget} onChange={(e) => setTargetId(e.target.value)}>
-            <option value="">不指定（作用于自己）</option>
             {others.map((p) => (
               <option key={p.id} value={p.id}>
                 {p.name}
