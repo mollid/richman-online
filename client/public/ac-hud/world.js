@@ -28,6 +28,13 @@
   let renderer, scene, camera, host, state, view, S;
   let perspCam = null, orthoCam = null, keyLight = null;
   let tileMeshes = [], decalByCell = new Map(), tokenGroups = new Map(), rimGroup = null;
+  /* 选格模式（W3）：合法格用一圈实例化的绿环标出，非法格把格面压暗 —— 一帧一次 draw call，
+     不能给 64 格各挂一个 mesh（本文件里已经为这件事写过一次教训：软件渲染下 64 次绘制吃掉近一半帧）。 */
+  let pickOverlay = null, pickIds = [];
+  /* 选「人」模式（W3-d）：候选玩家脚下套一圈绿环。环挂在 tokenGroups 的组上，
+     所以棋子移动 / 传送时环跟着走，不用每帧重新对位。 */
+  let pickPids = [];
+  const pickPlayerRings = new Map();
   let treasureMesh = null;           // TILE-31 宝箱（驻留实体），按帧跟随 view.treasureCellId
   let groundY = 0.6;                 // 草地实际顶面高度，buildWorld 里按几何实测
   let tileTop = 0.55;                // 格子实际顶面高度，同样实测（bevel 会把它抬到 depth 之上）
@@ -237,6 +244,9 @@
     /* 重新挂载（dispose 后再 mount）时清空上一轮的容器，否则贴面 / 棋子会逐轮累积 */
     tileMeshes = []; decalByCell = new Map(); tokenGroups = new Map(); rimGroup = null; focusRing = null;
     treasureMesh = null;   // 上一轮场景已经重建，旧盒子留在变量里会把宝箱画在一个不存在的格上
+    /* 选格 / 选人的高亮也一样：它们属于**上一轮那个 scene**，留着引用会把绿环画进
+       一个已经不渲染的场景里（换局后「进选格态却什么都看不见」就是这么来的）。 */
+    pickOverlay = null; pickIds = []; pickPlayerRings.clear();
     scene = new THREE.Scene();
     perspCam = new THREE.PerspectiveCamera(32, 1, 0.5, 260);
     orthoCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 400);
@@ -483,6 +493,8 @@
       m.position.set(x, 0, z);
       m.receiveShadow = true; m.castShadow = true;
       m.userData.cellId = cell.id;
+      /* 记住本色：压暗 / 还原都以它为基准，否则第二次进选格态会在"已经暗掉的色"上再乘一次 */
+      m.userData.baseHex = hex;
       scene.add(m); tileMeshes.push(m);
 
       const price = cell.price ? Math.round(cell.price * view.priceIndex) : 0;
@@ -531,6 +543,78 @@
     const { x, z } = cellPos(cellId);
     treasureMesh.position.set(x, tileTop + TILE * 0.15, z);
     treasureMesh.visible = true;
+  }
+
+  /* ---------------- 棋盘上的「会咬人的东西」（W3-c） ----------------
+   * 路障 / 地雷 / 挂身炸弹 / 恶人 / 乞丐都不是地皮也不是玩家，但它们**占格、会被踩到**，
+   * 玩家看不见它们就会做出完全错误的判断（往埋了雷的方向走、不知道谁身上挂着炸弹）。
+   * 位置、主人、剩余步数全部来自快照的 `view.entities`（引擎真值），这里只决定怎么画。
+   *
+   * 三条口径：
+   * - 圆盘描边 = **放置者 / 携带者色**，和地皮台座同一个语言：一眼看出「这东西是谁的」；
+   * - 一图一材质太贵，纹理按 `emoji+副标+描边色` 缓存，同帧内重复的直接复用；
+   * - 同一格上的多个实体用固定偏移散开，免得路障和乞丐叠成一坨。 */
+  const ENT_EMOJI = {
+    roadblock: '🚧', mine: '💥', bomb: '💣', beggar: '🥣',
+    thief: '🗡️', protection: '🥊', robber: '🔨', 'rent-thief': '👺', dog: '🐕',
+  };
+  const ENT_OFF = [[0, 0], [0.56, 0], [0, 0.56], [-0.56, 0], [0, -0.56]];
+  let entityGroup = null;
+  const entTexCache = new Map();
+
+  function entTexture(emoji, sub, ringCss) {
+    const key = `${emoji}|${sub}|${ringCss}`;
+    const hit = entTexCache.get(key);
+    if (hit) return hit;
+    const c = document.createElement('canvas');
+    c.width = 160; c.height = 160;
+    const g = c.getContext('2d');
+    g.clearRect(0, 0, 160, 160);
+    g.beginPath(); g.arc(80, 72, 56, 0, Math.PI * 2);
+    g.fillStyle = 'rgba(255,251,239,.95)'; g.fill();
+    g.lineWidth = 9; g.strokeStyle = ringCss; g.stroke();
+    g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.font = '60px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",system-ui';
+    g.fillText(emoji, 80, sub ? 64 : 74);
+    if (sub) {
+      g.font = `800 ${sub.length >= 4 ? 24 : 30}px "M PLUS Rounded 1c","PingFang SC","Microsoft YaHei",system-ui`;
+      g.lineWidth = 8; g.strokeStyle = 'rgba(255,251,239,.96)'; g.fillStyle = '#4a3c28';
+      g.strokeText(sub, 80, 140); g.fillText(sub, 80, 140);
+    }
+    const t = new THREE.CanvasTexture(c);
+    if (THREE.SRGBColorSpace) t.colorSpace = THREE.SRGBColorSpace;
+    t.anisotropy = 4;
+    entTexCache.set(key, t);
+    return t;
+  }
+
+  function syncEntities() {
+    if (entityGroup) { scene.remove(entityGroup); entityGroup = null; }
+    const E = view.entities;
+    if (!E) return;
+    entityGroup = new THREE.Group();
+    const seen = new Map();
+    /** @param {number} lift 相对格面的高度：地上的东西贴着格，挂身炸弹要浮在名牌上方 */
+    const put = (cellId, emoji, sub, ringCss, lift, size) => {
+      if (cellId === null || cellId === undefined || cellId < 0) return;
+      const n = seen.get(cellId) || 0;
+      seen.set(cellId, n + 1);
+      const sp = new THREE.Sprite(new THREE.SpriteMaterial({
+        map: entTexture(emoji, sub, ringCss), transparent: true, depthWrite: false,
+      }));
+      const { x, z } = cellPos(cellId);
+      const off = ENT_OFF[Math.min(n, ENT_OFF.length - 1)];
+      sp.position.set(x + off[0], tileTop + lift, z + off[1]);
+      sp.scale.set(TILE * size, TILE * size, 1);
+      sp.renderOrder = 5;
+      sp.userData.ent = { cellId, emoji, sub };
+      entityGroup.add(sp);
+    };
+    for (const o of E.obstacles) put(o.cellId, ENT_EMOJI[o.kind], '', cssOf(o.ownerId), 0.62, 0.52);
+    for (const b of E.bombs) put(b.cellId, ENT_EMOJI.bomb, `剩${b.stepsLeft}`, cssOf(b.playerId), 2.45, 0.46);
+    for (const n of E.npcs) { if (!n.jailed) put(n.cellId, ENT_EMOJI[n.kind] ?? '❓', n.name, '#8b6a3c', 0.95, 0.56); }
+    for (const q of E.beggars) put(q.cellId, ENT_EMOJI.beggar, q.name, cssOf(q.playerId), 0.9, 0.56);
+    scene.add(entityGroup);
   }
 
   /* 持有者标色：早前把「着色块」放在 y=0.06 和「描边」放在 y=-0.03，都埋在格子体内，等于没画。
@@ -931,6 +1015,50 @@
   }
 
   /**
+   * 选格模式的视觉（W3）：合法格套一圈绿环，其余格面压暗；传空数组 = 退出选格态、全部还原。
+   *
+   * 三条刻意的取舍：
+   * - **只按引擎给的合法性着色**，不按镜头或"离玩家几格"自己判 —— 飞弹 / 核弹的候选是全图，
+   *   若按视野淡出就会把能打的格子说成不能打；
+   * - 环用 `InstancedMesh` 一次画完（64 个 mesh 的代价本文件已经记过一次教训）；
+   * - 压暗以 `userData.baseHex` 为基准，不进位到"暗色的再乘一次"。
+   */
+  function setPickHighlight(ids) {
+    pickIds = ids || [];
+    const on = pickIds.length > 0;
+    const legal = new Set(pickIds);
+    for (const m of tileMeshes) {
+      const dim = on && !legal.has(m.userData.cellId);
+      m.material.color.set(m.userData.baseHex);
+      if (dim) m.material.color.multiplyScalar(0.55);
+      /* 格面贴花（emoji / 名字 / 价签）是不吃光照的 basic 材质，只压格身的话非法格上那圈
+         奶油色描字还是亮的，淡出读不出来 —— 同一档系数把它一起压。 */
+      const decal = decalByCell.get(m.userData.cellId);
+      if (decal) decal.material.color.setScalar(dim ? 0.55 : 1);
+    }
+    if (!pickOverlay) {
+      const geo = new THREE.RingGeometry(TILE * 0.33, TILE * 0.45, 22);
+      geo.rotateX(-Math.PI / 2);
+      pickOverlay = new THREE.InstancedMesh(geo,
+        new THREE.MeshBasicMaterial({ color: 0x7fe07a, transparent: true, opacity: 0.8, depthWrite: false, side: THREE.DoubleSide }),
+        Math.max(1, tileMeshes.length));
+      pickOverlay.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+      pickOverlay.renderOrder = 4;
+      pickOverlay.visible = false;
+      scene.add(pickOverlay);
+    }
+    const mat4 = new THREE.Matrix4();
+    for (let i = 0; i < pickIds.length; i++) {
+      const p = cellPos(pickIds[i]);
+      mat4.makeTranslation(p.x, tileTop + 0.03, p.z);
+      pickOverlay.setMatrixAt(i, mat4);
+    }
+    pickOverlay.count = pickIds.length;
+    pickOverlay.instanceMatrix.needsUpdate = true;
+    pickOverlay.visible = on;
+  }
+
+  /**
    * 轮到 pid 操作：拉近并聚焦，随后进入跟随。
    * @param {string} pid
    * @param {{immediate?:boolean, el?:number, dist?:number, az?:number, dur?:number}} [opts]
@@ -1077,6 +1205,49 @@
     return hit ? hit.object.userData.cellId : null;
   }
 
+  /**
+   * 选「人」模式（W3-d）：候选玩家脚下套一圈绿环，与选格的绿环同一套语言（能点的东西才亮）。
+   * 环挂在 token 组上，所以棋子移动 / 被传送时环自然跟着走，不必每帧重新对位。
+   */
+  function setPickPlayers(pids) {
+    pickPids = pids || [];
+    const want = new Set(pickPids);
+    for (const [pid, ring] of pickPlayerRings) {
+      if (want.has(pid)) continue;
+      if (ring.parent) ring.parent.remove(ring);
+      ring.geometry.dispose(); ring.material.dispose();
+      pickPlayerRings.delete(pid);
+    }
+    for (const pid of want) {
+      if (pickPlayerRings.has(pid)) continue;
+      const g = tokenGroups.get(pid);
+      if (!g) continue;                       // 这一帧还没有这个人的棋子（新玩家 / 刚重挂载）
+      const ring = new THREE.Mesh(
+        new THREE.RingGeometry(TILE * 0.40, TILE * 0.52, 26),
+        new THREE.MeshBasicMaterial({ color: 0x7fe07a, transparent: true, opacity: 0.85, depthWrite: false, side: THREE.DoubleSide }),
+      );
+      ring.rotation.x = -Math.PI / 2;
+      ring.position.y = tileTop + 0.03;
+      ring.renderOrder = 4;
+      g.add(ring);
+      pickPlayerRings.set(pid, ring);
+    }
+  }
+
+  /** 指针下是不是一个「此刻可选」的棋子 —— 选人才按人命中，其余情况照旧按格命中 */
+  function pickPlayer(cx, cy) {
+    if (!pickPids.length) return null;
+    const r = host.getBoundingClientRect();
+    ndc.set(((cx - r.left) / r.width) * 2 - 1, -((cy - r.top) / r.height) * 2 + 1);
+    ray.setFromCamera(ndc, camera);
+    const gs = pickPids.map((pid) => tokenGroups.get(pid)).filter(Boolean);
+    const hit = ray.intersectObjects(gs, true)[0];
+    if (!hit) return null;
+    let o = hit.object;
+    while (o && !o.userData.pid) o = o.parent;
+    return o ? o.userData.pid : null;
+  }
+
   function setHover(id) {
     if (hoverCell === id) return;
     if (hoverCell != null) {
@@ -1129,6 +1300,10 @@
     const up = (e) => {
       if (locked) { drag = null; return; }
       if (drag && drag.moved < 5) {
+        /* 选人模式优先按棋子命中：环是套在人物脚下的，点人和点格用的是同一只手，
+           但要交给宿主的是两种目标（targetPlayerId / cellId）。 */
+        const pid = pickPlayer(e.clientX, e.clientY);
+        if (pid) { hooks.onPickPlayer && hooks.onPickPlayer(pid); drag = null; return; }
         const id = pick(e.clientX, e.clientY);
         selCell = id;
         hooks.onSelect && hooks.onSelect(id);
@@ -1202,6 +1377,14 @@
     if (selCell != null && !REDUCED) {
       const m = tileMeshes.find((x) => x.userData.cellId === selCell);
       if (m) m.position.y = 0.12 + Math.sin(t * 5) * 0.05;
+    }
+    /* 选格绿环的呼吸：只在选态里跑；`prefers-reduced-motion` 下固定不脉动 */
+    if (pickOverlay && pickOverlay.visible) {
+      pickOverlay.material.opacity = REDUCED ? 0.8 : 0.5 + 0.32 * Math.sin(t * 4.6);
+    }
+    /* 候选玩家的环与绿环同频闪动：一眼看出「这两类亮的是同一回事 —— 此刻能点」 */
+    for (const ring of pickPlayerRings.values()) {
+      ring.material.opacity = REDUCED ? 0.85 : 0.55 + 0.3 * Math.sin(t * 4.6);
     }
     stepCamera(Math.min(0.25, rawDt), t);
     renderer.render(scene, camera);
@@ -1291,6 +1474,7 @@
         g.position.y = 0;
       }
       syncTreasure();
+      syncEntities();
     },
     paintOwners,
     redrawLabels() {
@@ -1373,6 +1557,11 @@
       if (!treasureMesh || !treasureMesh.visible) return null;
       return { cellId: view.treasureCellId, x: treasureMesh.position.x, z: treasureMesh.position.z };
     },
+    /** 实体圆盘画在哪些格（W3-c 自检用：证明 `view.entities` 真落到了场景里，而不是只进了快照） */
+    entityAnchors() {
+      if (!entityGroup) return [];
+      return entityGroup.children.map((sp) => ({ cellId: sp.userData.ent.cellId, emoji: sp.userData.ent.emoji, sub: sp.userData.ent.sub, x: sp.position.x, y: +sp.position.y.toFixed(2), z: sp.position.z }));
+    },
     lastPointer: () => ({ ...lastPointer }),
     stats() {
       return { fps: clock.fps, calls: renderer ? renderer.info.render.calls : 0, tris: renderer ? renderer.info.render.triangles : 0, cam: { ...cam } };
@@ -1421,6 +1610,11 @@
       }
       return { count: ids.length, ids };
     },
+    /** 选格模式（W3）：合法格套绿环、其余格面压暗；传空数组 = 退出选格态并全部还原 */
+    setPickHighlight(ids) { setPickHighlight(ids); },
+    setPickPlayers(ids) { setPickPlayers(ids); },
+    /** 当前选态（自检用）：绿环套在哪些格 / 哪些人脚下 */
+    pickState() { return { cells: pickIds.slice(), players: pickPids.slice(), rings: pickPlayerRings.size }; },
     /** 当前被跟随的角色：投影是否落在舞台内 + 世界坐标 */
     heroOnScreen() {
       if (!camera || !host || !followPid) return null;
@@ -1464,6 +1658,10 @@
         focusRing = null;
       }
       camTween = null; camState = 'idle'; followPid = null; locked = false;
+      /* 实体圆盘的纹理是按「图标+副标+主人色」缓存的，换局重挂载时不清掉会一直攒（炸弹剩余步数每步一个 key） */
+      if (entityGroup) { scene.remove(entityGroup); entityGroup = null; }
+      for (const t of entTexCache.values()) t.dispose && t.dispose();
+      entTexCache.clear();
       /* figGeo 是缓存的：dispose 已经把里面的几何都释放了，不置空的话
          再次 mount 会拿到一堆「已释放的几何」渲染出空白小人。 */
       figGeo = null;

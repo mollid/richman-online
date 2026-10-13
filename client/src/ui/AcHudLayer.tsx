@@ -33,6 +33,8 @@ type AcHostApi = {
    * 合法性不在表现层判 —— 由 React 拿引擎的 `actionRefusal` 说一句话，两处永不分叉。
    */
   onPickCell: ((cellId: number) => void) | null;
+  /** 选人模式（W3-d）：HUD 把点到的棋子 id 交回来，同样由 React 拿 `actionRefusal` 判 */
+  onPickPlayer: ((pid: string) => void) | null;
   tag?: string;
   tools?: AcHostTool[];
   interactive?: boolean;
@@ -46,8 +48,13 @@ type AcHudGlobal = {
   /** 移动演出落定了吗（未挂载 / 方环示意时按「已落定」处理） */
   isSettled?: () => boolean;
   setHost: (h: Partial<AcHostApi>) => void;
-  /** 进入 / 退出「在棋盘上点一格」模式（null = 退出） */
-  setPickTargets?: (t: { cells: number[] } | null) => void;
+  /** 进入 / 退出「在棋盘上点一格 / 点一个人」模式（null = 退出）。被拒项的理由供 HUD 在 hover 时引用原话 */
+  setPickTargets?: (t: {
+    cells: number[];
+    rejected?: { id: number; reason: string }[];
+    players?: string[];
+    playerRejected?: { id: string; reason: string }[];
+  } | null) => void;
   destroy: () => void;
   toast?: (t: string, tone?: string) => void;
 };
@@ -263,9 +270,38 @@ export function AcHudLayer({
     setPick(null);
     setPickHint('');
   }, []);
+  /** 选人到这一步才派单：合法性仍由引擎那一个谓词裁决，界面只负责把 id 递过去 */
+  const onPickPlayer = useCallback(
+    (pid: string) => {
+      if (!pick) return;
+      const next = { ...pick.action, targetPlayerId: pid } as PlayerAction;
+      const refusal = actionRefusal(game, next);
+      if (refusal !== null) {
+        setPickHint(refusal);
+        window.AC_HUD?.toast?.(refusal, 'warn');
+        return;
+      }
+      setPick(null);
+      setPickHint('');
+      onAction(next);
+    },
+    [pick, game, onAction],
+  );
   const onPickCell = useCallback(
     (cellId: number) => {
       if (!pick) return;
+      /* 选人态下点到的是一格（没正好点到棋子）：把那一格上站着的候选人当目标 ——
+         玩家瞄的是人，不该因为指针偏了两像素就失败。格上没人则原样退回一句话。 */
+      if (!pick.cells.length && pick.players?.length) {
+        const q = game.players.find((p) => p.position === cellId && pick.players!.includes(p.id));
+        if (q) onPickPlayer(q.id);
+        else {
+          const r = '那一格上没有可选的人';
+          setPickHint(r);
+          window.AC_HUD?.toast?.(r, 'warn');
+        }
+        return;
+      }
       const next = { ...pick.action, cellId } as PlayerAction;
       const refusal = actionRefusal(game, next);
       if (refusal !== null) {
@@ -278,7 +314,7 @@ export function AcHudLayer({
       setPickHint('');
       onAction(next);
     },
-    [pick, game, onAction],
+    [pick, game, onAction, onPickPlayer],
   );
   useEffect(() => {
     if (!pick) return;
@@ -374,6 +410,7 @@ export function AcHudLayer({
       dispatch,
       openPanel,
       onPickCell,
+      onPickPlayer,
       tag: isRemote ? '联机' : '热座',
       tools,
       interactive,
@@ -382,8 +419,12 @@ export function AcHudLayer({
     });
     AC.update(snapshot);
     /* 选格集合每次快照重推：候选是引擎算的，回合一动就可能变（例如对手走出了视野） */
-    AC.setPickTargets?.(pick ? { cells: pick.cells } : null);
-  }, [ready, snapshot, dispatch, openPanel, onPickCell, tools, interactive, isRemote, pick]);
+    AC.setPickTargets?.(
+      pick
+        ? { cells: pick.cells, rejected: pick.rejected, players: pick.players ?? [], playerRejected: pick.playerRejected ?? [] }
+        : null,
+    );
+  }, [ready, snapshot, dispatch, openPanel, onPickCell, onPickPlayer, tools, interactive, isRemote, pick]);
 
   // 需要输入的阶段强制弹面板（小游戏 / 舍弃手牌 / 拍卖 / 结算）
   const forced = useMemo(() => {
@@ -571,7 +612,7 @@ export function AcHudLayer({
         {/* 选格态横幅：说清「现在点棋盘是选目标」，并留一个不依赖键盘的出口与被拒理由 */}
         {pick && (
           <div className="ac-banner ac-banner--warn">
-            🎯 在棋盘上点一格 · {pick.label}
+            🎯 {pick.cells.length ? '在棋盘上点一格' : '在棋盘上点一个人'} · {pick.label}
             {pickHint && <span> · {pickHint}</span>}
             <button className="ac-btn ac-btn--cream ac-btn--sm" onClick={cancelPick}>
               取消 <span className="ac-sheet__esc">Esc</span>

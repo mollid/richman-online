@@ -235,6 +235,58 @@ idle ──点「使用」(需目标)──▶ picking(kind,id,TargetSet) ──
 
 **W2 明确没做、留给 W3**：合法格高亮 / 非法格淡出（`setPickTargets` 已把 `cells` 送到 HUD，只差消费）、悬停出理由的 tooltip、障碍 / 炸弹 / 乞丐的**实体上屏**（现在棋盘上看不见自己埋的东西）、玩家 token 作为可点目标（丢炸弹与传送带人目前仍只能在面板胶囊里选）、`?board=flat` 方环模式没有拾取通路（该模式本是 WebGL 不可用时的兜底）。
 
+### 5.3 W3 落地记录（2026-10-13，Docker 全栈 + 浏览器实测）
+
+三包 typecheck 干净、`shared` 615 项全绿（W3 没动规则层，只在表现层与 `HandPanel` 补了一次全图问询）。
+
+| 项 | 实际落地 |
+|---|---|
+| W3-a 高亮 / 淡出 | `world.js:setPickHighlight()` —— 合法格套一圈 `InstancedMesh` 绿环（一次 draw call，64 个 mesh 的教训本文件已记过），其余格面**连同格面贴花**一起压暗到 0.55；还原一律走绝对赋值（`userData.baseHex` / `setScalar(1)`），不做"暗色上再乘一次" |
+| W3-b 悬停依据 | `hud.js:showTip()` 在选态追加一句：可选 → `✅ 可选为目标`；不可选 → **引擎原句**。为此 `HandPanel` 进选态时补一次 `cellRefusals()`（全图 64 格纯校验，不消耗随机数） |
+| W3-c 实体上屏 | `world.js:syncEntities()`：障碍 / 挂身炸弹 / 恶人 / 乞丐画成朝相机的圆盘 sprite，纹理按 `图标+副标+主人色` 缓存；圆盘描边 = 放置者 / 携带者色，与地皮台座同一套语言；同格多实体走固定偏移散开。`hud.js` 图例补三条触发口径（🚧 经过截停 / 💥 踩中才炸 / 💣 挂身倒数 / 🥣 站上才施舍） |
+| W3-d 点棋子选人 | `world.js:setPickPlayers()` 给候选玩家脚下套同款绿环（环挂在 token 组上，棋子移动自然跟随）+ `pickPlayer()` 优先按棋子命中；`hooks.onPickPlayer` → `AcHudLayer` 拿同一个 `actionRefusal` 判定并派单；`HandPanel` 在玩家目标行加「🎯 点棋子」，**与芯片读同一份 `actionTargets`**，不是第二套候选 |
+
+**实测到的量（全部走 `gl.readPixels` 回读棋盘 canvas，不靠看截图）**
+
+- 淡出：16 个合法格亮度比 **1.06 ~ 1.42**（>1 是绿环本身落在采样环上），31 个可见非法格 **0.76 ~ 0.77**，两组**无交叠（间隙 0.32）**。加贴花之前非法格是 `0.76~1.00` 的双峰 —— 奶油色描字与价签是不吃光照的 basic 材质，只压格身时它们照旧亮着，"淡出"在视觉上等于没做；这条是量出来的，不是猜的。
+- 不累积：连续进 / 出选态 3 轮后关高亮，两帧像素 **逐字节相同（changedPixels=0, maxDelta=0）**。
+- 绿环取色：合法格采样点 RGB ≈ `121~141, 211, 123~135`，对得上 `0x7fe07a`；非法格同位置无绿（G < R）。
+- 悬停：视野内 24 号 → `…每级租金 🔔165 ✅ 可选为目标`；视野外 11 号 → `…「机会」不在视野内`、30 号 → `…「陆家嘴」不在视野内`（改前只有「不可选」）。路障请求实测 `cells=16, rejected=48`。
+- 实体：开局 `entityAnchors()=0` → 棋盘点一格放路障后 `[{cellId:24,emoji:'🚧'}]` → 再放地雷后 `[24🚧, 16💥]`，且岛况面板芯片同步 `🚧 路障 1 个 / 💥 地雷 1 个`。合成注入 5 个实体（含同格三件）出 5 个圆盘、偏移与高度各不相同（地面 0.87 / 恶人 1.20 / 挂身炸弹 2.70），**狱中恶人按 `jailed` 正确不上屏**。
+- 选人：四人局里 阿福@6、小美@10（视野内）、大宝 / 金宝在窗外。绿像素只出现在小美脚下（16 个采样点里 4 个命中环色），其余三人 0 —— 环集 = 候选集，没有多画。点小美的棋子 → 派单成功、炸弹上屏 `💣 剩38 @格10`、选态自动退出、`pickState().rings=0`。
+
+**顺手抓到的两个隐患**
+
+1. `buildWorld()` 重置了 `tileMeshes / decalByCell / tokenGroups / focusRing / treasureMesh`，却**没重置 `pickOverlay`**：换局重挂载后绿环会被加进上一个已经被丢弃的 scene，表现为「进了选格态却什么都看不见」。现与选人环、`pickIds` 一起归零。
+2. `PickRequest.rejected` 原本直接取 `set.rejectedCells`，而候选池 `view` 只搜视野 16 格 —— 窗外的格**从没被问过**，于是 HUD 只能说「不可选」。改为进选态那一刻逐格问一次引擎，措辞仍出自同一个谓词。
+
+**验证方法的坑（下次别再踩）**：自动化页面处于后台 → `document.visibilityState='hidden'` → rAF 被冻结 → 相机入场补间永远走不到 settle → `world.js` 的 `if (locked) return` 把所有棋盘指针吞掉，同时 `take_screenshot` 直接报 `NATIVE_BROWSER_VIEWPORT_UNAVAILABLE`。解法是页内调 `D25World.renderOnce(dt)`（这个入口本来就是为后台标签页准备的）手动把补间推完再量；所有 W3 证据因此走像素回读与场景图访问器（`pickState` / `entityAnchors` / `tokenAnchors`），比肉眼看图更硬。
+
+**W3 没做、留给 W4 或后续**：`CardDef.target` / `ItemDef.target` / `ItemDef.phase` / `CardDef.guard` 四组死字段删除 + 决策表补 D-47；键盘方向键在候选间循环（现只有鼠标通路）；`?board=flat` 方环兜底无拾取通路；bot 仍不消费 `actionTargets`。
+
+### 5.4 W4 落地记录（2026-10-13，声明收口）
+
+删掉的是**同一件事的第二份声明**，不是规则本身。清点结果（每条都 grep 过读方，证据在下面）：
+
+| 字段 | 读方 | 处置 |
+|---|---|---|
+| `CardDef.target`（`CardTarget`） | **无**（`e.target` 那些全是 DOM） | 删字段 + 删类型 |
+| `ItemDef.target`（`ItemTarget`） | **无** | 删字段 + 删类型 |
+| `ItemDef.phase` | **无** —— 道具时机实际由 `engine.ts:3672` 那句硬判断给（`state.phase !== 'awaiting_roll'`），字段写 `'any'` / `'pre_roll'` 都不影响行为 | 删字段 + 去掉 `items.ts` 对 `CardPhase` 的 import |
+| `CardDef.needsStock` | **无**（红卡 / 黑卡实际由 `targetSpec.stocks` 驱动候选与派单） | 删字段 |
+| `ItemDef.needsDiceValue` | **无**（遥控骰子实际走 `targetSpec.dice`） | 删字段 |
+| `CardDef.phase`（`CardPhase`） | **有**：`engine.ts:3628-3629` 用它分掷骰前 / 掷骰后，`targets.test.ts:47` 用它摆相位 | **保留**；取值从三档收成 `'any' \| 'post_roll'`（`pre_roll` 与 `any` 在 R4 之后走同一分支，留两个名字只会让人以为有区别） |
+| `CardDef.guard` | 已在 W1 并入 `targetSpec` | 无字段可删，只在 `cards.ts` 留了一句"为什么这里没有 guard"的注释 |
+
+规则没丢：道具「一律掷骰前」与卡片两档时机现在各只有一处判断（`checkUseItem` / `checkUseCard`），并补了两条回归用例钉住 ——
+13 件道具在 `awaiting_action` 里都被同一句「道具只能在掷骰前使用」挡下；每一张手动卡在其错位相位上必被引擎点名（`该卡片只能在掷骰前/后使用`），且 `phase` 的取值只能是那两档。
+
+验证：shared **617 项全绿**（615 + 2 条新用例），`shared` / `client` / `server` 三包 typecheck 干净；**golden 基线未动** ⇒ 这一波确实是纯声明收口，没有夹带行为变化。决策表补 **D-47**（`docs/玩法拆解_卡片对账决策表.md` §十）。
+
+顺手把「为什么这一行灰着」也收进同一句原话：`HandPanel` 原先在 `!listed` 时把 tooltip 退回成卡片描述（玩家看得见"是什么"却不知道"为什么现在不能用"）。现在按 `!listed → 引擎那句 / !interactive → 还没轮到你 / needBoard → 点「使用」后在棋盘上点一格` 分岔。掷骰后在浏览器里实测 6 件道具的 tooltip 全部变成 **「道具只能在掷骰前使用」** —— 字段删了，规则在界面上反而更看得见。
+
+顺带把决策表里那条批次1.5 遗留（「`HandPanel` 使用道具没有传 `targetPlayerId` 的入口」）改成已关闭 —— W2 的玩家胶囊 + W3-d 的棋子点选已经把这条路接通。
+
 ## 6. 已定案（决策人 2026-10-13）
 
 | 项 | 结论 |

@@ -12,8 +12,14 @@ export type PickRequest = {
   action: PlayerAction;
   /** 横幅上那句话：让玩家知道此刻点棋盘是在干什么 */
   label: string;
-  /** 引擎给的合法格（HUD 拿去做高亮；W2 只用来切手型光标） */
+  /** 引擎给的合法格（HUD 用来画绿环） */
   cells: number[];
+  /** 被拒格及其理由（HUD 在 hover 时原样引用，不另编一套措辞） */
+  rejected: { id: number; reason: string }[];
+  /** 引擎给的合法目标玩家（HUD 给他们脚下套环，点棋子即选中） */
+  players?: string[];
+  /** 被拒玩家及其理由 */
+  playerRejected?: { id: string; reason: string }[];
   /** 发起行的身份，用来把「正在选格」标在那一行上 */
   key: string;
 };
@@ -144,11 +150,30 @@ export function HandPanel({
       : { type: 'USE_ITEM', itemId: row.id, ...extra }) as PlayerAction;
   }
 
+  /**
+   * 逐格问引擎「这一格为什么不行」。
+   *
+   * 不能直接用 `set.rejectedCells`：那是候选池内部的拒绝集，池只搜视野 16 格时，
+   * 窗外的格连被问都没被问，hover 上去就只能显示「不可选」——玩家不知道是「太远了」
+   * 还是「这格压根不能放」。进选格态的一刻补一次全图问询（64 次纯校验，不消耗随机数），
+   * HUD 那句 tooltip 才有出处。
+   */
+  function cellRefusals(action: PlayerAction, legal: number[]) {
+    const ok = new Set(legal);
+    const out: { id: number; reason: string }[] = [];
+    for (const cell of game.board) {
+      if (ok.has(cell.id)) continue;
+      const reason = actionRefusal(game, { ...action, cellId: cell.id } as PlayerAction);
+      if (reason) out.push({ id: cell.id, reason });
+    }
+    return out;
+  }
+
   function fire(row: Row) {
     const { action, refusal, needBoard, set } = resolve(row);
     if (needBoard) {
       // 交给宿主进选格态：合法性由派单那一刻的引擎判，这里不预先拦
-      requestPick({ action, label: `${row.label} · 选目标格`, cells: set.cells, key: row.key });
+      requestPick({ action, label: `${row.label} · 选目标格`, cells: set.cells, rejected: cellRefusals(action, set.cells), key: row.key });
       return;
     }
     if (refusal !== null) {
@@ -157,6 +182,20 @@ export function HandPanel({
     }
     setHint('');
     onAction(action);
+  }
+
+  /** 选人模式（W3-d）：候选原样交给 HUD 套环，玩家直接在 3D 棋盘上点那个人 */
+  function firePickPlayer(row: Row) {
+    const { action, set } = resolve(row);
+    requestPick({
+      action,
+      label: `${row.label} · 点目标人物`,
+      cells: [],
+      rejected: [],
+      players: set.players,
+      playerRejected: set.rejectedPlayers,
+      key: row.key,
+    });
   }
 
   const cardRows = rows.filter((r) => r.kind === 'card');
@@ -189,8 +228,15 @@ export function HandPanel({
     const picking = pickingKey === row.key;
     const player = pickedPlayer(row, set);
     const optional = playerOptional(row, set);
-    // 目标没挑齐时那句引擎理由就是提示文案 —— 界面不另编一套说法
-    const tip = !canUse ? row.desc : needBoard ? '点「使用」后在棋盘上点一格' : (refusal ?? '');
+    // 灰掉的那一行也要说得出为什么：门控说不列（!listed）时，那句引擎原话就是原因
+    // （时机不对 / 此刻没得选 / 目标非法都在里面）；轮不到人才是界面自己拦的，给固定说法。
+    const tip = !row.listed
+      ? (refusal ?? row.desc)
+      : !interactive
+        ? '还没轮到你行动'
+        : needBoard
+          ? '点「使用」后在棋盘上点一格'
+          : (refusal ?? '');
 
     return (
       <div key={row.key} className={`card-row ${canUse ? '' : 'disabled'} ${picking ? 'picking' : ''}`}>
@@ -231,6 +277,18 @@ export function HandPanel({
                   {nameOf(r.id)}
                 </button>
               ))}
+              {/* 3D 棋盘上直接点那个人（W3-d）：棋子脚下会套绿环。选人是芯片的主路，
+                  点人是同一份候选的另一个入口 —— 两者读同一个 `actionTargets`，不会各判一套。 */}
+              {!needBoard && set.players.length > 0 && (
+                <button
+                  className="chip"
+                  disabled={!canUse}
+                  title="在棋盘上直接点那个人 —— 候选与这些芯片同源"
+                  onClick={() => firePickPlayer(row)}
+                >
+                  🎯 点棋子
+                </button>
+              )}
             </div>
           )}
 

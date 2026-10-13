@@ -153,13 +153,22 @@
   const HAS_GL = !!globalThis.THREE && !!globalThis.PIXI && !!globalThis.D25World && !!globalThis.D25Overlay;
   let stage = null, tipEl = null, camChip = null, selCell = cur.position;
   /**
-   * 选目标模式（W2）：宿主（React）进入「要在棋盘上点一格」时把合法格集合推过来。
-   * null = 不在选格态，此时点击只是「查看这一格的详情」（原有行为）。
-   * 高亮 / 淡出 / 悬停给理由那些是 W3 的视觉活，本波只把**通路**接通 —— 包括「非法格
-   * 也能被点」：合法性由引擎的谓词裁决，表现层不自己判第二套。
+   * 选目标模式：宿主（React）进入「要在棋盘上点一格 / 点一个人」时把候选集推过来。
+   * null = 不在选态，此时点击只是「查看这一格的详情」（原有行为）。
+   *
+   * W3 把这一层的视觉补齐了：合法格套绿环、其余格面连贴花一起压暗（world.js），
+   * 候选玩家脚下套同款绿环，悬停直接引用引擎那句原话讲清「为什么不能选」。
+   * 但**合法性仍然只在派单那一刻由引擎裁决** —— 包括「非法的东西也能被点」：
+   * 表现层不复制第二套规则，否则两边迟早各说各话。
    */
   let pickCells = null;
-
+  /** 被拒格的引擎原句（cellId → reason）：hover 时直接引用，表现层不另编一套说法 */
+  let pickReasons = new Map();
+  /** 选人模式（W3-d）：候选玩家 id + 被拒者的引擎原话，环与 tooltip 都读这一份 */
+  let pickPlayers = [];
+  let pickPlayerReasons = new Map();
+  /** 棋盘是否处于「要在上面点东西」的状态（格或人任一） */
+  const picking = () => !!pickCells || pickPlayers.length > 0;
   /* ---------------- 相机系统接线：聚焦 → 跟随 → 解锁 ----------------
    * world.js 持有状态机与补间；这里只做三件事：
    *   1) 决定「该聚焦谁」（activePid）并在合适的时机调 D25World.focusPlayer()
@@ -381,7 +390,13 @@
   ];
   const LEGEND = LEGEND_GROUPS.map(([c, n]) => `<span><i class="d25-sw" style="--c:${c}"></i>${n}</span>`).join('') +
     `<span><i class="d25-sw d25-sw--ring" style="--c:#f5a742"></i><em>描边 = 持有者色</em></span>` +
-    `<span><i class="d25-sw d25-sw--dot" style="--c:#ffd45e"></i><em>金晕 = 神明驻留</em></span>`;
+    `<span><i class="d25-sw d25-sw--dot" style="--c:#ffd45e"></i><em>金晕 = 神明驻留</em></span>` +
+    /* 触发口径图例（W3-c）：这三种东西都画在格子上，但生效时机各不相同 —— 玩家要不要绕开、
+       会不会连累自己，全看这一句。措辞与 shared 的触发点一致（路障经过截停、地雷踩中、炸弹按步计数）。 */
+    `<span>🚧<em>路障＝经过就截停</em></span>` +
+    `<span>💥<em>地雷＝踩中才炸</em></span>` +
+    `<span>💣<em>炸弹＝挂身倒数，走满才炸</em></span>` +
+    `<span>🥣<em>乞丐＝站上那一格必须施舍</em></span>`;
 
   /* 宽画面判定：图例在「棋盘下一条」与「右侧竖导轨」之间切换（见 hud.css .hud-board--wide） */
   const WIDE_MQ = typeof matchMedia === 'function' ? matchMedia('(min-aspect-ratio: 3/2)') : null;
@@ -390,10 +405,22 @@
   /* 棋盘形态切换（方环示意）已移除：产品里只有 3D 棋盘一种形态，
      方环仅作为 three / pixi 载入失败时的兜底路径，不再提供手动入口。 */
 
-  /* 悬停浮层：贴着指针走，只讲「这一格是什么」；点击把详情钉进 dock，不常驻挡棋盘 */
+  /* 悬停浮层：贴着指针走，只讲「这一格是什么」；点击把详情钉进 dock，不常驻挡棋盘。
+     选格态下多问一句「这一格能不能选」—— 不能选时把引擎的原话贴出来，玩家不用点了才知道。 */
   function showTip(id) {
     if (id == null) { tipEl.style.opacity = '0'; return; }
     const bits = cellBits(id);
+    if (pickCells) {
+      bits.push(pickCells.includes(id) ? '✅ 可选为目标' : (pickReasons.get(id) ?? '不可选'));
+    }
+    /* 选人模式：把站在这格上的人逐个报出来，可选的给✅，不可选的引引擎那句原话
+       （「阿福 不在视野内」），玩家才知道是「够不着」而不是「没这个人」 */
+    if (pickPlayers.length) {
+      for (const q of st.players) {
+        if (q.position !== id || q.bankrupt) continue;
+        bits.push(pickPlayers.includes(q.id) ? `✅ 可选「${q.name}」` : (pickPlayerReasons.get(q.id) ?? `「${q.name}」不可选`));
+      }
+    }
     const p = globalThis.D25World.lastPointer();
     tipEl.innerHTML = `<b>${esc(bits[0])}</b><br>${bits.slice(1).map(esc).join('<br>')}`;
     const w = tipEl.offsetWidth || 200, h = tipEl.offsetHeight || 60;
@@ -448,6 +475,11 @@
         /* 选格态：把这一格原样交回宿主去判合法性并派单 —— 表现层不复制一套「能不能选」 */
         if (pickCells && hostApi.onPickCell) { hostApi.onPickCell(id); return; }
         if (id != null) { selCell = id; render(); }
+      },
+      /* 选人态（W3-d）：点到的棋子交回宿主，由它拿同一个谓词判定并派单；这里不拦、也不判 */
+      onPickPlayer: (pid) => {
+        if (HUD_LOCKED) return;
+        if (pickPlayers.length && hostApi.onPickPlayer) hostApi.onPickPlayer(pid);
       },
       onLand: (pid, cellId) => globalThis.D25Overlay.float(`来到「${cellName(cellId)}」`, cellId, 'gold'),
       /* 一次移动演出收尾：把攒下来的「换人聚焦」放出去（见 playMovement / syncStage） */
@@ -1403,7 +1435,13 @@
      */
     setPickTargets(t) {
       pickCells = t && Array.isArray(t.cells) ? t.cells : null;
-      if (stage) stage.classList.toggle('d25-stage--pick', !!pickCells);
+      pickReasons = new Map(((t && t.rejected) || []).map((r) => [r.id, r.reason]));
+      pickPlayers = t && Array.isArray(t.players) ? t.players : [];
+      pickPlayerReasons = new Map(((t && t.playerRejected) || []).map((r) => [r.id, r.reason]));
+      if (stage) stage.classList.toggle('d25-stage--pick', picking());
+      /* 绿环与压暗交给世界层画（它才有格子 mesh）；方环兜底模式下没有 D25World，跳过视觉、通路仍通 */
+      globalThis.D25World?.setPickHighlight?.(pickCells ?? []);
+      globalThis.D25World?.setPickPlayers?.(pickPlayers);
     },
     /** 注入宿主能力：{ dispatch(action), openPanel(kind) } */
     setHost(h) { hostApi = Object.assign(hostApi, h || {}); },
