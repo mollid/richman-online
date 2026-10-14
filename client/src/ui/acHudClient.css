@@ -264,6 +264,180 @@
   color: #9a2c22;
 }
 
+/* ---------- 行囊动作条 ac-quick ----------
+ * 手牌 / 道具不再开模态弹窗：点行囊的一格只在这一条**上方**展开动作条。
+ * 锚点自身 `pointer-events:none`，只有条吃指针 —— 所以展开着的时候棋盘照样能点、
+ * 绿环与压暗不会被遮罩挡掉（旧路径里 `requestPick` 必须先 `setPanel(null)` 就是为了躲遮罩）。
+ * 层级低于 `.ac-sheet-scrim`(55)：真表单弹窗出现时应当盖住它。
+ */
+.ac-quick-anchor {
+  position: fixed;
+  z-index: 45;
+  pointer-events: none;
+}
+
+.ac-quick {
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 12px 12px;
+  border: 3px solid var(--ac-brown, #7a6547);
+  border-radius: 16px;
+  background: var(--ac-cream, #fffbef);
+  box-shadow: 0 4px 0 rgba(122, 101, 71, 0.22), 0 14px 30px rgba(60, 48, 30, 0.26);
+  /* 从触发它的那一格往上展开（modal-motion）：只做 transform + opacity，不动盒模型 */
+  transform-origin: bottom center;
+  animation: ac-quick-in 0.18s ease-out;
+}
+
+@keyframes ac-quick-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.96);
+  }
+}
+
+.ac-quick--off {
+  border-color: var(--ac-dim, #b0a184);
+}
+
+/* 正在等玩家点棋盘：这条描成铃铛色，跟下面选中着的行囊格、上面的横幅一起说明「这一格挂住了」 */
+.ac-quick--picking {
+  border-color: var(--ac-bell-dk, #e0a51f);
+  box-shadow: 0 4px 0 rgba(224, 165, 31, 0.4), 0 14px 30px rgba(60, 48, 30, 0.26);
+}
+
+.ac-quick__id {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.ac-quick__name {
+  font-family: var(--ac-disp, system-ui);
+  font-weight: 800;
+  font-size: 17px;
+  color: var(--ac-text, #6b5940);
+}
+
+.ac-quick__qty {
+  font-family: var(--ac-num, system-ui);
+  font-weight: 900;
+  font-size: 12px;
+  color: var(--ac-dim, #b0a184);
+}
+
+.ac-quick__badge {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #dcf2fa;
+  color: #2a7a99;
+  font-family: var(--ac-num, system-ui);
+  font-weight: 800;
+  font-size: 11px;
+}
+
+.ac-quick__desc {
+  font-family: var(--ac-ui, system-ui);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.5;
+  color: var(--ac-dim, #b0a184);
+}
+
+.ac-quick--picking .ac-quick__desc {
+  color: #9a6b12;
+}
+
+.ac-quick__ctl {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.ac-quick__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.ac-quick__chip {
+  min-height: 44px;
+  padding: 6px 16px;
+  border: 2px solid var(--ac-line, #e8d9b0);
+  border-radius: 999px;
+  background: var(--ac-cream2, #fbf2d7);
+  color: var(--ac-text, #6b5940);
+  font-family: var(--ac-ui, system-ui);
+  font-weight: 800;
+  font-size: 13px;
+  cursor: pointer;
+  transition: 0.09s;
+}
+
+.ac-quick__chip:hover:not(:disabled) {
+  background: #fdeec2;
+}
+
+.ac-quick__chip--on {
+  border-color: var(--ac-green-dk, #4f9440);
+  background: #e2f5d6;
+  color: #3d5226;
+  box-shadow: inset 0 0 0 2px rgba(111, 191, 90, 0.3);
+}
+
+/* 引擎判掉的候选人：留形、留名字、留 hover 那句原话，只去掉「能点」这件事 */
+.ac-quick__chip--off,
+.ac-quick__chip:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.ac-quick__chip--off {
+  text-decoration: line-through;
+}
+
+.ac-quick__chip--board {
+  border-style: dashed;
+  border-color: var(--ac-orange-dk, #d1802a);
+  color: var(--ac-orange-dk, #d1802a);
+}
+
+.ac-quick__field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--ac-ui, system-ui);
+  font-weight: 800;
+  font-size: 12px;
+  color: var(--ac-dim, #b0a184);
+}
+
+.ac-quick__field select {
+  min-height: 44px;
+  padding: 0 30px 0 12px;
+  border: 2px solid var(--ac-line, #e8d9b0);
+  border-radius: 12px;
+  background: var(--ac-cream, #fffbef);
+  color: var(--ac-text, #6b5940);
+  font-family: var(--ac-ui, system-ui);
+  font-weight: 800;
+  font-size: 13px;
+}
+
+.ac-quick__warn {
+  margin: 0;
+}
+
+/* ac-btn--sm 本身只有 ~35px 高；这一条是触摸热区，跟 dock 的按钮一样保 44px 下限 */
+.ac-quick .ac-btn {
+  min-height: 44px;
+}
+
 /* ---------- 窄屏兜底 ---------- */
 @media (max-width: 720px) {
   .ac-banners {

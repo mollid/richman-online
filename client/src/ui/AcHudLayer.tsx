@@ -4,9 +4,11 @@
  *
  * 数据流：App 的 `GameState` → `buildAcSnapshot()` → `window.GAME_SNAPSHOT` / `AC_HUD.update()`。
  * 动作流：HUD 的 dock 按钮 → `AC_HUD.setHost({ dispatch })` → 真实 `session.dispatch()`。
- * 需要选目标 / 填金额的动作（存取款、商店、股市、乐透、挂出、用法术…）走 `openPanel(kind)`，
+ * 需要填金额 / 挑一堆物件的动作（存取款、商店、股市、乐透、挂出、用法术…）走 `openPanel(kind, payload)`，
  * 在本组件里用 ac 皮肤的弹层托管既有 React 面板 —— 这一步是「壳换皮、流程不丢」的临时桥，
  * 后续可把这些面板逐个重做进 ac 皮肤。
+ * 手牌 / 道具是例外（`kind === 'hand'`）：那是本局最高频的动作，遮罩会把棋盘点击吃掉，
+ * 所以它不开面板，改在行囊格上方就地展开一条 `HandQuickBar`，棋盘全程可见可点。
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { actionRefusal } from '@richman/shared';
@@ -21,13 +23,13 @@ import { TradePanel } from './TradePanel.js';
 import { AuctionPanel } from './AuctionPanel.js';
 import { NpcPanel } from './NpcPanel.js';
 import { CompanyPanel } from './CompanyPanel.js';
-import { HandPanel, type PickRequest } from './HandPanel.js';
+import { entryKey, HandQuickBar, type HandEntry, type PickRequest } from './HandQuickBar.js';
 import './acHudClient.css';
 
 type AcHostTool = { label: string; title?: string; onClick?: () => void };
 type AcHostApi = {
   dispatch: ((a: PlayerAction) => void) | null;
-  openPanel: ((kind: string) => void) | null;
+  openPanel: ((kind: string, arg?: unknown) => void) | null;
   /**
    * 选格模式下 HUD 把点到的那一格原样交回（W2）。
    * 合法性不在表现层判 —— 由 React 拿引擎的 `actionRefusal` 说一句话，两处永不分叉。
@@ -55,6 +57,8 @@ type AcHudGlobal = {
     players?: string[];
     playerRejected?: { id: string; reason: string }[];
   } | null) => void;
+  /** 行囊里被点开的那一格（动作条的选中态由 HUD 画在格子上，两处才不会各说各话） */
+  setBagFocus?: (key: string | null) => void;
   destroy: () => void;
   toast?: (t: string, tone?: string) => void;
 };
@@ -181,7 +185,6 @@ const PANEL_TITLE: Record<string, string> = {
   trade: '🤝 公布栏 · 挂牌与买入',
   magic: '🔮 魔法屋 · 监狱保释',
   company: '🏢 公司企业',
-  hand: '🎒 手牌与道具',
   auction: '🔨 拍卖会',
   surrender: '🚩 认输投降',
   control: '⏳ 请处理当前流程',
@@ -199,7 +202,6 @@ const PANEL_SIZE: Record<string, 'sm' | 'md' | 'wide'> = {
   trade: 'md',
   magic: 'md',
   company: 'md',
-  hand: 'md',
   auction: 'md',
   surrender: 'md',
   control: 'md',
@@ -245,6 +247,10 @@ export function AcHudLayer({
   const [ready, setReady] = useState(false);
   const [loadError, setLoadError] = useState('');
   const [panel, setPanel] = useState<string | null>(null);
+  /** 行囊里被点开的那一格（内联动作条的目标），null = 收起 */
+  const [handSel, setHandSel] = useState<HandEntry | null>(null);
+  /** 动作条的定位盒：跟着 HUD 的行囊格重量出来，HUD 整壳重建也不会错位 */
+  const [quickBox, setQuickBox] = useState<{ left: number; bottom: number; width: number } | null>(null);
   const [fontMode, setFontMode] = useState<FontMode>(readFontMode);
 
   /* ---------------- 选目标模式（W2）----------------
@@ -258,15 +264,22 @@ export function AcHudLayer({
   /** 上一次被拒的理由：留在横幅上看得见，不依赖 HUD 的 toast（脚本没加载完就没有 toast） */
   const [pickHint, setPickHint] = useState('');
   /**
-   * 发起选格：顺手收起弹层 —— 弹层带一层遮罩，不收起的话玩家看得见棋盘却点不到。
-   * 「面板侧移、选格时仍看得见其余手牌」是 W3 的布局活，本波先把通路走通。
+   * 发起「在棋盘上点一格 / 点一个人」。
+   *
+   * 发起方只有行囊动作条一家，而它本来就无遮罩，所以这里**不收弹层也不收条**：
+   * 选格期间那条一直挂着，玩家看得见自己是在对哪张卡下手，Esc 或点「收起」才退出。
    */
   const requestPick = useCallback((req: PickRequest) => {
     setPick(req);
     setPickHint('');
-    setPanel(null);
   }, []);
   const cancelPick = useCallback(() => {
+    setPick(null);
+    setPickHint('');
+  }, []);
+  /** 收起动作条：连带退出选目标态，否则棋盘上还挂着一圈来自这一格的绿环 */
+  const dismissHand = useCallback(() => {
+    setHandSel(null);
     setPick(null);
     setPickHint('');
   }, []);
@@ -316,6 +329,21 @@ export function AcHudLayer({
     },
     [pick, game, onAction, onPickPlayer],
   );
+  /* Esc 一层一层退：选格中 → 只退出选格（动作条留着，玩家能改主意再按一次使用）；没在选格 → 收起动作条。
+     两个监听都挂在 window 的捕获阶段，`stopPropagation` 挡不住同节点的另一个监听器，
+     所以规矩是「每个 handler 只管自己那一层」，而不是谁抢先把事件吃掉。 */
+  useEffect(() => {
+    if (!handSel) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      e.stopPropagation();
+      if (pick) setPick(null);
+      else dismissHand();
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [handSel, pick, dismissHand]);
+
   useEffect(() => {
     if (!pick) return;
     const onKey = (e: KeyboardEvent) => {
@@ -353,7 +381,24 @@ export function AcHudLayer({
   const snapRef = useRef(snapshot);
   snapRef.current = snapshot;
 
-  const openPanel = useCallback((kind: string) => setPanel(kind), []);
+  /**
+   * HUD 要开一个界面。
+   *
+   * `hand` 不再走模态弹窗：手牌 / 道具是本局最高频的操作，弹层带遮罩会把棋盘点击吃掉
+   * （旧代码里 `requestPick` 第一件事就是 `setPanel(null)` 为的就是这个），所以它改成
+   * 在行囊格**上方**就地展开一条动作条；其余（银行 / 商店 / 股市…是表单，拍卖 / 小游戏是强制流程）仍是弹窗。
+   */
+  const openPanel = useCallback((kind: string, arg?: unknown) => {
+    if (kind === 'hand') {
+      setPanel(null);
+      const next = (arg as { entry?: HandEntry } | undefined)?.entry ?? null;
+      // 再点同一格 = 收起：没有遮罩，玩家没有「点外面关掉」这个习惯可依赖，得给一条原路退回
+      setHandSel((prev) => (next && prev && entryKey(prev) === entryKey(next) ? null : next));
+      return;
+    }
+    setHandSel(null);
+    setPanel(kind);
+  }, []);
 
   const tools = useMemo<AcHostTool[]>(() => {
     const next = () => setFontMode((m) => FONT_MODES[(FONT_MODES.indexOf(m) + 1) % FONT_MODES.length]!);
@@ -424,7 +469,27 @@ export function AcHudLayer({
         ? { cells: pick.cells, rejected: pick.rejected, players: pick.players ?? [], playerRejected: pick.playerRejected ?? [] }
         : null,
     );
-  }, [ready, snapshot, dispatch, openPanel, onPickCell, onPickPlayer, tools, interactive, isRemote, pick]);
+    AC.setBagFocus?.(handSel ? entryKey(handSel) : null);
+  }, [ready, snapshot, dispatch, openPanel, onPickCell, onPickPlayer, tools, interactive, isRemote, pick, handSel]);
+
+  /* 动作条贴在行囊格**上方**（往上长才不压住 dock 里的骰子按钮）。
+     HUD 每次快照都整壳重建 DOM（`hud.js:render()`），所以位置每次重量一遍，不是一次算完就存下来。
+     条本身比行囊宽（名称 + 说明 + 参数 + 两个按钮），所以以行囊中心为锚再夹进视口，
+     避免最后一格点开时整条溢出屏幕右边。 */
+  useEffect(() => {
+    if (!ready || !handSel) return;
+    const measure = () => {
+      const bag = document.querySelector('.hud-bag');
+      if (!bag) return;
+      const r = bag.getBoundingClientRect();
+      const width = Math.min(560, window.innerWidth - 24);
+      const left = Math.min(Math.max(12, r.left + r.width / 2 - width / 2), window.innerWidth - 12 - width);
+      setQuickBox({ left, width, bottom: window.innerHeight - r.top + 10 });
+    };
+    measure();
+    window.addEventListener('resize', measure);
+    return () => window.removeEventListener('resize', measure);
+  }, [ready, handSel, snapshot]);
 
   // 需要输入的阶段强制弹面板（小游戏 / 舍弃手牌 / 拍卖 / 结算）
   const forced = useMemo(() => {
@@ -551,8 +616,6 @@ export function AcHudLayer({
         return <NpcPanel game={game} onAction={onAction} interactive={interactive} />;
       case 'company':
         return <CompanyPanel game={game} onAction={onAction} interactive={interactive} />;
-      case 'hand':
-        return <HandPanel game={game} onAction={onAction} interactive={interactive} requestPick={requestPick} pickingKey={pick?.key ?? null} />;
       case 'auction':
         return <AuctionPanel game={game} onAction={onAction} myPlayerId={myPlayerId} />;
       case 'control':
@@ -620,6 +683,24 @@ export function AcHudLayer({
           </div>
         )}
       </div>
+
+      {/* 手牌 / 道具的内联动作条：没有遮罩，棋盘始终看得见点得到，选格时绿环与这条同时在场 */}
+      {handSel && ready && (
+        <div
+          className="ac-quick-anchor"
+          style={quickBox ? { left: quickBox.left, width: quickBox.width, bottom: quickBox.bottom } : undefined}
+        >
+          <HandQuickBar
+            game={game}
+            entry={handSel}
+            interactive={interactive}
+            onAction={onAction}
+            requestPick={requestPick}
+            pickingKey={pick?.key ?? null}
+            onDismiss={dismissHand}
+          />
+        </div>
+      )}
 
       {active && (
         <div className="ac-sheet-scrim" onClick={forced ? undefined : () => setPanel(null)}>

@@ -169,6 +169,12 @@
   let pickPlayerReasons = new Map();
   /** 棋盘是否处于「要在上面点东西」的状态（格或人任一） */
   const picking = () => !!pickCells || pickPlayers.length > 0;
+  /**
+   * 行囊里此刻被展开的那一格（id 由宿主从 `setBagFocus` 报回来）。
+   * 只影响样式，不参与合法性 —— 但每次快照重建都要认它，否则动作条开着、下面的格子选中态会在
+   * 下一帧消失（hud.js 的 render() 是把整壳重铺的）。
+   */
+  let bagFocusKey = null;
   /* ---------------- 相机系统接线：聚焦 → 跟随 → 解锁 ----------------
    * world.js 持有状态机与补间；这里只做三件事：
    *   1) 决定「该聚焦谁」（activePid）并在合适的时机调 D25World.focusPlayer()
@@ -1241,6 +1247,13 @@
     document.querySelectorAll('.hud-pop--open').forEach((p) => { if (p !== pop) p.classList.remove('hud-pop--open'); });
   }
 
+  /**
+   * 行囊条（W-quick 第一行）：这一条**本身就是手牌清单**，不再另开模态面板。
+   *
+   * 每格带身份（`item:<id>` / `card:<id>:<下标>`）：宿主的手牌动作条要靠它把「展开的是哪一格」
+   * 标回来（选中态），也要靠同一个 key 知道选格请求归谁。卡片名直接印在格子上 ——
+   * 清单一旦去掉，🃏 这种「要 hover 才知道是什么」的图标就断了信息链。
+   */
   function renderBag() {
     const bag = el('div', 'hud-bag');
     const usable = new Set(A.usableItems);
@@ -1253,22 +1266,33 @@
       row.appendChild(el('span', 'hud-chip hud-chip--off', '空空如也：走到点券格/宝箱攒点券，去商店换卡片道具'));
     }
     for (const [id, qty] of entries) {
-      const cell = el('button', `ac-invgrid__cell ${usable.has(id) ? 'ac-invgrid__cell--rare' : ''}`);
-      cell.innerHTML = `${ITEM_EMOJI[id] || '🧰'}${qty > 1 ? `<span class="ac-invgrid__qty">${qty}</span>` : ''}`;
-      cell.setAttribute('aria-label', `${view.names.items[id]?.name ?? id}${usable.has(id) ? '，此刻可用' : '，此刻不可用'}`);
-      cell.onclick = () => fire(usable.has(id) ? { __open: 'hand' } : null, usable.has(id) ? `使用道具「${view.names.items[id]?.name ?? id}」` : `道具「${view.names.items[id]?.name ?? id}」此刻不可用`);
+      const name = view.names.items[id]?.name ?? id;
+      const cell = bagCell(`item:${id}`, ITEM_EMOJI[id] || '🧰', name, usable.has(id), 'ac-invgrid__cell--rare',
+        view.names.items[id]?.desc ?? '', qty);
+      // 不可用也展开：动作条会引引擎那句原话说明「为什么此刻不行」，
+      // 落回 cosmetic() 只会蹦出「（原型）…」这种给旧演示用的话。
+      cell.onclick = () => fire({ __open: 'hand', entry: { kind: 'item', id, i: 0 } }, `使用道具「${name}」`);
       row.appendChild(cell);
     }
-    for (const cid of me.cards) {
+    me.cards.forEach((cid, i) => {
       const can = A.usableCards.includes(cid);
-      const cell = el('button', `ac-invgrid__cell ${can ? 'ac-invgrid__cell--diy' : ''}`);
-      cell.innerHTML = '🃏';
-      cell.setAttribute('aria-label', `${view.names.cards[cid]?.name ?? cid}${can ? '，此刻可用' : '，此刻不可用'}`);
-      cell.onclick = () => fire(can ? { __open: 'hand' } : null, can ? `使用卡片「${view.names.cards[cid]?.name ?? cid}」` : `卡片「${view.names.cards[cid]?.name ?? cid}」此刻不可用`);
+      const name = view.names.cards[cid]?.name ?? cid;
+      const cell = bagCell(`card:${cid}:${i}`, '🃏', name, can, 'ac-invgrid__cell--diy', view.names.cards[cid]?.desc ?? '', 1);
+      cell.onclick = () => fire({ __open: 'hand', entry: { kind: 'card', id: cid, i } }, `使用卡片「${name}」`);
       row.appendChild(cell);
-    }
+    });
     bag.appendChild(row);
     return bag;
+  }
+
+  function bagCell(key, emoji, name, usable, kindClass, desc, qty) {
+    const cell = el('button', `ac-invgrid__cell ${kindClass} ${usable ? 'ac-invgrid__cell--ok' : 'ac-invgrid__cell--off'}${bagFocusKey === key ? ' ac-invgrid__cell--on' : ''}`);
+    cell.dataset.key = key;
+    cell.innerHTML = `<span class="ac-invgrid__face">${emoji}${qty > 1 ? `<span class="ac-invgrid__qty">${qty}</span>` : ''}</span>`
+      + `<span class="ac-invgrid__cap">${esc(name)}</span>`;
+    cell.setAttribute('aria-label', `${name}，${usable ? '此刻可用' : '此刻不可用'}`);
+    cell.title = desc ? `${name}：${desc}` : name;
+    return cell;
   }
 
   /* 真实动作出口：宿主注入了 dispatch 就走引擎，否则退回旧的「只做表现」。 */
@@ -1276,7 +1300,7 @@
     if (HUD_LOCKED) { toast('🎥 镜头正在聚焦，等视角停稳再操作', 'bell'); return; }
     if (hostApi.interactive === false) { toast('还没轮到你行动', 'bell'); return; }
     if (x && typeof x === 'object') {
-      if (x.__open) { if (typeof hostApi.openPanel === 'function') { hostApi.openPanel(x.__open); return; } }
+      if (x.__open) { if (typeof hostApi.openPanel === 'function') { hostApi.openPanel(x.__open, x); return; } }
       else if (typeof hostApi.dispatch === 'function') { hostApi.dispatch(x); return; }
     }
     cosmetic(label || '');
@@ -1443,8 +1467,22 @@
       globalThis.D25World?.setPickHighlight?.(pickCells ?? []);
       globalThis.D25World?.setPickPlayers?.(pickPlayers);
     },
-    /** 注入宿主能力：{ dispatch(action), openPanel(kind) } */
+    /** 注入宿主能力：{ dispatch(action), openPanel(kind, payload) } */
     setHost(h) { hostApi = Object.assign(hostApi, h || {}); },
+    /**
+     * 行囊格里哪一格正展开着动作条（传 null 全收）。
+     *
+     * 只改样式、不判合法性；每次快照重铺壳时 `renderBag()` 会读同一个 `bagFocusKey`，
+     * 所以宿主不必在每帧重报。
+     */
+    setBagFocus(key) {
+      bagFocusKey = key || null;
+      document.querySelectorAll('.ac-invgrid__cell[data-key]').forEach((c) => {
+        const on = c.dataset.key === bagFocusKey;
+        c.classList.toggle('ac-invgrid__cell--on', on);
+        c.setAttribute('aria-expanded', String(on));
+      });
+    },
     toast,
     /** 卸载：停掉 WebGL / Pixi、清掉浮层。脚本本身留在内存，再次 update 即可重新挂载。 */
     destroy() {
