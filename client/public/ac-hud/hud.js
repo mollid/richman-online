@@ -796,7 +796,7 @@
     if (jailed.length) {
       bd.appendChild(el('div', 'ac-divider', '<span class="ac-divider__mark">🚔 狱中恶人</span>'));
       const row = el('div', 'hud-chips');
-      row.appendChild(el('span', 'hud-chip hud-chip--npc', `保释金 🔔${money(A.bailFee)}（站上监狱门外才可办）`));
+      row.appendChild(el('span', 'hud-chip hud-chip--npc', `保释金 🥬${A.bailFee}（站上监狱门外才可办）`));
       for (const n of jailed) row.appendChild(el('span', 'hud-chip hud-chip--npc', `${NPC[n.kind]} ${NPC_CN[n.kind] ?? n.kind}`));
       bd.appendChild(row);
     }
@@ -1130,7 +1130,7 @@
       ['🛍️ 进商店', A.canShop, 'ac-btn--blue', '脚下是商店格', { __open: 'shop' }],
       ['📈 开股市', stockOpenable, 'ac-btn--blue', stockWhy, { __open: 'stock' }],
       ['🎰 买乐透', A.canBuyLottery, 'ac-btn--orange', `一注 🔔${money(A.lotteryTicketCost)}，每月 15 号开奖`, { __open: 'lottery' }],
-      ...A.bailableVillains.map((k) => [`🚔 保释${NPC_CN[k] ?? k} 🔔${money(A.bailFee)}`, true, 'ac-btn--orange', '收编恶人，它去偷别人的钱，你抽成', { type: 'BAIL_PRISONER', npcKind: k }]),
+      ...A.bailableVillains.map((k) => [`🚔 保释${NPC_CN[k] ?? k} 🥬${A.bailFee}`, true, 'ac-btn--orange', '收编恶人，它去偷别人的钱，你抽成', { type: 'BAIL_PRISONER', npcKind: k }]),
       ...A.dischargeablePatients.map((id) => [`🏥 让 ${esc(st.players.find((p) => p.id === id)?.name ?? id)} 出院 🔔${money(A.dischargeFee)}`, true, 'ac-btn--orange', '替他垫钱，攒个人情', { type: 'DISCHARGE_PATIENT', targetPlayerId: id }]),
       ...(A.magic ? [[`🔮 施法（${A.magic.candidateIds.length} 人可罚）`, true, 'ac-btn--orange', '女巫水晶球：降下 ' + A.magic.curse, { __open: 'magic' }]] : []),
       ...(A.estateBuildCells.length ? [[`🏢 房地产公司加盖（${A.estateBuildCells.length} 处可选）`, true, 'ac-btn--orange', '董事长特权，施工费＝该地地价 ×50%', { __open: 'company' }]] : []),

@@ -141,7 +141,7 @@ function onLandingJail(ctx: CellLandingCtx): LandingResult {
     state,
     `${p.name} 来到「${c.name}」门外（安全无恙）` +
       (blocker === null
-        ? `，可花 ¥${ctx.bailFee(state)} 保释在押恶人`
+        ? `，可花 ${ctx.bailFee(state)} 点券保释在押恶人`
         : jailed.length === 0
           ? '，当前没有在押恶人'
           : `，${blocker}`),

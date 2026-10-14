@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { addPlayer, allAssetSummaries, allStockSummaries, applyAction, availableActions, BOARD_SIZE, gameDate, createGame, priceIndex, forceGameOver, GOD_DURATION_DAYS, GODS, nextRandom, removePlayer, rentOf, ReplayEngine, rollDie, spawnCellPool, STARTING_ITEMS, stockExecPrice, upgradeCost } from '../src/index.js';
+import { addPlayer, allAssetSummaries, allStockSummaries, applyAction, availableActions, BAIL_FEE, BOARD_SIZE, gameDate, createGame, priceIndex, forceGameOver, GOD_DURATION_DAYS, GODS, nextRandom, removePlayer, rentOf, ReplayEngine, rollDie, spawnCellPool, STARTING_ITEMS, stockExecPrice, upgradeCost } from '../src/index.js';
 import type { GameState, PlayerAction, PlayerDef } from '../src/index.js';
 import { atLegacyStart, pinIndexOne } from './helpers/state.js';
 
@@ -219,8 +219,11 @@ describe('回合流转', () => {
   });
 
   it('落地监狱门外安全不停留，且可保释在押恶人', () => {
-    const g = setupLanding(newGame(17), 26, 8);
-    const landed = applyAction(g, { type: 'ROLL_DICE' });
+    const seeded = setupLanding(newGame(17), 26, 8);
+    // 保释金改点券支付（D-50）：口袋空的话监狱门外根本不开窗（没有办得成的事），
+    // 所以这条用例要先把点券备足 —— 摆余额是用例的事，不是规则的事
+    seeded.players[0]!.points = BAIL_FEE;
+    const landed = applyAction(seeded, { type: 'ROLL_DICE' });
     // TILE-10：监狱门外安全，不再落地坐牢
     expect(landed.players[0]!.skipTurns).toBe(0);
     expect(landed.players[0]!.custody).toBeNull();

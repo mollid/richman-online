@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  BAIL_FEE,
   CARDS,
   ITEMS,
   actionRefusal,
@@ -295,12 +296,16 @@ describe('门控与引擎同源（边界局面逐条钉死）', () => {
     expect(actionRefusal(state, { type: 'USE_CARD', cardId: autoCard![0] })).toBe('该卡片为自动触发，不能主动使用');
   });
 
-  it('保释名单按现金过滤（旧实现列出名单却付不起保释金）', () => {
+  it('保释名单按**点券**过滤（D-50：旧实现按现金，改成点券后这条同源性质必须跟着换钱包）', () => {
     const broke = standOn(newGame(), 'jail', { cash: 0, landOnly: false });
+    broke.players[broke.currentPlayerIndex]!.points = 0;
     expect(broke.npcs.some((n) => n.jailed)).toBe(true);
     expect(availableActions(broke).bailableVillains).toEqual([]);
     const rich = structuredClone(broke);
+    // 现金再多也不顶用：两套账不许互相支付
     rich.players[rich.currentPlayerIndex]!.cash = 200000;
+    expect(availableActions(rich).bailableVillains).toEqual([]);
+    rich.players[rich.currentPlayerIndex]!.points = BAIL_FEE;
     expect(availableActions(rich).bailableVillains.length).toBeGreaterThan(0);
   });
 

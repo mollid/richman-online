@@ -2691,12 +2691,16 @@ function canSurrender(state: GameState): boolean {
   return !!p && !p.bankrupt;
 }
 
-/** 保释金（固定 5000，随物价指数缩放） */
-function bailFee(state: GameState): number {
-  return scaled(state, BAIL_FEE);
+/**
+ * 保释金（D-50）：**点券**支付，固定价、不随物价指数缩放 —— 点券那一侧的所有定价都是固定值，
+ * 让它跟着物价走会让"同一件事在不同月份贵三倍"，而点券收入本身并不随物价增长。
+ * 保留 `(state)` 形状是为了与 `dischargeFee` 在 UI / 落格文案里同构，调用方不必分两种写法。
+ */
+function bailFee(_state: GameState): number {
+  return BAIL_FEE;
 }
 
-/** 出院费（固定 2000，随物价指数缩放） */
+/** 出院费（固定 2000，随物价指数缩放；原版未明确金额，标注为推断值。仍是**现金**，决策人的点券账本里没有出院） */
 function dischargeFee(state: GameState): number {
   return scaled(state, DISCHARGE_FEE);
 }
@@ -2743,14 +2747,14 @@ function bailPrisoner(state: GameState, action: Extract<PlayerAction, { type: 'B
   const p = currentPlayer(state);
   const npc = state.npcs.find((n) => n.kind === action.npcKind)!;
   const fee = bailFee(state);
-  p.cash -= fee;
+  p.points -= fee;
   npc.jailed = false;
   npc.ownerId = p.id;
   npc.daysLeft = VILLAIN_DAYS;
   npc.position = cellAt(state, p.position).id;
   log(
     state,
-    `${p.name} 花费 ¥${fee} 保释了${villainDefOf(npc).name}，${VILLAIN_DAYS} 天内所获收益归 ${p.name}`,
+    `${p.name} 花费 ${fee} 点券保释了${villainDefOf(npc).name}，${VILLAIN_DAYS} 天内所获收益归 ${p.name}`,
   );
   finishIfSingleStep(state);
 }
@@ -3983,7 +3987,7 @@ function checkBailPrisoner(state: GameState, p: Player | null, action: ActionOf<
   const npc = state.npcs.find((n) => n.kind === action.npcKind);
   if (!npc) return '没有这名恶人';
   if (!npc.jailed) return '这名恶人不在押';
-  if (p.cash < bailFee(state)) return '现金不足以支付保释金';
+  if (p.points < bailFee(state)) return '点券不足以支付保释金';
   return null;
 }
 

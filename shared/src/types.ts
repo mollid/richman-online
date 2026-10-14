@@ -956,7 +956,7 @@ export interface AvailableActions {
   canAuctionGiveUp: boolean;
   /** NPC-01..04：站立于监狱门外时可保释的在押恶人种类 */
   bailableVillains: VillainKind[];
-  /** NPC-01..04：保释金（现金，已按物价指数缩放） */
+  /** NPC-01..04：保释金（**点券**，固定价不随物价；D-50） */
   bailFee: number;
   /** TILE-11：当前魔法屋施法机会（无则 null，UI 据此渲染女巫面板） */
   magic: MagicOffer | null;

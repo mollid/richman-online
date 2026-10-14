@@ -133,9 +133,11 @@ describe('NPC-01..04 四大恶人（数据与保释）', () => {
     }
   });
 
-  it('监狱门外可保释：扣保释金、刑期 7 天、主人为保释人', () => {
-    const g = setupLanding(newGame(11), JAIL_CELL, 3);
-    const landed = applyAction(g, { type: 'ROLL_DICE' });
+  it('监狱门外可保释：扣的是点券、刑期 7 天、主人为保释人（D-50）', () => {
+    const seeded = setupLanding(newGame(11), JAIL_CELL, 3);
+    // 门控先看付不付得起：点券为 0 时监狱门外根本不开窗，所以先把钱备好再掷骰
+    seeded.players[0]!.points = BAIL_FEE * 2;
+    const landed = applyAction(seeded, { type: 'ROLL_DICE' });
     expect(landed.players[0]!.position).toBe(JAIL_CELL);
     expect(landed.phase).toBe('awaiting_action');
     const acts = availableActions(landed);
@@ -144,7 +146,9 @@ describe('NPC-01..04 四大恶人（数据与保释）', () => {
 
     const cashBefore = landed.players[0]!.cash;
     const bailed = applyAction(landed, { type: 'BAIL_PRISONER', npcKind: 'thief' });
-    expect(bailed.players[0]!.cash).toBe(cashBefore - BAIL_FEE);
+    expect(bailed.players[0]!.points).toBe(BAIL_FEE);
+    // 现金一分不动：保释不再是"大钱"支出
+    expect(bailed.players[0]!.cash).toBe(cashBefore);
     const thief = npcOf(bailed, 'thief');
     expect(thief.jailed).toBe(false);
     expect(thief.ownerId).toBe('p1');
@@ -157,18 +161,23 @@ describe('NPC-01..04 四大恶人（数据与保释）', () => {
     expect(() => applyAction(g, { type: 'BAIL_PRISONER', npcKind: 'thief' })).toThrow();
   });
 
-  it('现金不足不能保释；已保释者不可重复保释', () => {
-    const landed = applyAction(setupLanding(newGame(17), JAIL_CELL, 3), { type: 'ROLL_DICE' });
-    expect(availableActions(landed).bailFee).toBe(BAIL_FEE);
-    // 现金为 0 时自洽不足：保释金随物价指数缩放，改现金后需重算，
-    // 但现金为 0 时保释金恒 > 0，必然付不起
-    const broke = structuredClone(landed);
-    broke.players[0]!.cash = 0;
-    expect(availableActions(broke).bailFee).toBeGreaterThan(0);
-    expect(() => applyAction(broke, { type: 'BAIL_PRISONER', npcKind: 'thief' })).toThrow();
+  it('点券不足 ⇒ 门外不开窗、名单为空；钱够了才列得出保释（D-50）', () => {
+    const poor = setupLanding(newGame(17), JAIL_CELL, 3);
+    poor.players[0]!.points = 0;
+    poor.players[0]!.cash = 999999;   // 现金再多也不顶用：两套账不许互相支付
+    const landed = applyAction(poor, { type: 'ROLL_DICE' });
+    // 付不起保释 ⇒ 这一格没有办得成的事，落格窗不该把人钉在那儿（R4 防死路的同一条规则）
+    expect(availableActions(landed).bailableVillains).toEqual([]);
+    expect(landed.phase).not.toBe('awaiting_action');
+
+    const funded = setupLanding(newGame(17), JAIL_CELL, 3);
+    funded.players[0]!.points = BAIL_FEE;
+    const opened = applyAction(funded, { type: 'ROLL_DICE' });
+    expect(opened.phase).toBe('awaiting_action');
+    expect(availableActions(opened).bailableVillains.length).toBeGreaterThan(0);
 
     // 已保释者不可重复保释
-    const bailed = applyAction(landed, { type: 'BAIL_PRISONER', npcKind: 'thief' });
+    const bailed = applyAction(opened, { type: 'BAIL_PRISONER', npcKind: 'thief' });
     expect(() => applyAction(bailed, { type: 'BAIL_PRISONER', npcKind: 'thief' })).toThrow();
   });
 });

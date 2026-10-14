@@ -29,7 +29,8 @@ export function NpcPanel({
   if (!current) return null;
   if (!magic && bailable.length === 0 && patients.length === 0) return null;
 
-  const affordable = current.cash >= actions.bailFee;
+  // 保释花点券（D-50），出院仍花现金 —— 两个 afford 不能混用同一个余额
+  const affordable = current.points >= actions.bailFee;
   const dischargeable = current.cash >= actions.dischargeFee;
 
   return (
@@ -101,8 +102,8 @@ export function NpcPanel({
           {magic && <div className="npc-section-gap" />}
           <div className="panel-title">监狱 · 保释在押恶人</div>
           <div className="npc-bail-hint">
-            保释金 ¥{actions.bailFee.toLocaleString('zh-CN')}（保释者现金 ¥{current.cash.toLocaleString('zh-CN')}）
-            {!affordable && <span className="error-text"> · 现金不足</span>}
+            保释金 {actions.bailFee} 点券（保释者点券 {current.points.toLocaleString('zh-CN')}）
+            {!affordable && <span className="error-text"> · 点券不足</span>}
           </div>
           <div className="npc-bail-list">
             {bailable.map((kind) => (

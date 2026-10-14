@@ -311,7 +311,7 @@ export interface CellLandingCtx extends EngineCtx {
   tryFreePass(state: GameState, p: Player, amount: number): boolean;
   /** 住宅地产的应收租金（含路段倍数 / 等级 / 物价指数） */
   propertyRent(state: GameState, cell: BoardCell, owned: CellOwner): number;
-  /** 监狱保释金（随物价指数） */
+  /** 监狱保释金（点券，固定价；D-50） */
   bailFee(state: GameState): number;
   /** 机会格的命运卡抽签 + 结算 */
   resolveFateCard(state: GameState, p: Player): void;
