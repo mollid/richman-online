@@ -1,5 +1,5 @@
 import type { ChatMessage } from './remote.js';
-import { applyAction, characterOfSeat, createGame, normalizeGameState, type DateSerial, type GameState, type PlayerAction } from '@richman/shared';
+import { applyAction, characterById, characterOfSeat, createGame, normalizeGameState, type DateSerial, type GameState, type PlayerAction } from '@richman/shared';
 import { getSettings } from '../game/settings.js';
 
 /** 会话抽象：本地热座与联机共用同一套 UI */
@@ -80,16 +80,19 @@ export class LocalHotseatSession implements GameSession {
     resume?: GameState | null,
     maxDays: number | null = null,
     mapId: number | null = null,
+    characterIds?: string[],
   ) {
     if (resume) {
       // UI-03 读档：直接沿用存档状态
       this.game = resume;
       return;
     }
-    // 角色按座位取（`CHARACTERS` 排成男女交替）。这里原先自带一份名字表与一份颜色表 ——
-    // 与 `characters.ts` 各写各的，正是 hud.js 黑屏那一类"两处拷贝"的下一个候选，所以收掉。
+    // 角色由开局面板选（`characterIds[i]` 就是第 i 位的角色）；没给的位置按座位补，
+    // 于是读档与老调用方都不会因为"多了一步选人"而拿不到角色。
+    // 这里原先自带一份名字表与一份颜色表 —— 与 `characters.ts` 各写各的，
+    // 正是 hud.js 黑屏那一类"两处拷贝"的下一个候选，所以收掉。
     const players = Array.from({ length: playerCount }, (_, i) => {
-      const ch = characterOfSeat(i);
+      const ch = (characterIds?.[i] ? characterById(characterIds[i]!) : null) ?? characterOfSeat(i);
       return { id: `local-${i}`, name: ch.name, color: ch.color, characterId: ch.id };
     });
     // CORE-04 / §14 第 2 项：热座默认不限天数（结束条件仍只有「对手全破产」），上限由开局面板选

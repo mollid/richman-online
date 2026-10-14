@@ -96,6 +96,69 @@ button.small {
   width: 64px;
 }
 
+/* ---------- 角色选择（热座开局）---------- */
+.char-row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.char-row__hint {
+  font-size: 12px;
+  color: #607d8b;
+}
+
+.char-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.char-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 8px 4px;
+  border: 2px solid transparent;
+  border-radius: 10px;
+  background: #1c2b26;
+  font-size: 12px;
+}
+
+.char-card--on {
+  border-color: #e91e63;
+  background: #2a1b22;
+}
+
+.char-card__face {
+  font-size: 22px;
+  line-height: 1.1;
+}
+
+.char-card__meta {
+  color: #78909c;
+}
+
+/* 座位徽章压在卡片右上角：一眼看完"几号位是谁"，不必逐个点开对 */
+.char-card__seat {
+  position: absolute;
+  top: -7px;
+  right: -4px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  background: #e91e63;
+  color: #fff;
+  font-size: 11px;
+}
+
+@media (max-width: 560px) {
+  .char-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
 .start-btn {
   width: 180px;
   font-size: 16px;

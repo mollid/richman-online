@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { MAP_CHOICES, MAX_DAY_CHOICES, ONLINE_DEFAULT_MAX_DAYS, type GameState, type PlayerAction } from '@richman/shared';
+import { CHARACTERS, MAP_CHOICES, MAX_DAY_CHOICES, ONLINE_DEFAULT_MAX_DAYS, type GameState, type PlayerAction } from '@richman/shared';
 import { sfx } from './game/sfx.js';
 import {
   loadHotseatGame,
@@ -70,6 +70,53 @@ function MapRow({ value, onChange }: { value: number | null; onChange: (mapId: n
   );
 }
 
+/**
+ * 角色选择行（热座开局）。
+ *
+ * 为什么要有这一行：波 3 之前角色是**按座位静默分配**的，玩家根本不知道自己在操作谁 ——
+ * 决策人要的是"可选，不是随机"。默认仍替前 N 个座位填好（角色表是男女交替排的，
+ * 见 `characters.ts`），所以不 care 的人照样一键开局，care 的人点卡片换。
+ *
+ * 交互取"点击顺序即座位号"而不是"每座一个下拉"：下拉要把 10 个名字藏进 N 层点击，
+ * 而棋盘上真正想知道的是"这一号位是谁"，卡片上的座位徽章一眼就能看完。
+ */
+function CharacterRow({ count, picks, onChange }: { count: number; picks: string[]; onChange: (next: string[]) => void }) {
+  const seatOf = (id: string) => picks.indexOf(id);
+  const toggle = (id: string) => {
+    if (seatOf(id) >= 0) return onChange(picks.filter((p) => p !== id));
+    // 满了不吃点击：座位数由上面那排「N 人」决定，这里只负责"谁来坐"
+    if (picks.length >= count) return;
+    onChange([...picks, id]);
+  };
+  return (
+    <div className="char-row">
+      <div className="char-row__hint">点角色卡按点击顺序占座 · 再点一次腾出位子</div>
+      <div className="char-grid">
+        {CHARACTERS.map((c) => {
+          const seat = seatOf(c.id);
+          return (
+            <button
+              key={c.id}
+              type="button"
+              className={`char-card${seat >= 0 ? ' char-card--on' : ''}`}
+              title={c.blurb}
+              aria-pressed={seat >= 0}
+              onClick={() => toggle(c.id)}
+            >
+              <span className="char-card__face">{c.avatar}</span>
+              <span className="char-card__name">{c.name}</span>
+              <span className="char-card__meta">
+                {c.gender === 'male' ? '男' : '女'} · {c.age} 岁
+              </span>
+              {seat >= 0 && <span className="char-card__seat">{seat + 1} 号位</span>}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   const [session, setSession] = useState<GameSession | null>(null);
   const [replayRecord, setReplayRecord] = useState<ReplayRecord | null>(null);
@@ -84,10 +131,10 @@ export default function App() {
   useEffect(() => registerAction('open_settings', () => setShowSettings(true)), [registerAction]);
   useEffect(() => registerAction('open_help', () => setShowHelp(true)), [registerAction]);
 
-  const startLocal = (playerCount: number, maxDays: number | null, mapId: number | null) => {
+  const startLocal = (playerCount: number, maxDays: number | null, mapId: number | null, characterIds?: string[]) => {
     session?.destroy();
     setConnectError('');
-    setSession(new LocalHotseatSession(playerCount, undefined, null, maxDays, mapId));
+    setSession(new LocalHotseatSession(playerCount, undefined, null, maxDays, mapId, characterIds));
   };
 
   // UI-03 存储 / 读取：手动存 / 读档（仅热座模式）
@@ -214,7 +261,7 @@ function SetupScreen({
   onOpenSettings,
   onOpenHelp,
 }: {
-  onStartLocal: (playerCount: number, maxDays: number | null, mapId: number | null) => void;
+  onStartLocal: (playerCount: number, maxDays: number | null, mapId: number | null, characterIds?: string[]) => void;
   onConnect: (playerName: string, roomId?: string, maxDays?: number | null, mapId?: number | null) => void;
   onResume: () => void;
   onWatchReplay: (recordId: string) => void;
@@ -228,6 +275,18 @@ function SetupScreen({
 }) {
   const [mode, setMode] = useState<SetupMode>('local');
   const [playerCount, setPlayerCount] = useState(2);
+  // 已选角色（按座位序）。默认填前 N 个座位 ⇒ 一键开局仍然成立，改动才是玩家自己的选择
+  const [localPicks, setLocalPicks] = useState<string[]>(CHARACTERS.slice(0, 2).map((c) => c.id));
+
+  /** 改人数时同步 picks：减就砍尾，加就按座位序补没被占的角色 */
+  const setLocalCount = (n: number) => {
+    setPlayerCount(n);
+    setLocalPicks((prev) => {
+      if (prev.length > n) return prev.slice(0, n);
+      const taken = new Set(prev);
+      return [...prev, ...CHARACTERS.filter((c) => !taken.has(c.id)).slice(0, n - prev.length).map((c) => c.id)];
+    });
+  };
   // 天数上限（CORE-04 / §14 第 2 项）：热座默认不限，联机默认 60 天
   const [localMaxDays, setLocalMaxDays] = useState<number | null>(null);
   const [onlineMaxDays, setOnlineMaxDays] = useState<number | null>(ONLINE_DEFAULT_MAX_DAYS);
@@ -326,15 +385,20 @@ function SetupScreen({
           <div className="setup-title">本地热座模式</div>
           <div className="player-count-row">
             {[2, 3, 4].map((n) => (
-              <button key={n} className={playerCount === n ? 'primary' : ''} onClick={() => setPlayerCount(n)}>
+              <button key={n} className={playerCount === n ? 'primary' : ''} onClick={() => setLocalCount(n)}>
                 {n} 人
               </button>
             ))}
           </div>
+          <CharacterRow count={playerCount} picks={localPicks} onChange={setLocalPicks} />
           <DayLimitRow value={localMaxDays} onChange={setLocalMaxDays} />
           <MapRow value={localMap} onChange={setLocalMap} />
-          <button className="primary start-btn" onClick={() => onStartLocal(playerCount, localMaxDays, localMap)}>
-            开始游戏
+          <button
+            className="primary start-btn"
+            disabled={localPicks.length !== playerCount}
+            onClick={() => onStartLocal(playerCount, localMaxDays, localMap, localPicks)}
+          >
+            {localPicks.length === playerCount ? '开始游戏' : `还差 ${playerCount - localPicks.length} 个角色`}
           </button>
         </div>
       ) : mode === 'online' ? (
