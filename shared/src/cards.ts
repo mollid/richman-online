@@ -1,6 +1,6 @@
 import { boardNeighbors, MAX_HAND_CARDS, MAX_ITEM_COUNT } from './board.js';
 import type { CardEffectCtx } from './effect_ctx.js';
-import { scaled, upgradeCost } from './economy.js';
+import { scaled } from './economy.js';
 import { godDef } from './gods.js';
 import { godSummonRefusal } from './godspawn.js';
 import { ITEMS } from './items.js';
@@ -94,10 +94,16 @@ function footCell(state: GameState, actor: Player, want: { cellId?: number }): n
 }
 
 /** 购地卡（CARD-03）的收购价：地皮 + 已盖等级，按物价指数缩放。check 与 apply 共用 */
+/**
+ * 购地卡的收购款（D-05c 定案：换成原版公式，**替换**掉旧的"含各级升级费的现价 × 物价"）。
+ *
+ * 原版给原主的是 `(层 + 2) / 5 × 基础地价 × 物价`：1 级地 0.6 倍、5 级地 1.4 倍 ——
+ * 与"把升级费一并算进去"的旧口径差得很远（旧口径下满级地要付三四倍）。
+ * 这只管**付多少**；D-06 管的是**谁付给谁**（用卡者付给土地所有者），两条不冲突。
+ * 门控 `checkBuyLand` 与派单 `apply` 共用它，付不起的判定和实际扣款不会各算一套。
+ */
 function buyLandValue(state: GameState, price: number, grade: number): number {
-  let base = price;
-  for (let g = 1; g < grade; g++) base += upgradeCost(price, g);
-  return scaled(state, base);
+  return scaled(state, (price * (grade + 2)) / 5);
 }
 
 const checkBuyLand: TargetCheck = (state, p, want) => {
@@ -283,41 +289,68 @@ export const CARDS: Record<string, CardDef> = {
   'even-all': {
     id: 'even-all',
     name: '均富卡',
-    description: '将所有人的现金平分（余数归使用者）',
+    description: '将所有人的现金拉平到均值（余数归使用者），原本高于均值的再各付超均值部分的 1% 给用卡者',
     cost: 200,
     phase: 'any',
     targetSpec: noTarget(needsOtherPlayers),
     available: true,
-    apply: ({ state, self: p, log }) => {
+    apply: ({ state, self: p, pay, log }) => {
       const active = state.players.filter((q) => !q.bankrupt);
+      // 抽成基数取**拉平之前**的现金：拉平后所有人都等于均值，"(现金−均值)/100" 恒为 0，这笔账就永远收不出来
+      const before = new Map(active.map((q) => [q.id, q.cash]));
       const pool = active.reduce((sum, q) => sum + q.cash, 0);
       const avg = Math.floor(pool / active.length);
       for (const q of active) q.cash = avg;
-      p.cash += pool - avg * active.length; // 余数归使用者（V0 简化）
-      log(state, `${p.name} 使用「均富卡」，所有玩家现金变为 ¥${avg}`);
+      p.cash += pool - avg * active.length; // 余数归使用者（D-20）
+      // D-05①（原版均富分支的立即数）：拉平之后，每个"原本高于均值"的人再按 `(现金−均值)/100`
+      // 付给用卡者，即超均值部分的 1%。用卡者自己不参与这笔（付给自己没有意义）。
+      let levy = 0;
+      for (const q of active) {
+        if (q.id === p.id) continue;
+        const over = (before.get(q.id) ?? 0) - avg;
+        if (over <= 0) continue;
+        const fee = Math.min(Math.floor(over / 100), q.cash);
+        if (fee <= 0) continue;
+        pay(state, q, fee, p, { reason: 'card' });
+        levy += fee;
+      }
+      log(
+        state,
+        `${p.name} 使用「均富卡」，所有玩家现金变为 ¥${avg}` +
+          (levy > 0 ? `，超均值的几位另付 ${levy} 给 ${p.name}` : ''),
+      );
     },
   },
   'even-target': {
     id: 'even-target',
     name: '均贫卡',
-    description: '将指定对手与自己的现金平分（余数归使用者）',
+    description: '将指定对手与自己的现金平分（余数归使用者），对方更富时再付超均值部分的 1% 给用卡者',
     cost: 200,
     phase: 'any',
     targetSpec: VISIBLE_PLAYER_SPEC,
     available: true,
-    apply: ({ state, self: p, targetPlayer, log }) => {
+    apply: ({ state, self: p, targetPlayer, pay, log }) => {
       const t = targetPlayer();
       const pool = p.cash + t.cash;
       const avg = Math.floor(pool / 2);
+      // D-05②：对方比均值富（= 对方比用卡者富）时，按 `(他−均值)/100` 再抽一份给用卡者。
+      // 同样取拉平**之前**的现金做基数；用卡者自己更富时不倒抽（原版这条只对"被平掉的那位"成立）。
+      const levy = Math.floor(Math.max(0, t.cash - avg) / 100);
       p.cash = avg + (pool - avg * 2);
       t.cash = avg;
-      log(state, `${p.name} 对 ${t.name} 使用「均贫卡」，双方现金变为 ¥${avg}`);
+      const fee = Math.min(levy, t.cash);
+      if (fee > 0) pay(state, t, fee, p, { reason: 'card' });
+      log(
+        state,
+        `${p.name} 对 ${t.name} 使用「均贫卡」，双方现金变为 ¥${avg}` +
+          (fee > 0 ? `，${t.name} 另付 ${fee} 给 ${p.name}` : ''),
+      );
     },
   },
   'buy-land': {
     id: 'buy-land',
     name: '购地卡',
-    description: '以市价强制收购脚下他人的土地（连同房屋一并取得）',
+    description: '强制收购脚下他人的土地（连同房屋一并取得），地价款＝(层+2)/5 × 基础地价 × 物价，付给原主',
     cost: 35,
     phase: 'post_roll',
     targetSpec: { cells: 'foot', check: checkBuyLand },

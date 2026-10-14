@@ -10,6 +10,7 @@ import {
   ITEMS,
   MAX_HAND_CARDS,
   MAX_ITEM_COUNT,
+  priceIndex,
   rollDie,
   SHOP_CARD_IDS,
   SHOP_ITEM_IDS,
@@ -169,6 +170,42 @@ describe('波 2 卡片效果', () => {
     const paid = cash0 - used.players[0]!.cash;
     expect(paid).toBeGreaterThan(0);
     expect(used.players[1]!.cash - cash1).toBe(paid);
+    // D-05③：价款换成原版公式 `(层+2)/5 × 基础地价 × 物价`，不再把各级升级费累进去
+    // （6 号地基础地价 500、2 级 ⇒ 500×4/5 = 400；旧口径会算成 500+一级升级费）
+    expect(used.board[6]!.price).toBe(500);
+    expect(paid).toBe(Math.round((500 * (2 + 2) * priceIndex(used)) / 5));
+  });
+
+  it('均富卡：拉平后，原本高于均值的人再抽超均值部分的 1% 给用卡者（D-05①）', () => {
+    const g = pinIndexOne(newGame(806));
+    g.players[0]!.cards = ['even-all'];
+    g.players[0]!.cash = 10000;   // 用卡者是穷的那位，自己不抽自己
+    g.players[1]!.cash = 30000;
+    const used = applyAction(g, { type: 'USE_CARD', cardId: 'even-all' });
+    // 均值 20000；小美超出 10000 ⇒ 抽 100
+    expect(used.players[1]!.cash).toBe(19900);
+    expect(used.players[0]!.cash).toBe(20100);
+    expect(used.log.some((l) => l.text.includes('另付 100'))).toBe(true);
+  });
+
+  it('均贫卡：把对手拉平之外，对手更富时同样抽 1%（D-05②）', () => {
+    const g = pinIndexOne(newGame(807));
+    g.players[0]!.cards = ['even-target'];
+    g.players[0]!.cash = 10000;
+    g.players[1]!.cash = 30000;
+    const used = applyAction(g, { type: 'USE_CARD', cardId: 'even-target', targetPlayerId: 'p2' });
+    expect(used.players[1]!.cash).toBe(19900);
+    expect(used.players[0]!.cash).toBe(20100);
+  });
+
+  it('均贫卡：用卡者自己更富时不倒抽（原版这条只对被平掉的那位成立）', () => {
+    const g = pinIndexOne(newGame(808));
+    g.players[0]!.cards = ['even-target'];
+    g.players[0]!.cash = 30000;
+    g.players[1]!.cash = 10000;
+    const used = applyAction(g, { type: 'USE_CARD', cardId: 'even-target', targetPlayerId: 'p2' });
+    expect(used.players[1]!.cash).toBe(20000);
+    expect(used.players[0]!.cash).toBe(20000);
   });
 
   it('购地卡不能远程使用，也不能收购脚下无主地', () => {
