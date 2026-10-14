@@ -17,6 +17,7 @@ import {
   GODS,
   godSummary,
   ITEMS,
+  MAGIC_CONDITION_LABEL,
   NPC_NAMES,
   priceIndex,
   TREASURE_POINTS,
@@ -84,6 +85,8 @@ export interface AcSnapshot {
       cards: Record<string, { name: string; desc: string; cost: number }>;
       items: Record<string, { name: string; desc: string; cost: number | null }>;
       facilities: Record<string, { name: string; desc: string }>;
+      /** 魔法屋标语表：hud.js 里不许再抄一份规则文案（它不参与 typecheck，改模型时没人拦得住） */
+      magicConditions: Record<string, string>;
       godList: Array<{ id: string; name: string; possession: string; travel: string; days: number }>;
     };
   };
@@ -174,6 +177,7 @@ export function buildAcSnapshot(game: GameState, myPlayerId: string | null): AcS
         cards: mapDefs(CARDS, (v) => ({ name: v.name, desc: v.description, cost: v.cost })),
         items: mapDefs(ITEMS, (v) => ({ name: v.name, desc: v.description, cost: v.cost })),
         facilities: mapDefs(FACILITIES, (v) => ({ name: v.name, desc: v.description })),
+        magicConditions: { ...MAGIC_CONDITION_LABEL },
         godList: GODS.map((g) => ({ id: g.id, name: g.name, possession: g.possession, travel: g.travel, days: g.durationDays })),
       },
     },

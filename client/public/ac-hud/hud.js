@@ -819,11 +819,9 @@
       bd.appendChild(p);
     }
     if (A.magic) {
-      const m = A.magic;
       const p = el('div', 'ac-panel');
       p.innerHTML = `<div class="ac-panel__hd" style="background:var(--ac-pink)">🔮 女巫的水晶球</div>
-        <div class="ac-panel__bd"><div class="hud-tile__rows"><span>可惩罚 <b>${m.candidateIds.length} 人</b></span><span>诅咒 <b>${esc(m.curse)}</b></span></div>
-        <div class="hud-chips">${m.candidateIds.map((id) => `<span class="hud-chip">${esc(st.players.find((p) => p.id === id)?.name ?? id)}</span>`).join('')}</div></div>`;
+        <div class="ac-panel__bd"><div class="hud-tile__rows"><span>本局目标 <b>${esc(magicLabel(A.magic.condition))}</b></span><span>名单不公布 · 站上去才知道谁中招</span></div></div>`;
       bd.appendChild(p);
     }
   }
@@ -1111,6 +1109,12 @@
    *   { type:'...' }  → 交给宿主 dispatch 的真实 PlayerAction
    *   { __open:'x' }  → 宿主打开对应面板（需要选目标 / 填金额的动作）
    * 门控（第 2 项）仍与引擎 availableActions 同源。 */
+  /* 魔法屋标语一律取 view.names.magicConditions（shared 是唯一出处）。
+     本文件不参与 typecheck，规则文案一旦在这里各写各的，改模型时编译器一声都不会响。 */
+  function magicLabel(cond) {
+    return (view.names.magicConditions || {})[cond] || cond || '';
+  }
+
   function actionSpec() {
     /* 股市入口的门控口径：自己回合 + 未破产就能打开。
        面板里是 17 支行情（6 支虚拟股 + 11 家公司挂进来的 `corp-*`，CORP-14），另有那张
@@ -1138,7 +1142,7 @@
       ['🎰 买乐透', A.canBuyLottery, 'ac-btn--orange', `一注 🔔${money(A.lotteryTicketCost)}，每月 15 号开奖`, { __open: 'lottery' }],
       ...A.bailableVillains.map((k) => [`🚔 保释${NPC_CN[k] ?? k} 🥬${A.bailFee}`, true, 'ac-btn--orange', '收编恶人，它去偷别人的钱，你抽成', { type: 'BAIL_PRISONER', npcKind: k }]),
       ...A.dischargeablePatients.map((id) => [`🏥 让 ${esc(st.players.find((p) => p.id === id)?.name ?? id)} 出院 🔔${money(A.dischargeFee)}`, true, 'ac-btn--orange', '替他垫钱，攒个人情', { type: 'DISCHARGE_PATIENT', targetPlayerId: id }]),
-      ...(A.magic ? [[`🔮 施法（${A.magic.candidateIds.length} 人可罚）`, true, 'ac-btn--orange', '女巫水晶球：降下 ' + A.magic.curse, { __open: 'magic' }]] : []),
+      ...(A.magic ? [[`🔮 施法（${esc(magicLabel(A.magic.condition))}）`, true, 'ac-btn--orange', '水晶球只报标语：谁对得上要自己判断，符合条件的人一个都跑不掉；落到谁头上由你选魔法决定', { __open: 'magic' }]] : []),
       ...(A.estateBuildCells.length ? [[`🏢 房地产公司加盖（${A.estateBuildCells.length} 处可选）`, true, 'ac-btn--orange', '董事长特权，施工费＝该地地价 ×50%', { __open: 'company' }]] : []),
       ...(A.canFinancing ? [[`💳 特别融资（剩 🔔${money(A.financingRemaining)}）`, true, 'ac-btn--orange', '企业银行董事长专属，期间存款不计息', { __open: 'company' }]] : []),
       ['🚩 认输投降', A.canSurrender, 'ac-btn--cream', '干净退出，但必须指定一人被死神附身 13 天', { __open: 'surrender' }],
