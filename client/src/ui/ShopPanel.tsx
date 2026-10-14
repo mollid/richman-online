@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { availableActions, CARDS, ITEMS, MAX_HAND_CARDS, MAX_ITEM_COUNT, SHOP_CARD_IDS, SHOP_ITEM_IDS } from '@richman/shared';
+import { availableActions, CARDS, itemSellValue, ITEMS, MAX_HAND_CARDS, MAX_ITEM_COUNT, SHOP_CARD_IDS, SHOP_ITEM_IDS } from '@richman/shared';
 import { landingExitAction, landingExitLabel } from './landingExit.js';
 import type { GameState, PlayerAction } from '@richman/shared';
 
@@ -107,11 +107,13 @@ export function ShopPanel({ game, onAction, interactive = true }: { game: GameSt
           })}
           {ownedItemIds.length > 0 && (
             <>
-              <div className="shop-sell-title">变卖道具 · 半价回收点券</div>
+              <div className="shop-sell-title">变卖道具 · 按回收价兑点券</div>
               {ownedItemIds.map((itemId) => {
                 const item = ITEMS[itemId]!;
                 const owned = current.items[itemId] ?? 0;
-                const refund = Math.floor((item.cost ?? 0) / 2);
+                // 问引擎那一个函数，不在这里重算一遍 `cost/2`：
+                // 研究所非卖品没有售价，自己算会得到「变卖 +0 券」这种点下去道具白没的按钮
+                const refund = itemSellValue(itemId);
                 return (
                   <div key={`sell-${itemId}`} className="card-row">
                     <div className="card-info">

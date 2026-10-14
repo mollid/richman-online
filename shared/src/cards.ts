@@ -677,11 +677,12 @@ export const CARDS: Record<string, CardDef> = {
     targetSpec: VISIBLE_PLAYER_SPEC,
     counteredBy: ['absolve', 'shift-blame', 'revenge'],
     available: true,
-    apply: ({ state, self: p, targetPlayer, applyDisaster, blockRent, log }) => {
+    apply: ({ state, self: p, targetPlayer, applyDisaster, imposeCustody, log }) => {
       const t = targetPlayer();
       applyDisaster(state, t, 'frame', p, (v) => {
-        v.skipTurns = Math.max(v.skipTurns, 5);
-        blockRent(v, 5);
+        // 「被陷害入狱」是真入狱：判 jail 的 custody 并把人押到监狱格（D-54），
+        // 否则这句只是一句文案 —— 人还站在原地，监狱门外也就永远没人可保释
+        imposeCustody(state, v, 'jail', 5);
         log(state, `${v.name} 被陷害入狱 5 天，丧失收租权利`);
       });
     },

@@ -438,7 +438,7 @@ describe('波 2 道具效果', () => {
     const g = newGame(905);
     g.players[0]!.items = { 'remote-dice-item': 1 };
     const used = applyAction(g, { type: 'USE_ITEM', itemId: 'remote-dice-item', diceValue: 5 });
-    expect(used.pendingFixedDice).toBe(5);
+    expect(used.players[used.currentPlayerIndex]!.fixedDice).toBe(5);
   });
 
   it('定时炸弹是布设类：放到格上，不是自己背上（D-48）', () => {
@@ -534,7 +534,7 @@ describe('波 2 道具效果', () => {
     const cashBefore = started.players[0]!.cash;
     started.players[0]!.position = 3;
     started.players[0]!.diceCount = 1; // 单骰 + 固定 3 点 ⇒ 稳稳落在 6 号，不撞上别的事件
-    started.pendingFixedDice = 3;
+    started.players[started.currentPlayerIndex]!.fixedDice = 3;
     started.players[1]!.position = 20;
     const rolled = applyAction(started, { type: 'ROLL_DICE' });
     expect(rolled.players[0]!.position).toBe(6);
@@ -549,7 +549,7 @@ describe('波 2 道具效果', () => {
     rolled.players[0]!.bulldozerSteps = 2;
     rolled.players[0]!.position = 3;
     rolled.players[0]!.diceCount = 1;
-    rolled.pendingFixedDice = 3;
+    rolled.players[rolled.currentPlayerIndex]!.fixedDice = 3;
     const done = applyAction(rolled, { type: 'ROLL_DICE' });
     expect(done.players[0]!.bulldozerTurns).toBe(0);
     expect(done.players[0]!.bulldozerSteps).toBe(0);

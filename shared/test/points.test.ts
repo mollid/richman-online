@@ -6,6 +6,7 @@ import {
   CARDS,
   createGame,
   ITEMS,
+  itemSellValue,
   MINIGAME_POINTS_PER_HIT,
   POINTS_START,
   rollDie,
@@ -94,6 +95,19 @@ describe('TILE-12 商店变卖：点券产出渠道之一', () => {
     const r = applyAction(g, { type: 'SELL_ITEM', itemId: 'roadblock' });
     expect(r.players[g.currentPlayerIndex]!.items['roadblock']).toBe(1);
     expect(r.players[g.currentPlayerIndex]!.points).toBe(before + refund);
+  });
+
+  it('研究所非卖品按等级回收价变卖，不是 0（D-53）', () => {
+    const g = atShop(112);
+    const p = g.players[g.currentPlayerIndex]!;
+    p.items = { 'robot-worker': 1 };
+    const before = p.points;
+    const r = applyAction(g, { type: 'SELL_ITEM', itemId: 'robot-worker' });
+    expect(r.players[g.currentPlayerIndex]!.points).toBe(before + 60);
+    // 五件逐件钉住：它们都没有 `cost`，`floor(cost/2)` 会把「变卖」变成白扔一件
+    expect(['robot-worker', 'time-machine', 'teleporter', 'bulldozer', 'nuke'].map(itemSellValue)).toEqual([60, 90, 120, 135, 180]);
+    // 在售道具仍是售价半价（同一函数、两条口径）
+    expect(itemSellValue('roadblock')).toBe(Math.floor(ITEMS['roadblock']!.cost! / 2));
   });
 
   it('变卖最后一个道具后从持有表中移除', () => {

@@ -44,14 +44,14 @@ function newGame(seed = 42): GameState {
 
 /**
  * 把当前玩家摆到能以 steps 步落到 targetCell 的位置（不经过起点）。
- * 用 `pendingFixedDice` 固定骰子 → 掷骰本身不消耗抽数，落格结算消耗的抽数可精确断言。
+ * 用 `fixedDice` 固定骰子 → 掷骰本身不消耗抽数，落格结算消耗的抽数可精确断言。
  */
 function landOn(state: GameState, targetCell: number, steps = 6): GameState {
   const s = structuredClone(state);
   const p = s.players[s.currentPlayerIndex]!;
-  p.diceCount = 1; // 单颗骰子，与 pendingFixedDice 一致
+  p.diceCount = 1; // 单颗骰子，与 fixedDice 一致
   p.position = (targetCell - steps + BOARD_SIZE) % BOARD_SIZE;
-  s.pendingFixedDice = steps;
+  s.players[s.currentPlayerIndex]!.fixedDice = steps;
   return s;
 }
 
@@ -63,7 +63,7 @@ function landOnBank(state: GameState): GameState {
   p.diceCount = 1;
   p.position = 29; // 29 + 6 = 35
   s.phase = 'awaiting_roll';
-  s.pendingFixedDice = 6;
+  s.players[s.currentPlayerIndex]!.fixedDice = 6;
   return applyAction(s, { type: 'ROLL_DICE' });
 }
 
@@ -386,7 +386,9 @@ describe('EVT-02 机会格违法事件（TILE-17）', () => {
     }
     expect(found).not.toBeNull();
     const r = found!;
-    expect(r.players[0]!.position).toBe(3);
+    // 落点是 3 号机会格（`movePath` 尾巴），人随后被押往监狱格（D-54）
+    expect(r.movePath?.[r.movePath.length - 1]).toBe(3);
+    expect(r.players[0]!.position).toBe(26);
     expect(r.players[0]!.skipTurns).toBeGreaterThanOrEqual(2);
     expect(r.players[0]!.custody!.daysLeft).toBeGreaterThanOrEqual(2);
     expect(r.players[0]!.rentBlockedTurns).toBeGreaterThanOrEqual(2);
@@ -402,7 +404,7 @@ describe('EVT-02 机会格违法事件（TILE-17）', () => {
       const s = landOn(newGame(seed), 3, 3);
       const before = s.rngState;
       const landed = applyAction(s, { type: 'ROLL_DICE' });
-      expect(landed.players[0]!.position).toBe(3);
+      expect(landed.movePath?.[landed.movePath!.length - 1]).toBe(3);
       if (landed.rngState === nextRandom(before).nextState) found = landed;
     }
     expect(found).not.toBeNull();

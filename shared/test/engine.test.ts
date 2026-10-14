@@ -303,17 +303,24 @@ describe('M2 卡片系统', () => {  it('卡片屋（TILE-13）免费获得一�
     expect(bought.players[0]!.points).toBe(1000 - 30);
   });
 
-  it('遥控骰子道具固定第一颗骰子点数', () => {
-    // 固定 6 点后，随机第二骰为 2 或 4 时总点数 8/10 会落在地产格（保持决策阶段）
-    const g = newGame(seedForFirstDie([2, 4]));
+  it('遥控骰子钉的是这一手的总点数，不是第一颗（ITEM-08）', () => {
+    // 种子挑成「随机第一骰 = 2」：按旧口径（只钉第一颗、其余照掷）开着汽车会掷出 4 颗加总，
+    // 新口径下这一手只有一颗、点数就是玩家定的 4，而且不消耗随机数。
+    const g = newGame(seedForFirstDie([2]));
     g.players[0]!.items = { 'remote-dice-item': 1 };
-    const used = applyAction(g, { type: 'USE_ITEM', itemId: 'remote-dice-item', diceValue: 6 });
-    expect(used.pendingFixedDice).toBe(6);
+    g.players[0]!.diceCount = 3; // 汽车：本来一次掷三颗
+    const used = applyAction(g, { type: 'USE_ITEM', itemId: 'remote-dice-item', diceValue: 4 });
+    expect(used.players[0]!.fixedDice).toBe(4);
     expect(used.players[0]!.items['remote-dice-item'] ?? 0).toBe(0);
+
     const rolled = applyAction(used, { type: 'ROLL_DICE' });
-    expect(rolled.dice![0]).toBe(6);
-    expect(rolled.phase).toBe('awaiting_action');
-    expect(rolled.pendingFixedDice).toBeNull();
+    expect(rolled.dice).toEqual([4]);
+    expect(rolled.players[0]!.fixedDice).toBeNull();
+
+    // 待生效期间拒用第二颗：否则这一颗会静默盖掉前一颗，白烧一件道具
+    const twice = structuredClone(used);
+    twice.players[0]!.items = { 'remote-dice-item': 2 };
+    expect(() => applyAction(twice, { type: 'USE_ITEM', itemId: 'remote-dice-item', diceValue: 6 })).toThrow(/已经有一颗遥控骰子/);
   });
 
   it('均富卡平均分配现金（余数归使用者）', () => {

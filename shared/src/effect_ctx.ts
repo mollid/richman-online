@@ -48,6 +48,11 @@ export interface EffectKit {
   randomIndex(state: GameState, n: number): number;
   routeSegment(state: GameState, cellId: number): number[];
   blockRent(p: Player, days: number): void;
+  /**
+   * 判一处「入狱 / 住院」：停留天数 + 丧失收租权 + **把人押到那一格**（D-54）。
+   * 各判罪点只调这一个函数，落点与移送日志由它一处管。
+   */
+  imposeCustody(state: GameState, p: Player, kind: 'jail' | 'hospital', days: number): void;
   applyDisaster(
     state: GameState,
     target: Player,

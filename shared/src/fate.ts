@@ -21,7 +21,7 @@
 import { MAX_HAND_CARDS } from './board.js';
 import { CARDS } from './cards.js';
 import type { BuildingRef, FateEffectCtx } from './effect_ctx.js';
-import { ITEMS } from './items.js';
+import { itemSellValue } from './items.js';
 
 export type FateEffectKind =
   | 'demolish-house' | 'requisition-land' | 'fake-loan' | 'check-bounce' | 'bank-hack'
@@ -232,20 +232,16 @@ export const FATE_EFFECTS: Record<FateEffectKind, (ctx: FateEffectCtx) => string
     p.diceCount = 1;
     return '交通工具损毁，恢复步行（1 颗骰子）';
   },
-  'ditch-hospital': ({ state, self: p, def, blockRent, renderParams }) => {
+  'ditch-hospital': ({ state, self: p, def, imposeCustody, renderParams }) => {
     const days = def.days ?? 2;
     renderParams.days = days;
-    p.skipTurns = Math.max(p.skipTurns, days);
-    p.custody = { kind: 'hospital', daysLeft: Math.max(p.skipTurns, days) };
-    blockRent(p, days);
+    imposeCustody(state, p, 'hospital', days);
     return `就医住院 ${days} 天（暂停行动并丧失收租权）`;
   },
-  'bike-hospital': ({ state, self: p, def, blockRent, renderParams }) => {
+  'bike-hospital': ({ state, self: p, def, imposeCustody, renderParams }) => {
     const days = def.days ?? 2;
     renderParams.days = days;
-    p.skipTurns = Math.max(p.skipTurns, days);
-    p.custody = { kind: 'hospital', daysLeft: Math.max(p.skipTurns, days) };
-    blockRent(p, days);
+    imposeCustody(state, p, 'hospital', days);
     return `就医住院 ${days} 天（暂停行动并丧失收租权）`;
   },
   'jaywalk-fine': payFine,
@@ -284,21 +280,17 @@ export const FATE_EFFECTS: Record<FateEffectKind, (ctx: FateEffectCtx) => string
     let gained = 0;
     for (const cardId of p.cards) gained += Math.floor((CARDS[cardId]?.cost ?? 0) / 2);
     for (const [itemId, count] of Object.entries(p.items)) {
-      gained += Math.floor((ITEMS[itemId]?.cost ?? 0) / 2) * count;
+      gained += itemSellValue(itemId) * count;
     }
     p.cards = [];
     p.items = {};
     p.points += gained;
     return `变卖所有卡片道具，回收 ${gained} 点券`;
   },
-  jail: ({ state, self: p, def, blockRent, applyDisaster, renderParams }) => {
+  jail: ({ state, self: p, def, imposeCustody, applyDisaster, renderParams }) => {
     const days = def.days ?? CRIME_JAIL_DAYS;
     renderParams.days = days;
-    applyDisaster(state, p, 'jail', null, (v) => {
-      v.skipTurns = Math.max(v.skipTurns, days);
-      v.custody = { kind: 'jail', daysLeft: Math.max(v.skipTurns, days) };
-      blockRent(v, days);
-    });
+    applyDisaster(state, p, 'jail', null, (v) => imposeCustody(state, v, 'jail', days));
     return `坐牢 ${days} 天（丧失收租权）`;
   },
 };

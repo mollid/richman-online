@@ -63,14 +63,14 @@ function seedForFateIndex(index: number): number {
 
 /**
  * 把当前玩家摆到能以 steps 步落到 3 号机会格的位置，并把 RNG 置为「首抽恰好抽到 cardId」。
- * 用 `pendingFixedDice` 固定骰子 → 掷骰本身不消耗抽数，落格抽签可精确断言。
+ * 用 `fixedDice` 固定骰子 → 掷骰本身不消耗抽数，落格抽签可精确断言。
  */
 function prepareChance(state: GameState, cardId: number, steps = 3): GameState {
   const s = structuredClone(state);
   const p = s.players[s.currentPlayerIndex]!;
   p.diceCount = 1;
   p.position = (3 - steps + BOARD_SIZE) % BOARD_SIZE;
-  s.pendingFixedDice = steps;
+  s.players[s.currentPlayerIndex]!.fixedDice = steps;
   s.rngState = seedForFateIndex(cardId);
   return s;
 }
@@ -115,7 +115,9 @@ describe('TILE-17 机会格抽命运卡', () => {
     const s = prepareChance(newGame(7), 20);
     const before = s.rngState;
     const landed = applyAction(s, { type: 'ROLL_DICE' });
-    expect(landed.players[0]!.position).toBe(3);
+    // 这一手落在 3 号机会格；这个种子同时踩中违法判定，人会被押往监狱格（D-54），
+    // 所以本用例只认 `movePath` 的落点，不认 `position`
+    expect(landed.movePath?.[landed.movePath!.length - 1]).toBe(3);
     expect(landed.players[0]!.cash).toBe(15000 + 1000);
     expect(landed.log.some((l) => l.text.includes('【命运】') && l.text.includes('在路边捡到 1000 元'))).toBe(true);
     // 无额外随机的卡：抽签恰好 1 抽
@@ -193,7 +195,7 @@ describe('EVT-04 倒闭者行乞（D-46）', () => {
     const s = structuredClone(g);
     s.players[0]!.position = 3;
     s.players[0]!.diceCount = 1;
-    s.pendingFixedDice = 1;
+    s.players[s.currentPlayerIndex]!.fixedDice = 1;
     const landed = applyAction(s, { type: 'ROLL_DICE' });
     const gave = 15000 - landed.players[0]!.cash;
     expect(gave).toBeGreaterThanOrEqual(500);
@@ -216,7 +218,7 @@ describe('EVT-04 倒闭者行乞（D-46）', () => {
     const pass = structuredClone(g);
     pass.players[0]!.position = 3;
     pass.players[0]!.diceCount = 1;
-    pass.pendingFixedDice = 2;
+    pass.players[pass.currentPlayerIndex]!.fixedDice = 2;
     const passed = applyAction(pass, { type: 'ROLL_DICE' });
     expect(passed.log.some((l) => l.text.includes('施舍'))).toBe(false);
 
@@ -225,7 +227,7 @@ describe('EVT-04 倒闭者行乞（D-46）', () => {
     gone.players[2]!.beggarGone = true;
     gone.players[0]!.position = 3;
     gone.players[0]!.diceCount = 1;
-    gone.pendingFixedDice = 1;
+    gone.players[gone.currentPlayerIndex]!.fixedDice = 1;
     const stepped = applyAction(gone, { type: 'ROLL_DICE' });
     expect(stepped.log.some((l) => l.text.includes('施舍'))).toBe(false);
   });
@@ -248,7 +250,7 @@ describe('NPC-05 恶犬（TILE 随机出没）', () => {
     const s = structuredClone(g);
     s.players[0]!.position = 3;
     s.players[0]!.diceCount = 1;
-    s.pendingFixedDice = 1;
+    s.players[s.currentPlayerIndex]!.fixedDice = 1;
     const before = s.rngState;
     const landed = applyAction(s, { type: 'ROLL_DICE' });
     expect(landed.players[0]!.custody?.kind).toBe('hospital');

@@ -88,9 +88,7 @@ function onLandingChance(ctx: CellLandingCtx): LandingResult {
     const cause = fateCardById(causeId);
     const days = cause?.days ?? 1;
     ctx.applyDisaster(state, p, 'jail', null, (v) => {
-      v.skipTurns = Math.max(v.skipTurns, days);
-      v.custody = { kind: 'jail', daysLeft: Math.max(v.skipTurns, days) };
-      ctx.blockRent(v, days);
+      ctx.imposeCustody(state, v, 'jail', days);
     });
     ctx.log(state, `【违法事件】${renderFateText(cause ?? { id: causeId, text: '卷入违法案件', effect: 'jail' }, { days })}`);
     if (ctx.isGameOver(state)) return 'stop';
@@ -117,9 +115,7 @@ function onLandingTax(ctx: CellLandingCtx): LandingResult {
  */
 function onLandingHospital(ctx: CellLandingCtx): LandingResult {
   const { state, self: p } = ctx;
-  p.skipTurns = Math.max(p.skipTurns, 1);
-  p.custody = { kind: 'hospital', daysLeft: Math.max(p.skipTurns, 1) };
-  ctx.blockRent(p, 1);
+  ctx.imposeCustody(state, p, 'hospital', 1);
   ctx.log(state, `${p.name} 办理住院（住院期间丧失收租权，每天需付医药费）`);
   // 只替**别人**办理：自己刚入住，立刻交出院费把自己捞出去等于没住院
   const patients = state.players.filter((q) => q.id !== p.id && q.custody?.kind === 'hospital' && q.skipTurns > 0);

@@ -285,7 +285,6 @@ function emptyState(): GameState {
     endReason: null,
     maxDays: null,
     stockMarket: { stocks: [] },
-    pendingFixedDice: null,
     roadblocks: [],
     mines: [],
     trapBombs: [],

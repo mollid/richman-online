@@ -48,8 +48,8 @@ function newGame(seed = 42, opts: { spawnGods?: boolean } = {}): GameState {
 /** 站到指定格并固定唯一一颗骰子（掷骰 0 抽） */
 function standAt(state: GameState, cellId: number, steps = 3): GameState {
   const s = structuredClone(state);
-  s.pendingFixedDice = steps;
   const p = s.players[s.currentPlayerIndex]!;
+  p.fixedDice = steps;
   p.diceCount = 1;
   p.position = (cellId - steps + BOARD_SIZE) % BOARD_SIZE;
   return s;
@@ -134,7 +134,7 @@ describe('GOD-01 土地公隔月再现（help [40]）', () => {
       g.currentPlayerIndex = i % g.players.length;
       g.phase = 'awaiting_roll';
       g.players[g.currentPlayerIndex]!.position = 4; // 神庙前一格
-      g.pendingFixedDice = 1;
+      g.players[g.currentPlayerIndex]!.fixedDice = 1;
       g.players[g.currentPlayerIndex]!.diceCount = 1;
       const r = applyAction(g, { type: 'ROLL_DICE' });
       if (r.players[r.currentPlayerIndex]?.god?.godId === 'land-god') landGodCount += 1;
@@ -252,8 +252,8 @@ describe('ITEM-03 地雷：踩中生效，但不拦人（D-49）', () => {
       q.bankrupt = false;
     });
     s[thing] = [{ cellId: 23, ownerId: 'p2' }];
-    s.pendingFixedDice = 6;
     const p = s.players[s.currentPlayerIndex]!;
+    p.fixedDice = 6;
     p.diceCount = 1;
     p.position = 20;
     return s;
@@ -261,7 +261,10 @@ describe('ITEM-03 地雷：踩中生效，但不拦人（D-49）', () => {
 
   it('踩雷之后仍把这一手走完：落点是 26，不是雷所在的 23', () => {
     const rolled = applyAction(walkPast(newGame(), 'mines'), { type: 'ROLL_DICE' });
-    expect(rolled.players[0]!.position).toBe(26);
+    // D-49 要钉的是「这一手走完了」，落点记在 `movePath` 尾巴上；
+    // D-54 之后住院还会被押到医院格，所以 `position` 不再是那个落点
+    expect(rolled.movePath?.[rolled.movePath.length - 1]).toBe(26);
+    expect(rolled.players[0]!.position).toBe(14); // 医院格
     expect(rolled.mines).toEqual([]);
     expect(rolled.players[0]!.skipTurns).toBe(3);
     // 住院就不要再办这一格的事（不买地、不缴租）
@@ -294,8 +297,8 @@ describe('ITEM-04 定时炸弹：放格 → 踩中才附身 → 同格甩锅（D
   /** 把当前行动者摆到 `from`，并固定一颗骰子走 `dice` 步（掷骰本身 0 抽数） */
   function walkFrom(state: GameState, from: number, dice: number): GameState {
     const s = structuredClone(state);
-    s.pendingFixedDice = dice;
     const p = s.players[s.currentPlayerIndex]!;
+    p.fixedDice = dice;
     p.diceCount = 1;
     p.position = from;
     return s;
@@ -634,7 +637,7 @@ describe('神庙摇籤：仍为随机（GOD 分布回归保护）', () => {
     for (let seed = 1; seed <= 200; seed++) {
       const g = newGame(seed);
       g.players[0]!.position = 4; // 神庙前一格
-      g.pendingFixedDice = 1;
+      g.players[g.currentPlayerIndex]!.fixedDice = 1;
       g.players[0]!.diceCount = 1;
       const r = applyAction(g, { type: 'ROLL_DICE' });
       // 落庙后回合已推进，改由日志判定附身结果
@@ -649,7 +652,7 @@ describe('神庙摇籤：仍为随机（GOD 分布回归保护）', () => {
     const run = () => {
       const g = newGame(77);
       g.players[0]!.position = 4;
-      g.pendingFixedDice = 1;
+      g.players[g.currentPlayerIndex]!.fixedDice = 1;
       g.players[0]!.diceCount = 1;
       const r = applyAction(g, { type: 'ROLL_DICE' });
       const hit = r.log.filter((l) => l.text.includes('附身'));

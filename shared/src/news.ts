@@ -392,16 +392,12 @@ export const NEWS_EFFECTS: Record<NewsEffectKind, (ctx: NewsEffectCtx) => string
 
   // ---- 事件 29–35：公司企业 ----
   'company-jail': (ctx) => {
-    const { state, def, params, randomPick, applyDisaster, blockRent, isGameOver } = ctx;
+    const { state, def, params, randomPick, applyDisaster, imposeCustody, isGameOver } = ctx;
     const company = randomPick(state, state.companies.filter((c) => c.chairmanId !== null));
     const victim = company ? state.players.find((q) => q.id === company.chairmanId) : undefined;
     if (!company || !victim || victim.bankrupt) return '';
     const days = def.days ?? 5;
-    applyDisaster(state, victim, 'jail', null, (v) => {
-      v.skipTurns = Math.max(v.skipTurns, days);
-      v.custody = { kind: 'jail', daysLeft: Math.max(v.skipTurns, days) };
-      blockRent(v, days);
-    });
+    applyDisaster(state, victim, 'jail', null, (v) => imposeCustody(state, v, 'jail', days));
     params.company = state.board[company.cellId]?.name ?? '';
     params.player = victim.name;
     const extra = `${victim.name} 坐牢 ${days} 天`;

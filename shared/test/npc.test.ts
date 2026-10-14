@@ -42,13 +42,13 @@ function newGame(seed = 42): GameState {
 
 /**
  * 把当前玩家摆到能以 steps 点落到 targetCell 的位置。
- * 用 `pendingFixedDice` 固定唯一一颗骰子 → 掷骰消耗 0 抽，
+ * 用 `fixedDice` 固定唯一一颗骰子 → 掷骰消耗 0 抽，
  * `rngState` 完全由调用方指定，便于精确控制落格后的随机分支。
  */
 function setupLanding(state: GameState, targetCell: number, steps: number, rngState = state.rngState): GameState {
   const s = structuredClone(state);
   s.rngState = rngState;
-  s.pendingFixedDice = steps;
+  s.players[s.currentPlayerIndex]!.fixedDice = steps;
   const p = s.players[s.currentPlayerIndex]!;
   p.diceCount = 1;
   p.position = (targetCell - steps + BOARD_SIZE) % BOARD_SIZE;
@@ -527,6 +527,36 @@ describe('TILE-11 魔法屋（NPC-06 女巫）', () => {
     expect(target.skipTurns).toBeGreaterThanOrEqual(CURSES.jail.days!);
     expect(target.custody?.kind).toBe('jail');
     expect(target.rentBlockedTurns).toBeGreaterThan(0);
+    // D-54：判了入狱就得真的被押到监狱格 —— 否则「监狱门外可保释」这一道门永远开不了
+    expect(target.position).toBe(JAIL_CELL);
+    expect(next.log.some((l) => l.text.includes('被押送至「监狱」'))).toBe(true);
+  });
+
+  it('免罪卡抵消的诅咒不移送（D-54）', () => {
+    const landed = applyAction(setupLanding(newGame(101), MAGIC_CELL, 3, seedForMagic(0, 1)), { type: 'ROLL_DICE' });
+    const targetId = landed.magic!.candidateIds[0]!;
+    const before = landed.players.find((p) => p.id === targetId)!.position;
+    const absolved = structuredClone(landed);
+    absolved.players.find((p) => p.id === targetId)!.cards = ['absolve'];
+    const free = applyAction(absolved, { type: 'CAST_MAGIC', targetPlayerId: targetId });
+    const t = free.players.find((p) => p.id === targetId)!;
+    expect(t.custody).toBeNull();
+    expect(t.skipTurns).toBe(0);
+    expect(t.position).toBe(before);
+    expect(free.log.some((l) => l.text.includes('被押送至'))).toBe(false);
+  });
+
+  it('押送不重走落格事务：到医院格不再收一次医药费（D-54）', () => {
+    const g = structuredClone(setupLanding(newGame(103), MAGIC_CELL, 3, seedForMagic(0, 2)));
+    const target = g.players[1]!;
+    target.position = 40; // 离医院格很远，判完只能靠"押送"到 14
+    const landed = applyAction(g, { type: 'ROLL_DICE' });
+    const hNext = applyAction(landed, { type: 'CAST_MAGIC', targetPlayerId: target.id });
+    const v = hNext.players.find((p) => p.id === target.id)!;
+    expect(v.position).toBe(14); // 医院格
+    // 站上一格医院会办「住院 + 每天医药费」那套；强制押送只改位置，不该再办一遍
+    expect(hNext.log.filter((l) => l.text.includes('办理住院')).length).toBe(0);
+    expect(v.custody?.kind).toBe('hospital');
   });
 
   it('CAST_MAGIC 施放「怪病缠身」与「放逐异界」', () => {

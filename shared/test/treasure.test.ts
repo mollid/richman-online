@@ -61,7 +61,7 @@ function walkOntoChest(state: GameState, chestSteps: number, steps: number): Gam
   const p = s.players[s.currentPlayerIndex]!;
   s.treasureCellId = (p.position + chestSteps) % s.board.length;
   p.diceCount = 1;
-  s.pendingFixedDice = steps;
+  s.players[s.currentPlayerIndex]!.fixedDice = steps;
   return s;
 }
 

@@ -31,8 +31,11 @@ export interface ItemDef {
   /** 商店售价（点券）；非卖品为 null */
   cost: number | null;
   /**
-   * 变卖回收价（点券）。研究所非卖品没有 `cost`，但仍然可以在商店变卖（D-45：工程车 135）；
-   * 省略时按售价半价回收。
+   * 变卖回收价（点券）。省略时按商店售价半价回收。
+   *
+   * 研究所五件非卖品（Lv1~Lv5）没有 `cost`，半价口径算不出数（`floor(0/2) = 0`，
+   * 点一下道具白没），所以逐件给显式回收价，按等级排到在售道具的量级里（D-53）：
+   * 机器工人 60 / 时光机 90 / 传送机 120 / 工程车 135（D-45 已定）/ 核子飞弹 180。
    */
   sellValue?: number;
   /**
@@ -128,9 +131,11 @@ const checkBulldozer: TargetCheck = (_state, actor) => (actor.bulldozerTurns > 0
 const checkTimeMachine: TargetCheck = (state) => (state.lastRoundSnapshot ? null : '暂无上一回合记录，无法回到过去');
 
 /** 遥控骰子：点数 1~6 */
-const checkRemoteDice: TargetCheck = (_state, _actor, want) =>
+const checkRemoteDice: TargetCheck = (_state, actor, want) =>
   want.diceValue === undefined || (Number.isInteger(want.diceValue) && want.diceValue >= 1 && want.diceValue <= 6)
-    ? null
+    ? actor.fixedDice !== null
+      ? '已经有一颗遥控骰子待生效，先掷这一手'
+      : null
     : '请指定 1-6 的点数';
 
 export const ITEMS: Record<string, ItemDef> = {
@@ -277,13 +282,14 @@ export const ITEMS: Record<string, ItemDef> = {
   'remote-dice-item': {
     id: 'remote-dice-item',
     name: '遥控骰子',
-    description: '控制下一次掷骰的点数（1-6）',
+    description: '钉死下一次掷骰的点数（1-6），掷出几点就走几步',
     cost: 30,
     targetSpec: { dice: true, check: checkRemoteDice },
     researchLevel: null,
     apply: ({ state, self: p, action, log }) => {
-      // ITEM-08：控制下一次掷骰点数（点数范围由 `checkRemoteDice` 把住）
-      state.pendingFixedDice = action.diceValue!;
+      // ITEM-08：点数挂在**人**身上（原版使用时机写「任何时候」）—— 用晚了就等自己下一次掷骰，
+      // 绝不会漏给下一个人；钉的是这一手的总点数，开着汽车也一样只走这么多步。
+      p.fixedDice = action.diceValue!;
       log(state, `${p.name} 使用遥控骰子，下一次掷骰固定为 ${action.diceValue} 点`);
     },
   },
@@ -292,6 +298,7 @@ export const ITEMS: Record<string, ItemDef> = {
     name: '机器工人',
     description: '在自家土地上免费加盖一级房屋',
     cost: null,
+    sellValue: 60,
     targetSpec: { cells: 'own-land', check: checkRobotWorker },
     researchLevel: 1,
     apply: ({ state, self: p, targetCell, cellOwner, log }) => {
@@ -309,6 +316,7 @@ export const ITEMS: Record<string, ItemDef> = {
     name: '时光机',
     description: '回到过去：所有人回复为上一回合的状态',
     cost: null,
+    sellValue: 90,
     targetSpec: { check: checkTimeMachine },
     researchLevel: 2,
     apply: ({ state, self: p, log }) => {
@@ -331,6 +339,7 @@ export const ITEMS: Record<string, ItemDef> = {
     name: '传送机',
     description: '瞬间移动到地图上的指定空道路；也可把视野内的一名对手一并传送过去',
     cost: null,
+    sellValue: 120,
     targetSpec: { cells: 'any', players: 'visible', check: checkTeleporter },
     researchLevel: 3,
     apply: ({ state, self: p, action, targetCell, activePlayers, log }) => {
@@ -380,6 +389,7 @@ export const ITEMS: Record<string, ItemDef> = {
     name: '核子飞弹',
     description: '全图任选目标，7 格范围内人屋俱毁，被炸者住院 3 天',
     cost: null,
+    sellValue: 180,
     // 射程全局（D-37），与飞弹同为「地圖上的任何地點」
     targetSpec: { cells: 'any', check: needCell('any') },
     researchLevel: 5,
@@ -393,6 +403,19 @@ export const ITEMS: Record<string, ItemDef> = {
 
 /** 全部道具 id */
 export const ALL_ITEM_IDS = Object.keys(ITEMS);
+
+/**
+ * 一件道具的变卖回收价（点券）：非卖品取显式 `sellValue`，其余按商店售价半价（D-53）。
+ *
+ * 三个算钱的地方（商店变卖 / 满栏折半 / 新闻「变卖所有卡片道具」）共用这一个函数 ——
+ * 各自写一遍 `floor(cost/2)` 的话，研究所那五件非卖品在后两处又会折成 0 点券，
+ * 同一个"回收"在两处给出不同价钱，玩家没有任何办法看出来。
+ */
+export function itemSellValue(itemId: string): number {
+  const item = ITEMS[itemId];
+  if (!item) return 0;
+  return item.sellValue ?? Math.floor((item.cost ?? 0) / 2);
+}
 
 /** 商店在售道具（研究所非卖品除外） */
 export const SHOP_ITEM_IDS = ALL_ITEM_IDS.filter((id) => ITEMS[id]!.researchLevel === null);

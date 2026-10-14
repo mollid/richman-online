@@ -395,7 +395,7 @@ describe('同对不共现是一条全局不变式（不止管现身）', () => {
     const temple = g.board.find((c) => c.type === 'god')!;
     g.players[0]!.position = (temple.id - 1 + BOARD_SIZE) % BOARD_SIZE;
     g.players[0]!.diceCount = 1;
-    g.pendingFixedDice = 1; // 钉死这一手正好落在神庙格上，别被随机点数带偏
+    g.players[g.currentPlayerIndex]!.fixedDice = 1; // 钉死这一手正好落在神庙格上，别被随机点数带偏
     g.phase = 'awaiting_roll';
     const rolled = applyAction(g, { type: 'ROLL_DICE', diceCount: 1 });
     expect(rolled.players[0]!.position).toBe(temple.id);

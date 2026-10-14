@@ -51,10 +51,10 @@ function withDeposit(state: GameState, amount = 100000): GameState {
   return state;
 }
 
-/** 把当前玩家直接摆到指定格（用 pendingFixedDice 固定骰子，掷骰 0 抽） */
+/** 把当前玩家直接摆到指定格（用 fixedDice 固定骰子，掷骰 0 抽） */
 function landAt(state: GameState, cellId: number, steps = 3): GameState {
   const s = structuredClone(state);
-  s.pendingFixedDice = steps;
+  s.players[s.currentPlayerIndex]!.fixedDice = steps;
   const p = s.players[s.currentPlayerIndex]!;
   p.diceCount = 1;
   p.position = (cellId - steps + BOARD_SIZE) % BOARD_SIZE;
@@ -421,7 +421,7 @@ describe('负债不自动变卖股票：股票只能靠随机事件兑现', () =
     state.players[1]!.stocks = {};
     const cur = state.players[0]!;
     cur.position = (land.id - 1 + BOARD_SIZE) % BOARD_SIZE;
-    state.pendingFixedDice = 1;
+    state.players[state.currentPlayerIndex]!.fixedDice = 1;
     cur.diceCount = 1;
     return state;
   }

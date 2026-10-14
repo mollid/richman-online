@@ -329,6 +329,15 @@ export interface Player {
   research: { itemId: string; remainDays: number } | null;
   /** 骰子个数（1 默认；机车 2；汽车 3） */
   diceCount: number;
+  /**
+   * 遥控骰子（ITEM-08）待生效的点数：原版写的是「控制骰子点数，**决定前进步数**」，
+   * 所以它钉死的是**这一次掷骰的总点数**，不是「第一颗」—— 开着汽车也能只走 3 步。
+   *
+   * 挂在人身上而不是全局：原版使用时机是「任何时候」，回合里用晚了也不该把这份定数
+   * 漏给下一个人（旧实现放在 `state` 上，停留中的人用掉它就等于给对手送一颗定数骰）。
+   * null = 没有待生效的遥控。
+   */
+  fixedDice: number | null;
   /** 同盟状态 */
   alliance: AllianceStatus | null;
   /** 出国旅游剩余天数（CORP-03）：出国期间不能收租 */
@@ -653,8 +662,6 @@ export interface GameState {
   maxDays: number | null;
   /** 股票市场 */
   stockMarket: StockMarket;
-  /** 遥控骰子等效果锁定的下一次骰子点数 */
-  pendingFixedDice: number | null;
   /** 路障（ITEM-02）：其他玩家经过必须停下，锥筒随之消失 */
   roadblocks: Obstacle[];
   /** 地雷（ITEM-03）：踩中住院 3 天 */

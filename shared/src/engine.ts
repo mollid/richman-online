@@ -49,7 +49,7 @@ import {
 } from './stocks.js';
 import { CARDS, CHANCE_CARD_POOL, SHOP_CARD_IDS } from './cards.js';
 import { resolveLanding } from './cell_handlers.js';
-import { BOMB_FUSE_STEPS, ITEMS, SHOP_ITEM_IDS, STARTING_ITEMS } from './items.js';
+import { BOMB_FUSE_STEPS, ITEMS, itemSellValue, SHOP_ITEM_IDS, STARTING_ITEMS } from './items.js';
 import type { CellLandingCtx, EffectKit, GodEffectCtx } from './effect_ctx.js';
 import { landingVenueOf } from './effect_ctx.js';
 import { nextRandom, rollDie } from './rng.js';
@@ -254,6 +254,7 @@ function basePlayer(def: PlayerDef, spawnAt: number): Player {
     bulldozerSavedDiceCount: 1,
     research: null,
     diceCount: 1,
+    fixedDice: null,
     alliance: null,
     abroadTurns: 0,
     insurance: null,
@@ -322,7 +323,6 @@ export function createGame(players: PlayerDef[], seed = Date.now() % 2147483647,
           candles: [],
         })),
     },
-    pendingFixedDice: null,
     roadblocks: [],
     mines: [],
     trapBombs: [],
@@ -1367,7 +1367,7 @@ function giveVillainLoot(state: GameState, npc: NpcUnit, text: string, loot: Vil
       owner.items[loot.itemId] = (owner.items[loot.itemId] ?? 0) + 1;
       parts.push(`道具「${item?.name ?? loot.itemId}」`);
     } else {
-      const pts = Math.floor((item?.cost ?? 0) / 2);
+      const pts = itemSellValue(loot.itemId);
       owner.points += pts;
       parts.push(`道具「${item?.name ?? loot.itemId}」（已达上限，折 ${pts} 点券）`);
     }
@@ -1904,6 +1904,37 @@ function blockRent(p: Player, days: number): void {
 }
 
 /**
+ * 判一处「入狱 / 住院」：停留天数 + 丧失收租权 + 把人**押到那一格**（D-54）。
+ *
+ * 移送是这条规则里原先缺的那一半：判罪的地方有八处（魔法屋两种诅咒、陷害、危险格违法事件、
+ * 命运卡、新闻、飞弹 / 核弹 / 定时炸弹、恶犬咬伤），每处都只写 `custody` 与 `skipTurns`，
+ * 于是「被关进监狱」的人还站在原地 —— 而保释与出院两道门控都要求**别人走到那一格**，
+ * 结果这两条通道实际永远开不了窗。
+ */
+function imposeCustody(state: GameState, p: Player, kind: 'jail' | 'hospital', days: number): void {
+  p.skipTurns = Math.max(p.skipTurns, days);
+  p.custody = { kind, daysLeft: Math.max(p.skipTurns, days) };
+  blockRent(p, days);
+  transferToCustodyCell(state, p);
+}
+
+/**
+ * 把在押 / 住院的人挪到对应格。不改走落格结算：强制押送不是掷骰前进，
+ * 「走到监狱格」该触发的入狱事件与「踩中医院格」的办住院都不该再来一遍。
+ * 图上没有那一格（有些地图没医院）就只判停留，不硬造落点。
+ */
+function transferToCustodyCell(state: GameState, p: Player): void {
+  const kind = p.custody?.kind;
+  if (!kind) return;
+  const cell = state.board.find((c) => c.type === kind);
+  if (!cell || p.position === cell.id) return;
+  p.position = cell.id;
+  // heading 是「新格邻接表里正要去那一格」的下标，换格后旧下标没有意义 —— 与出生时同口径
+  p.heading = 1;
+  log(state, `${p.name} 被押送至「${cell.name}」`);
+}
+
+/**
  * 反制栈（§6.1）：施加负面效果时按 免罪 → 嫁祸 → 复仇 的优先级查询受击方持有的反制卡。
  * - 免罪卡：抵消牢狱/陷害/梦游/乌龟；
  * - 嫁祸卡：把灾难转嫁给他人；
@@ -1995,12 +2026,10 @@ function detonate(
       }
       continue;
     }
-    q.skipTurns = Math.max(q.skipTurns, hospitalDays);
-    q.custody = { kind: 'hospital', daysLeft: Math.max(q.skipTurns, hospitalDays) };
     if (q.bulldozerTurns > 0) retireBulldozer(state, q, '被炸毁');
     q.bulldozerTurns = 0;
     q.diceCount = 1; // 车辆损毁
-    blockRent(q, hospitalDays);
+    imposeCustody(state, q, 'hospital', hospitalDays);
     log(state, `${q.name} 被炸伤，住院 ${hospitalDays} 天`);
   }
   return destroyed;
@@ -2192,19 +2221,25 @@ function consumeTurnDelay(state: GameState, p: Player): boolean {
   return false;
 }
 
-/** 逐颗掷骰（对应 CORE-02 的 `ROLL` 相）：遥控骰子（ITEM-08）占用第一颗的点数 */
-function drawDice(state: GameState, diceCount: number): number[] {
+/**
+ * 逐颗掷骰（对应 CORE-02 的 `ROLL` 相）。
+ *
+ * 遥控骰子（ITEM-08）按原版口径钉的是**这一次掷骰的总点数**（「控制骰子点数，决定前进步数」），
+ * 不是「第一颗」—— 开着汽车（3 颗）也能只走 3 步。既然总点数已定，其余那颗都不再掷，
+ * 所以这一手不消耗随机数（与旧的「只钉第一颗、后面照掷」是两种账）。
+ */
+function drawDice(state: GameState, p: Player, diceCount: number): number[] {
+  if (p.fixedDice !== null) {
+    const v = p.fixedDice;
+    p.fixedDice = null;
+    log(state, `遥控骰子生效：本次掷骰固定为 ${v} 点`);
+    return [v];
+  }
   const rolls: number[] = [];
   for (let i = 0; i < diceCount; i++) {
-    if (i === 0 && state.pendingFixedDice !== null) {
-      rolls.push(state.pendingFixedDice);
-      log(state, `遥控骰子生效：第一颗骰子固定为 ${state.pendingFixedDice} 点`);
-      state.pendingFixedDice = null;
-    } else {
-      const r = rollDie(state.rngState);
-      state.rngState = r.nextState;
-      rolls.push(r.value);
-    }
+    const r = rollDie(state.rngState);
+    state.rngState = r.nextState;
+    rolls.push(r.value);
   }
   return rolls;
 }
@@ -2219,7 +2254,7 @@ function rollDice(state: GameState, action: Extract<PlayerAction, { type: 'ROLL_
   // 骰子个数（CORE-03）：步行 1 颗、机车 2 颗、汽车 3 颗；玩家可自选本次使用几颗（默认用满）。
   // 骰子数合法性（1..maxDice 的整数）已由 checkRollDice 校验。
   const diceCount = action.diceCount ?? Math.max(1, Math.min(3, p.diceCount));
-  const rolls = drawDice(state, diceCount);
+  const rolls = drawDice(state, p, diceCount);
   state.dice = rolls;
   const rawSteps = rolls.reduce((a, b) => a + b, 0);
   let steps = rawSteps;
@@ -2363,9 +2398,7 @@ function rollDice(state: GameState, action: Extract<PlayerAction, { type: 'ROLL_
 
   // NPC-05 恶犬咬伤（步行者）：住院 3 天并丧失收租权
   if (bittenByDog) {
-    p.skipTurns = Math.max(p.skipTurns, DOG_HOSPITAL_DAYS);
-    p.custody = { kind: 'hospital', daysLeft: Math.max(p.skipTurns, DOG_HOSPITAL_DAYS) };
-    blockRent(p, DOG_HOSPITAL_DAYS);
+    imposeCustody(state, p, 'hospital', DOG_HOSPITAL_DAYS);
     log(state, `${p.name} 被恶犬咬伤，住院 ${DOG_HOSPITAL_DAYS} 天并丧失收租权`);
     advanceTurn(state);
     return;
@@ -2402,8 +2435,7 @@ function rollDice(state: GameState, action: Extract<PlayerAction, { type: 'ROLL_
      （乞丐 / 恶犬 / 宝箱 / 神明附身）照常在落点上办完，然后人才被送去医院。
      住院期间不再办理这一格的落格事务（不买地、不缴租、不开店）。 */
   if (steppedOnMine) {
-    p.skipTurns = Math.max(p.skipTurns, 3);
-    blockRent(p, 3);
+    imposeCustody(state, p, 'hospital', 3);
     log(state, `${p.name} 住院 3 天，且暂时无法收租`);
     advanceTurn(state);
     return;
@@ -2802,17 +2834,13 @@ function castMagic(state: GameState, action: Extract<PlayerAction, { type: 'CAST
       break;
     case 'jail':
       applyDisaster(state, target, 'jail', p, (v) => {
-        v.skipTurns = Math.max(v.skipTurns, offer.days);
-        v.custody = { kind: 'jail', daysLeft: Math.max(v.skipTurns, offer.days) };
-        blockRent(v, offer.days);
+        imposeCustody(state, v, 'jail', offer.days);
         log(state, `${v.name} 被关进监狱，暂停 ${offer.days} 回合并丧失收租权`);
       });
       break;
     case 'hospital':
       applyDisaster(state, target, 'jail', p, (v) => {
-        v.skipTurns = Math.max(v.skipTurns, offer.days);
-        v.custody = { kind: 'hospital', daysLeft: Math.max(v.skipTurns, offer.days) };
-        blockRent(v, offer.days);
+        imposeCustody(state, v, 'hospital', offer.days);
         log(state, `${v.name} 怪病缠身，住院 ${offer.days} 天并丧失收租权`);
       });
       break;
@@ -3096,6 +3124,7 @@ const EFFECT_KIT: EffectKit = {
   randomIndex,
   routeSegment,
   blockRent,
+  imposeCustody,
   applyDisaster,
   stockById,
   activePlayers,
@@ -3227,7 +3256,7 @@ function sellCard(state: GameState, action: Extract<PlayerAction, { type: 'SELL_
   log(state, `${p.name} 把「${card.name}」变卖给商店，回收 ${refund} 点券`);
 }
 
-/** TILE-12 商店买/卖：把道具变卖给商店回收点券（半价；非卖品回收 0） */
+/** TILE-12 商店买/卖：把道具变卖给商店回收点券（售价半价；研究所非卖品按 D-53 那套等级回收价） */
 function sellItem(state: GameState, action: Extract<PlayerAction, { type: 'SELL_ITEM' }>): void {
   assertLegal(state, action);
   const p = currentPlayer(state);
@@ -3235,8 +3264,7 @@ function sellItem(state: GameState, action: Extract<PlayerAction, { type: 'SELL_
   const left = (p.items[item.id] ?? 0) - 1;
   if (left > 0) p.items[item.id] = left;
   else delete p.items[item.id];
-  // 研究所非卖品没有 `cost`，变卖价走 `sellValue` 这个显式基准（D-45：工程车回收 135 点券）
-  const refund = item.sellValue ?? Math.floor((item.cost ?? 0) / 2);
+  const refund = itemSellValue(item.id);
   p.points += refund;
   log(state, `${p.name} 把「${item.name}」变卖给商店，回收 ${refund} 点券`);
 }
