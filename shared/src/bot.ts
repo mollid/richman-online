@@ -1,6 +1,7 @@
-import { actionRefusal, availableActions, nextBidAmount } from './engine.js';
+import { actionRefusal, availableActions, magicHits, nextBidAmount } from './engine.js';
 import { landPrice, landUpgradeCost } from './economy.js';
 import { CARDS, SHOP_CARD_IDS } from './cards.js';
+import { MAGIC_AI_SELF_GUARD_EFFECT, MAGIC_EFFECTS, MAGIC_EFFECT_ORDER } from './npc.js';
 import { ITEMS, SHOP_ITEM_IDS } from './items.js';
 import { MAX_HAND_CARDS, MAX_ITEM_COUNT } from './board.js';
 import { sellableSharesOf } from './companies.js';
@@ -155,6 +156,17 @@ export function botDecide(state: GameState, botId: string, rng: () => number): P
 
   // 送神卡只在掷骰前那一段办（上面已处理）：R4-d 之后落格窗里用卡会被引擎以
   // 「该卡片只能在掷骰前使用」拒掉，这里再判一次就是给自己造错误。
+
+  // TILE-11 魔法屋：AI 也得挑一档魔法降下。波 2 之前它一律走下面的逃生门，
+  // 于是魔法屋对 bot 等于白过一趟 —— 那扇窗本来就只为玩家而开。
+  if (state.magic) {
+    // M-25 自保：命中名单含自己就强制改「得一张卡片」。A §三 细则写明这条只跑电脑分支，
+    // 玩家侧没有 —— 玩家看不见名单，判断错了就自己吃，那是这条玩法的赌注。
+    const hits = magicHits(state, state.magic.condition);
+    if (hits.includes(me.id)) return { type: 'CAST_MAGIC', effect: MAGIC_AI_SELF_GUARD_EFFECT };
+    const bad = MAGIC_EFFECT_ORDER.filter((k) => MAGIC_EFFECTS[k].polarity === 'bad');
+    return { type: 'CAST_MAGIC', effect: bad[Math.floor(rng() * bad.length)]! };
+  }
 
   if (acts.canBuy && cell.price !== undefined && me.cash >= landPrice(state, cell) + 2000) {
     return { type: 'BUY_LAND' };

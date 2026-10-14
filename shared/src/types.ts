@@ -196,6 +196,7 @@ export interface LotteryTicket {
 export type AuctionTrigger =
   | 'bankrupt' // 有人倒闭，名下土地被拍卖
   | 'card'     // 拍卖卡（CARD-08）
+  | 'magic'    // TILE-11 魔法屋「拍賣當格土地」：拍被施法者脚下格，所得归他自己
   | 'event'    // 事件引发（EVT-03）
   | 'bank';    // 银行拍卖土地
 
@@ -753,25 +754,50 @@ export interface GameState {
   tradeHistory: TradeRecord[];
 }
 
-/** TILE-11 魔法屋：施法条件（决定候选受罚者） */
-export type MagicCondition = 'all' | 'ahead' | 'behind' | 'vehicle' | 'landowner';
+/**
+ * TILE-11 魔法屋：水晶球随机给出的目标条件（A §三 的标语表）。
+ * `richest*` / `most-*` 是"取最大值、并列一起中"，`walker`/`motorbike`/`car`/`godded` 是身份判定。
+ */
+export type MagicCondition =
+  | 'richest'
+  | 'most-land'
+  | 'most-house'
+  | 'richest-cash'
+  | 'richest-deposit'
+  | 'richest-points'
+  | 'walker'
+  | 'motorbike'
+  | 'car'
+  | 'godded';
 
 /** 四大恶人（NPC-01..04） */
 export type VillainKind = 'thief' | 'protection' | 'robber' | 'rent-thief';
 
-/** TILE-11 魔法屋：女巫的惩罚（诅咒）种类 */
-export type CurseKind = 'fine' | 'jail' | 'hospital' | 'abroad' | 'lose-card';
+/**
+ * TILE-11 魔法屋：玩家自选的魔法档（A §四 的 11 档 + 原为隐藏的拍卖档，M-24 定其进池）。
+ * 顺序即轮盘顺序：6 坏 → 3 好 → 1 中性 → 拍卖。
+ */
+export type MagicEffectKind =
+  | 'sell-cards'
+  | 'fate-x3'
+  | 'jail'
+  | 'hold'
+  | 'demolish'
+  | 'hospital'
+  | 'gain-card'
+  | 'build-up'
+  | 'to-deposit'
+  | 'turn-back'
+  | 'auction-cell';
 
-/** TILE-11 魔法屋：女巫水晶球给出的当次施法机会 */
+/**
+ * TILE-11 魔法屋：当次施法机会。
+ *
+ * **只有条件**：命中名单当场由 `magicHits` 从活状态派生，不进这里 —— 它一旦进状态就随快照
+ * 下发给客户端，而这条玩法的整个赌注正是"玩家看不见命中谁，得自己判断"（决策表 §7.6）。
+ */
 export interface MagicOffer {
   condition: MagicCondition;
-  curse: CurseKind;
-  /** 满足条件的候选受罚者 id 列表 */
-  candidateIds: string[];
-  /** fine 类诅咒金额（已按物价指数缩放） */
-  amount: number;
-  /** hospital / jail / abroad 类诅咒天数 */
-  days: number;
 }
 
 /**
@@ -848,8 +874,11 @@ export type PlayerAction =
   | { type: 'AUCTION_GIVE_UP' }
   /** NPC-01..04：在监狱门外保释四大恶人（收益归保释人） */
   | { type: 'BAIL_PRISONER'; npcKind: VillainKind }
-  /** TILE-11 魔法屋（NPC-06）：女巫施法，指定受罚者 */
-  | { type: 'CAST_MAGIC'; targetPlayerId: string }
+  /**
+   * TILE-11 魔法屋（NPC-06）：玩家自选一档魔法降下。
+   * 没有 targetPlayerId —— 落在谁头上由条件当场筛，符合条件者**全部**中招（含施法者自己）。
+   */
+  | { type: 'CAST_MAGIC'; effect: MagicEffectKind }
   /** TILE-09 医院（help [37]）：在医院门外替指定病人办理提前出院 */
   | { type: 'DISCHARGE_PATIENT'; targetPlayerId: string }
   /**

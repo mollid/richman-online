@@ -1,7 +1,8 @@
 import {
   availableActions,
-  CURSES,
   MAGIC_CONDITION_LABEL,
+  MAGIC_EFFECTS,
+  MAGIC_EFFECT_ORDER,
   VILLAINS,
   type GameState,
   type PlayerAction,
@@ -10,7 +11,7 @@ import {
 /**
  * NPC 特殊单位面板（波8b）：
  * - TILE-10 监狱：落地门外安全，可花保释金保释在押恶人（收益归保释人）；
- * - TILE-11 魔法屋：女巫水晶球给出施法条件与诅咒，由玩家指定受罚对象。
+ * - TILE-11 魔法屋：水晶球随机报一条目标标语，玩家自选一档魔法降下（名单不显示，自己判断谁中招）。
  */
 export function NpcPanel({
   game,
@@ -68,31 +69,25 @@ export function NpcPanel({
         <>
           <div className="panel-title">魔法屋 · 女巫的水晶球</div>
           <div className="npc-magic-condition">{MAGIC_CONDITION_LABEL[magic.condition]}</div>
-          <div className="npc-magic-curse">
-            若施法，将降下「{CURSES[magic.curse].name}」
-            {magic.curse === 'fine' && `（¥${magic.amount.toLocaleString('zh-CN')}）`}
-            {(magic.curse === 'jail' || magic.curse === 'hospital' || magic.curse === 'abroad') && `（${magic.days} 天）`}
+          {/* 名单不显示是规则本身，不是 UI 缺了一块：引擎压根没把 candidateIds 放进状态（决策表 §7.6） */}
+          <div className="npc-magic-hint">水晶球只报这一句 —— 谁对得上要自己判断，符合条件的人一个都跑不掉。</div>
+          <div className="npc-magic-targets">
+            {MAGIC_EFFECT_ORDER.map((kind) => {
+              const def = MAGIC_EFFECTS[kind];
+              // 好事档不套 danger 红：轮盘上六坏三好一中性，全涂红就等于告诉玩家"这盘没有选择"
+              return (
+                <button
+                  key={kind}
+                  className={def.polarity === 'bad' ? 'mini danger' : 'mini'}
+                  disabled={!interactive}
+                  onClick={() => onAction({ type: 'CAST_MAGIC', effect: kind })}
+                >
+                  施放「{def.name}」
+                </button>
+              );
+            })}
           </div>
-          {magic.candidateIds.length === 0 ? (
-            <div className="npc-magic-hint">当前没有符合条件的受罚对象，只能放弃施法。</div>
-          ) : (
-            <div className="npc-magic-targets">
-              {magic.candidateIds.map((id) => {
-                const target = game.players.find((p) => p.id === id);
-                if (!target) return null;
-                return (
-                  <button
-                    key={id}
-                    className="mini danger"
-                    disabled={!interactive}
-                    onClick={() => onAction({ type: 'CAST_MAGIC', targetPlayerId: id })}
-                  >
-                    诅咒 {target.name}
-                  </button>
-                );
-              })}
-            </div>
-          )}
+          <div className="npc-magic-hint">拆除 / 加盖 / 拍卖都作用于各人脚下那一格，落点不成立的人自动跳过。</div>
           <div className="npc-magic-hint">不施法可直接结束回合，水晶球机会随即消散。</div>
         </>
       )}

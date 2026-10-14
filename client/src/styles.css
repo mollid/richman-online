@@ -1664,11 +1664,6 @@ button.mini {
   line-height: 1.5;
 }
 
-.npc-magic-curse {
-  font-size: 12px;
-  color: #ff8a80;
-}
-
 .npc-magic-targets,
 .npc-bail-list {
   display: flex;
@@ -1683,8 +1678,7 @@ button.mini {
   line-height: 1.5;
 }
 
-.npc-bail-hint b,
-.npc-magic-curse {
+.npc-bail-hint b {
   color: #ce93d8;
 }
 

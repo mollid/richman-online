@@ -7,11 +7,12 @@
  * - NPC-03 行抢：抢夺来往路人的一张卡片或道具，交给保释人；
  * - NPC-04 窃取租金：走到土地窃取该地上次收取的租金；走到公司企业盗领所有累积红利；
  * - NPC-05 恶犬：随机出没（见 engine 的 dogActivityHook）；
- * - NPC-06 女巫：进入魔法屋格，水晶球给出施法条件，由玩家决定惩罚哪些人。
+ * - NPC-06 女巫：进入魔法屋格，水晶球随机给出目标条件，玩家自选一档魔法，符合条件者全部中招。
  *
- * 金额与天数原版未在拆解报告中逐条核实，标注为推断值。
+ * 恶人的金额与天数原版未逐条核实，标注为推断值；魔法屋的条件表与效果表已按 exe 拆解定案，
+ * 权威记录见 `docs/玩法拆解_魔法屋.md` 与 `docs/玩法拆解_魔法屋对账决策表.md` §七。
  */
-import type { CurseKind, MagicCondition, VillainKind } from './types.js';
+import type { MagicCondition, MagicEffectKind, VillainKind } from './types.js';
 
 /** 四大恶人（NPC-01..04），被保释出狱后在路上为保释人效力 */
 export type { VillainKind };
@@ -63,44 +64,90 @@ export const PROTECTION_FEE_RATE = 0.05;
  */
 export const TREASURE_POINTS = 500;
 
-/** 魔法屋施法条件：决定候选受罚者 */
+/** 魔法屋施法条件：水晶球随机报一条标语，决定这一局魔法落在谁头上 */
 export interface MagicConditionDef {
   kind: MagicCondition;
+  /** 屏幕标语原文。只报这一句，**不报命中名单**（决策表 §7.6） */
   label: string;
 }
 
+/**
+ * A §三 的 12 条标语，波 1 只上 10 条：「所有男生 / 所有女生」要角色性别字段，
+ * 那条挪到波 3（Q-06 定：字段没落地前不进随机池，而不是进池恒不命中）。
+ */
 export const MAGIC_CONDITIONS: MagicConditionDef[] = [
-  { kind: 'all', label: '水晶球浮现红光：可惩罚任意一名对手' },
-  { kind: 'ahead', label: '水晶球浮现金光：可惩罚总资产高于自己的对手' },
-  { kind: 'behind', label: '水晶球浮现白光：可惩罚总资产低于自己的对手' },
-  { kind: 'vehicle', label: '水晶球浮现车轮：可惩罚拥有交通工具（机车/汽车）的对手' },
-  { kind: 'landowner', label: '水晶球浮现地契：可惩罚拥有土地的对手' },
+  { kind: 'richest', label: '财产最多的人' },
+  { kind: 'most-land', label: '土地最多的人' },
+  { kind: 'most-house', label: '房屋最多的人' },
+  { kind: 'richest-cash', label: '现金最多的人' },
+  { kind: 'richest-deposit', label: '存款最多的人' },
+  { kind: 'richest-points', label: '点券最多的人' },
+  { kind: 'walker', label: '走路的人' },
+  { kind: 'motorbike', label: '骑机车的人' },
+  { kind: 'car', label: '开汽车的人' },
+  { kind: 'godded', label: '神明附身的人' },
 ];
 
 export const MAGIC_CONDITION_LABEL: Record<MagicCondition, string> = Object.fromEntries(
   MAGIC_CONDITIONS.map((c) => [c.kind, c.label]),
 ) as Record<MagicCondition, string>;
 
-/** 女巫的惩罚（诅咒）种类 */
-export interface CurseDef {
-  kind: CurseKind;
+/** 玩家自选的魔法档（A §四） */
+export interface MagicEffectDef {
+  kind: MagicEffectKind;
   name: string;
-  /** fine 类使用 */
-  amount?: number;
-  /** hospital / jail / abroad 类使用 */
+  /** 面板据此分叉样式：好事档不该长得像诅咒（M-10 的影响列） */
+  polarity: 'bad' | 'good' | 'neutral';
+  /** jail / hospital 档的停留天数 */
   days?: number;
 }
 
-export const CURSES: Record<CurseKind, CurseDef> = {
-  fine: { kind: 'fine', name: '恶魔税', amount: 3000 },
-  jail: { kind: 'jail', name: '牢狱之灾', days: 2 },
-  hospital: { kind: 'hospital', name: '怪病缠身', days: 3 },
-  abroad: { kind: 'abroad', name: '放逐异界', days: 3 },
-  'lose-card': { kind: 'lose-card', name: '卡片失窃' },
+/**
+ * A §四 的 11 档（6 坏 / 3 好 / 1 中性）+ 原本"隐藏"的拍卖档（M-24 定其进池、可被玩家选）。
+ * `MAGIC_EFFECT_ORDER` 同时是**可选集**：不在表里的效果号一律拒绝。
+ *
+ * 拍卖档记 `neutral`：它夺走地权，但成交价照付给被施法者本人（不是净损失），
+ * 好坏取决于他缺不缺现金 —— A 把它列在「隐藏」而没给极性，这里按同一理由不替它定性。
+ */
+export const MAGIC_EFFECTS: Record<MagicEffectKind, MagicEffectDef> = {
+  'sell-cards': { kind: 'sell-cards', name: '变卖所有卡片', polarity: 'bad' },
+  'fate-x3': { kind: 'fate-x3', name: '抽取命运三张', polarity: 'bad' },
+  jail: { kind: 'jail', name: '立刻坐牢三天', polarity: 'bad', days: 3 },
+  hold: { kind: 'hold', name: '原地停留一回合', polarity: 'bad' },
+  demolish: { kind: 'demolish', name: '就地拆除房屋', polarity: 'bad' },
+  hospital: { kind: 'hospital', name: '住院检查三天', polarity: 'bad', days: 3 },
+  'gain-card': { kind: 'gain-card', name: '得一张卡片', polarity: 'good' },
+  'build-up': { kind: 'build-up', name: '就地加盖房屋', polarity: 'good' },
+  'to-deposit': { kind: 'to-deposit', name: '存入所有现金', polarity: 'good' },
+  'turn-back': { kind: 'turn-back', name: '向后转', polarity: 'neutral' },
+  'auction-cell': { kind: 'auction-cell', name: '拍卖当格土地', polarity: 'neutral' },
 };
 
-/** 魔法屋可抽的诅咒池（顺序固定，抽签走 state.rngState） */
-export const CURSE_ORDER: CurseKind[] = ['fine', 'jail', 'hospital', 'abroad', 'lose-card'];
+export const MAGIC_EFFECT_ORDER: MagicEffectKind[] = [
+  'sell-cards',
+  'fate-x3',
+  'jail',
+  'hold',
+  'demolish',
+  'hospital',
+  'gain-card',
+  'build-up',
+  'to-deposit',
+  'turn-back',
+  'auction-cell',
+];
+
+/**
+ * AI 自保（M-25，A §二「电脑」段）：候选名单含自己时，效果号强制改成「得一张卡片」。
+ * 单独钉一个常量，是为了让"自保改的是哪一档"这件事只有一处说法。
+ */
+export const MAGIC_AI_SELF_GUARD_EFFECT: MagicEffectKind = 'gain-card';
+
+/**
+ * 保险理赔（M-15 / Q-01）：被魔法判入狱或住院时，**身上有有效保单**的人按现金领这笔，
+ * 归他自己 —— 与命运卡「领取保险金」同一套 `p.insurance` 判定。
+ */
+export const MAGIC_INSURANCE_CLAIM = 10000;
 
 export function villainByKind(kind: VillainKind): VillainDef {
   return VILLAINS[kind];

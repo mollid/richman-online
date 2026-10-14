@@ -5,18 +5,19 @@ import {
   availableActions,
   BAIL_FEE,
   BOARD_SIZE,
-  CURSES,
+  botDecide,
+  CARDS,
   createGame,
-  CURSE_ORDER,
+  itemSellValue,
   MAGIC_CONDITIONS,
+  MAGIC_EFFECTS,
   nextRandom,
   totalAssets,
   VILLAIN_DAYS,
   VILLAIN_KINDS,
   VILLAINS,
 } from '../src/index.js';
-import type { GameState, NpcUnit, PlayerDef } from '../src/index.js';
-import { standAt } from './helpers/state.js';
+import type { GameState, MagicEffectKind, NpcUnit, PlayerDef } from '../src/index.js';
 
 /**
  * 波 8b 特殊单位测试（NPC-01..06，对标文档 §8.2 / help [34][38]）：
@@ -55,15 +56,27 @@ function setupLanding(state: GameState, targetCell: number, steps: number, rngSt
   return s;
 }
 
-/** 找种子使「魔法屋落格后」抽到的施法条件与诅咒分别为指定下标 */
-function seedForMagic(conditionIndex: number, curseIndex: number): number {
+/** 找种子使「魔法屋落格后」抽到的目标条件落在指定下标（落格只抽一签：条件） */
+function seedForCondition(index: number): number {
   for (let seed = 1; seed <= 2_000_000; seed++) {
     const a = nextRandom(seed);
-    if (Math.floor(a.value * MAGIC_CONDITIONS.length) !== conditionIndex) continue;
-    const b = nextRandom(a.nextState);
-    if (Math.floor(b.value * CURSE_ORDER.length) === curseIndex) return seed;
+    if (Math.floor(a.value * MAGIC_CONDITIONS.length) === index) return seed;
   }
-  throw new Error(`找不到条件 ${conditionIndex} + 诅咒 ${curseIndex} 的种子`);
+  throw new Error(`找不到条件下标 ${index} 的种子`);
+}
+
+/** 落到魔法屋并返回开完窗的状态（条件钉在下标 `conditionIndex`） */
+function landAtMagic(seed: number, conditionIndex: number): GameState {
+  return applyAction(setupLanding(newGame(seed), MAGIC_CELL, 3, seedForCondition(conditionIndex)), {
+    type: 'ROLL_DICE',
+  });
+}
+
+/** 把某人的现金抬到全场最高，好让「财产最多的人」只指向他 */
+function richest(state: GameState, id: string): GameState {
+  const s = structuredClone(state);
+  s.players.find((p) => p.id === id)!.cash = 9_999_999;
+  return s;
 }
 
 function npcOf(state: GameState, kind: string): NpcUnit {
@@ -447,190 +460,300 @@ describe('NPC-01..04 四种行窃行为', () => {
 });
 
 describe('TILE-11 魔法屋（NPC-06 女巫）', () => {
-  it('魔法屋落格生成施法机会（条件 + 诅咒 + 候选），阶段为 awaiting_action', () => {
-    // 条件「all」（下标 0）+ 诅咒「恶魔税」（下标 0）
-    const g = setupLanding(newGame(53), MAGIC_CELL, 3, seedForMagic(0, 0));
-    const landed = applyAction(g, { type: 'ROLL_DICE' });
+  it('落格只给出一条目标标语：机会里没有名单，也无从下发', () => {
+    const landed = landAtMagic(53, 0);
     expect(landed.players[0]!.position).toBe(MAGIC_CELL);
     expect(landed.phase).toBe('awaiting_action');
-    const magic = landed.magic;
-    expect(magic).not.toBeNull();
-    expect(MAGIC_CONDITIONS.map((c) => c.kind)).toContain(magic!.condition);
-    expect(CURSE_ORDER).toContain(magic!.curse);
-    // 候选不含施法者本人
-    expect(magic!.candidateIds).not.toContain('p1');
-    // availableActions 同步暴露
-    expect(availableActions(landed).magic?.condition).toBe(magic!.condition);
+    const magic = landed.magic!;
+    expect(MAGIC_CONDITIONS.map((c) => c.kind)).toContain(magic.condition);
+    // 整个机会只有 condition 一个字段：名单一旦进状态就随快照下发，而这条玩法的赌注
+    // 正是「水晶球只报标语，谁中招自己判断」（决策表 §7.6）
+    expect(Object.keys(magic)).toEqual(['condition']);
+    expect(availableActions(landed).magic).toEqual(magic);
   });
 
-  it('施法条件「all」候选为全部对手', () => {
-    const g = setupLanding(newGame(59), MAGIC_CELL, 3, seedForMagic(0, 0));
+  it('「财产最多的人」并列时一起中招，含施法者本人（M-03/M-04/M-07）', () => {
+    const g = setupLanding(newGame(61), MAGIC_CELL, 3, seedForCondition(0));
+    for (const p of g.players) p.cards.push('tax-audit'); // 开局三人现金相同 → 并列最高＝全体
     const landed = applyAction(g, { type: 'ROLL_DICE' });
-    expect(landed.magic?.condition).toBe('all');
-    expect([...landed.magic!.candidateIds].sort()).toEqual(['p2', 'p3']);
+    expect(landed.magic!.condition).toBe('richest');
+    const next = applyAction(landed, { type: 'CAST_MAGIC', effect: 'sell-cards' });
+    expect(next.players.map((p) => p.cards.length)).toEqual([0, 0, 0]);
+    // 施法者自己也在这份名单里：判断错了就自己吃，这正是 M-04 要的
+    expect(next.players[0]!.points).toBeGreaterThan(landed.players[0]!.points);
   });
 
-  it('施法条件「landowner」只看名下有无土地', () => {
-    // 条件「landowner」下标 4
-    const seed = seedForMagic(4, 0);
-    // 初始人人无地 → 候选为空
-    const none = applyAction(setupLanding(newGame(67), MAGIC_CELL, 3, seed), { type: 'ROLL_DICE' });
-    // 候选为空 ⇒ 没有可当场决策的事：不开窗，施法机会随回合推进一并清掉（R4）
-    expect(none.landing).toBeNull();
-    expect(none.magic).toBeNull();
-    expect(none.phase).toBe('awaiting_roll');
-    expect(none.log.some((l) => l.text.includes('悻悻收回水晶球'))).toBe(true);
-    // p2 名下有地 → p2 成为候选
-    const withLand = structuredClone(setupLanding(newGame(67), MAGIC_CELL, 3, seed));
-    withLand.players[1]!.properties.push({ cellId: 1, grade: 1 });
-    const landed = applyAction(withLand, { type: 'ROLL_DICE' });
-    expect(landed.magic?.condition).toBe('landowner');
-    expect(landed.magic?.candidateIds).toEqual(['p2']);
-    expect(landed.landing?.cellId).toBe(MAGIC_CELL); // 有候选才开窗（R4）
+  it('「走路的人」只命中没有载具的人（M-05 的身份类条件）', () => {
+    const g = setupLanding(newGame(67), MAGIC_CELL, 3, seedForCondition(6));
+    for (const p of g.players) p.cards.push('tax-audit');
+    g.players[1]!.diceCount = 3; // p2 开汽车 → 不算走路的人
+    const landed = applyAction(g, { type: 'ROLL_DICE' });
+    expect(landed.magic!.condition).toBe('walker');
+    const next = applyAction(landed, { type: 'CAST_MAGIC', effect: 'sell-cards' });
+    expect(next.players.find((p) => p.id === 'p2')!.cards).toContain('tax-audit');
+    expect(next.players.find((p) => p.id === 'p1')!.cards).toEqual([]);
+    expect(next.players.find((p) => p.id === 'p3')!.cards).toEqual([]);
   });
 
-  it('施法条件「vehicle」按交通工具（diceCount>1）判定', () => {
-    const seed = seedForMagic(3, 0); // 「vehicle」
-    const withCar = structuredClone(setupLanding(newGame(71), MAGIC_CELL, 3, seed));
-    withCar.players[1]!.diceCount = 2; // 机车
-    const landed = applyAction(withCar, { type: 'ROLL_DICE' });
-    expect(landed.magic?.condition).toBe('vehicle');
-    expect(landed.magic?.candidateIds).toEqual(['p2']);
-  });
-
-  it('CAST_MAGIC 施放「恶魔税」：受罚者被扣钱进乐透池', () => {
-    const landed = applyAction(setupLanding(newGame(73), MAGIC_CELL, 3, seedForMagic(0, 0)), {
-      type: 'ROLL_DICE',
-    });
-    expect(landed.magic?.curse).toBe('fine');
-    const offer = landed.magic!;
-    const targetId = offer.candidateIds[0]!;
-    const before = landed.players.find((p) => p.id === targetId)!;
-    const cashBefore = before.cash;
-    const poolBefore = landed.lotteryPool;
-    const next = applyAction(landed, { type: 'CAST_MAGIC', targetPlayerId: targetId });
+  it('身份类条件无人对上时，选完魔法才发现：默默收回水晶球，谁都不受影响（Q-07）', () => {
+    const landed = landAtMagic(71, 9); // 「神明附身的人」，开局无人被附身
+    expect(landed.magic!.condition).toBe('godded');
+    // 轮盘照开 —— 名单本来就不显示，"没人对上"不是开窗前能判的事
+    expect(landed.landing?.cellId).toBe(MAGIC_CELL);
+    const before = landed.players.map((p) => p.custody);
+    const next = applyAction(landed, { type: 'CAST_MAGIC', effect: 'jail' });
     expect(next.magic).toBeNull();
-    expect(next.log.some((l) => l.text.includes(CURSES.fine.name))).toBe(true);
-    const after = next.players.find((p) => p.id === targetId)!;
-    expect(after.cash + after.deposit).toBeLessThan(cashBefore);
-    expect(next.lotteryPool).toBe(poolBefore + offer.amount);
+    expect(next.players.map((p) => p.custody)).toEqual(before);
+    expect(next.log.some((l) => l.text.includes('悻悻收回水晶球'))).toBe(true);
   });
 
-  it('CAST_MAGIC 施放「牢狱之灾」：受罚者入狱暂停回合并丧失收租权', () => {
-    const landed = applyAction(setupLanding(newGame(101), MAGIC_CELL, 3, seedForMagic(0, 1)), {
+  it('「立刻坐牢三天」：押到监狱格、暂停 3 回合并丧失收租权（M-09/M-14/D-54）', () => {
+    const landed = applyAction(setupLanding(richest(newGame(101), 'p2'), MAGIC_CELL, 3, seedForCondition(0)), {
       type: 'ROLL_DICE',
     });
-    expect(landed.magic?.curse).toBe('jail');
-    const targetId = landed.magic!.candidateIds[0]!;
-    const next = applyAction(landed, { type: 'CAST_MAGIC', targetPlayerId: targetId });
-    const target = next.players.find((p) => p.id === targetId)!;
-    expect(target.skipTurns).toBeGreaterThanOrEqual(CURSES.jail.days!);
-    expect(target.custody?.kind).toBe('jail');
-    expect(target.rentBlockedTurns).toBeGreaterThan(0);
-    // D-54：判了入狱就得真的被押到监狱格 —— 否则「监狱门外可保释」这一道门永远开不了
-    expect(target.position).toBe(JAIL_CELL);
+    expect(landed.magic!.condition).toBe('richest');
+    const next = applyAction(landed, { type: 'CAST_MAGIC', effect: 'jail' });
+    const t = next.players.find((p) => p.id === 'p2')!;
+    expect(t.skipTurns).toBe(MAGIC_EFFECTS.jail.days);
+    expect(t.custody?.kind).toBe('jail');
+    expect(t.rentBlockedTurns).toBeGreaterThan(0);
+    expect(t.position).toBe(JAIL_CELL); // 判了入狱就得真的被押过去，否则门外保释那道门永远开不了
     expect(next.log.some((l) => l.text.includes('被押送至「监狱」'))).toBe(true);
+    // 只有他一个中招
+    expect(next.players.find((p) => p.id === 'p1')!.custody).toBeNull();
   });
 
-  it('免罪卡抵消的诅咒不移送（D-54）', () => {
-    const landed = applyAction(setupLanding(newGame(101), MAGIC_CELL, 3, seedForMagic(0, 1)), { type: 'ROLL_DICE' });
-    const targetId = landed.magic!.candidateIds[0]!;
-    const before = landed.players.find((p) => p.id === targetId)!.position;
-    const absolved = structuredClone(landed);
-    absolved.players.find((p) => p.id === targetId)!.cards = ['absolve'];
-    const free = applyAction(absolved, { type: 'CAST_MAGIC', targetPlayerId: targetId });
-    const t = free.players.find((p) => p.id === targetId)!;
-    expect(t.custody).toBeNull();
-    expect(t.skipTurns).toBe(0);
-    expect(t.position).toBe(before);
-    expect(free.log.some((l) => l.text.includes('被押送至'))).toBe(false);
-  });
-
-  it('押送不重走落格事务：到医院格不再收一次医药费（D-54）', () => {
-    const g = structuredClone(setupLanding(newGame(103), MAGIC_CELL, 3, seedForMagic(0, 2)));
-    const target = g.players[1]!;
-    target.position = 40; // 离医院格很远，判完只能靠"押送"到 14
+  it('「住院检查三天」：押到医院格，且不重走落格事务（D-54）', () => {
+    const g = setupLanding(richest(newGame(103), 'p2'), MAGIC_CELL, 3, seedForCondition(0));
+    g.players[1]!.position = 40; // 离医院格很远，判完只能靠"押送"到 14
     const landed = applyAction(g, { type: 'ROLL_DICE' });
-    const hNext = applyAction(landed, { type: 'CAST_MAGIC', targetPlayerId: target.id });
-    const v = hNext.players.find((p) => p.id === target.id)!;
-    expect(v.position).toBe(14); // 医院格
-    // 站上一格医院会办「住院 + 每天医药费」那套；强制押送只改位置，不该再办一遍
-    expect(hNext.log.filter((l) => l.text.includes('办理住院')).length).toBe(0);
+    const next = applyAction(landed, { type: 'CAST_MAGIC', effect: 'hospital' });
+    const v = next.players.find((p) => p.id === 'p2')!;
+    expect(v.position).toBe(14);
     expect(v.custody?.kind).toBe('hospital');
+    // 站上一格医院会办「住院 + 每天医药费」那套；强制押送只改位置，不该再办一遍
+    expect(next.log.filter((l) => l.text.includes('办理住院')).length).toBe(0);
   });
 
-  it('CAST_MAGIC 施放「怪病缠身」与「放逐异界」', () => {
-    // 「hospital」下标 2
-    const hosp = applyAction(setupLanding(newGame(103), MAGIC_CELL, 3, seedForMagic(0, 2)), {
-      type: 'ROLL_DICE',
-    });
-    expect(hosp.magic?.curse).toBe('hospital');
-    const hTarget = hosp.magic!.candidateIds[0]!;
-    const hNext = applyAction(hosp, { type: 'CAST_MAGIC', targetPlayerId: hTarget });
-    expect(hNext.players.find((p) => p.id === hTarget)!.custody?.kind).toBe('hospital');
-
-    // 「abroad」下标 3
-    const ab = applyAction(setupLanding(newGame(107), MAGIC_CELL, 3, seedForMagic(0, 3)), {
-      type: 'ROLL_DICE',
-    });
-    expect(ab.magic?.curse).toBe('abroad');
-    const aTarget = ab.magic!.candidateIds[0]!;
-    const aNext = applyAction(ab, { type: 'CAST_MAGIC', targetPlayerId: aTarget });
-    expect(aNext.players.find((p) => p.id === aTarget)!.abroadTurns).toBeGreaterThan(0);
+  it('保险理赔（M-15/Q-01）：在保的人才拿到钱，且是给被施法者本人的现金', () => {
+    const insured = setupLanding(richest(newGame(105), 'p2'), MAGIC_CELL, 3, seedForCondition(0));
+    insured.players[1]!.insurance = { daysLeft: 3 };
+    const landed = applyAction(insured, { type: 'ROLL_DICE' });
+    const cashBefore = landed.players[1]!.cash;
+    const next = applyAction(landed, { type: 'CAST_MAGIC', effect: 'jail' });
+    // 金额过物价指数（行情池会带着指数漂），所以钉方向与归属，不钉整数
+    expect(next.players[1]!.cash).toBeGreaterThan(cashBefore);
+    expect(next.log.some((l) => l.text.includes('领取保险金'))).toBe(true);
+    // 踩屋者不收钱：这笔不是魔法屋的奖励，是保单的理赔
+    expect(next.players[0]!.cash).toBe(landed.players[0]!.cash);
+    // 无保单 → 一分不赔
+    const bare = applyAction(landAtMagic(107, 0), { type: 'CAST_MAGIC', effect: 'jail' });
+    expect(bare.log.some((l) => l.text.includes('领取保险金'))).toBe(false);
   });
 
-  it('CAST_MAGIC 施放「卡片失窃」：受罚者少一张卡', () => {
-    // 「lose-card」下标 4；用普通卡（免罪/嫁祸/复仇卡会被 applyDisaster 抵消）
-    const g = structuredClone(setupLanding(newGame(109), MAGIC_CELL, 3, seedForMagic(0, 4)));
-    g.players[1]!.cards.push('tax-audit');
+  it('魔法屋不走反制栈：免罪卡在手里也照样被关，且不被消耗（M-16）', () => {
+    const landed = applyAction(setupLanding(richest(newGame(109), 'p2'), MAGIC_CELL, 3, seedForCondition(0)), {
+      type: 'ROLL_DICE',
+    });
+    const withCard = structuredClone(landed);
+    withCard.players[1]!.cards = ['absolve'];
+    const next = applyAction(withCard, { type: 'CAST_MAGIC', effect: 'jail' });
+    const t = next.players[1]!;
+    expect(t.custody?.kind).toBe('jail');
+    expect(t.position).toBe(JAIL_CELL);
+    expect(t.cards).toEqual(['absolve']);
+    expect(next.log.some((l) => l.text.includes('免罪卡'))).toBe(false);
+  });
+
+  it('「变卖所有卡片」：卡片与道具清空，点券归目标自己（M-13）', () => {
+    const g = setupLanding(richest(newGame(113), 'p2'), MAGIC_CELL, 3, seedForCondition(0));
+    // 整手清成已知的一卡两道具：开局发的牌与道具一并算进变卖，等式才有意义
+    g.players[1]!.cards = ['tax-audit'];
+    g.players[1]!.items = { roadblock: 2 };
+    const pointsBefore = g.players[1]!.points;
     const landed = applyAction(g, { type: 'ROLL_DICE' });
-    expect(landed.magic?.curse).toBe('lose-card');
-    const targetId = landed.magic!.candidateIds[0]!;
-    const next = applyAction(landed, { type: 'CAST_MAGIC', targetPlayerId: targetId });
-    const target = next.players.find((p) => p.id === targetId)!;
-    expect(target.cards).not.toContain('tax-audit');
-    expect(next.log.some((l) => l.text.includes('凭空消失'))).toBe(true);
+    const next = applyAction(landed, { type: 'CAST_MAGIC', effect: 'sell-cards' });
+    const after = next.players[1]!;
+    expect(after.cards).toEqual([]);
+    expect(after.items).toEqual({});
+    // 半价口径与商店卖卡、命运卡「变卖所有卡片道具」是同一条
+    expect(after.points).toBe(
+      pointsBefore + Math.floor(CARDS['tax-audit']!.cost / 2) + itemSellValue('roadblock') * 2,
+    );
   });
 
-  it('魔法屋机会不跨回合残留（advanceTurn 清空 magic）', () => {
-    const landed = applyAction(setupLanding(newGame(307), MAGIC_CELL, 3, seedForMagic(0, 0)), {
-      type: 'ROLL_DICE',
-    });
+  it('魔法机会不跨回合残留（advanceTurn 清空 magic）', () => {
+    const landed = landAtMagic(307, 0);
     expect(landed.magic).not.toBeNull();
-    const next = applyAction(landed, { type: 'FINISH_LANDING' });
-    expect(next.magic).toBeNull();
+    expect(applyAction(landed, { type: 'FINISH_LANDING' }).magic).toBeNull();
   });
 
-  it('非法 CAST_MAGIC：无机会 / 目标不存在 / 候选外被拒', () => {
-    const plain = newGame(311);
-    expect(() => applyAction(plain, { type: 'CAST_MAGIC', targetPlayerId: 'p2' })).toThrow();
-
-    const landed = applyAction(setupLanding(newGame(313), MAGIC_CELL, 3, seedForMagic(4, 0)), {
-      type: 'ROLL_DICE',
-    });
-    // 条件 landowner 但人人无地 → 候选空：这一格干脆不开窗，机会也被回合推进清掉（R4）
-    expect(landed.landing).toBeNull();
-    expect(landed.magic).toBeNull();
-    // 硬摆一扇窗（有相位、有机会、候选为空）时，候选外与不存在的目标仍旧双双被拒
-    const forced = standAt(structuredClone(landed), 0, MAGIC_CELL);
-    forced.magic = { condition: 'landowner', curse: 'fine', candidateIds: [], amount: 100, days: 0 };
-    expect(() => applyAction(forced, { type: 'CAST_MAGIC', targetPlayerId: 'p2' })).toThrow(/不满足施法条件/);
-    expect(() => applyAction(forced, { type: 'CAST_MAGIC', targetPlayerId: 'nobody' })).toThrow(/受罚对象不存在/);
+  it('非法 CAST_MAGIC：无机会 / 轮盘上没有这一档，都被拒', () => {
+    expect(() => applyAction(newGame(311), { type: 'CAST_MAGIC', effect: 'jail' })).toThrow(/没有可施法的机会/);
+    const landed = landAtMagic(313, 0);
+    // 拍卖档在波 2 已经上盘（M-24），这里换一枚真不存在的档名钉"可选集只有一处说法"
+    expect(() => applyAction(landed, { type: 'CAST_MAGIC', effect: 'whammy' as never })).toThrow(/魔法书上没有这一档/);
   });
 
-  it('施法后仍停留在魔法屋，可继续其他操作或结束回合', () => {
-    const landed = applyAction(setupLanding(newGame(317), MAGIC_CELL, 3, seedForMagic(0, 0)), {
-      type: 'ROLL_DICE',
-    });
+  it('放弃施法 → 结束回合，机会随即消散', () => {
+    const landed = landAtMagic(317, 0);
     expect(landed.phase).toBe('awaiting_action');
     expect(availableActions(landed).canFinishLanding).toBe(true);
-    // 放弃施法 → 结束回合
-    const next = applyAction(landed, { type: 'FINISH_LANDING' });
-    expect(next.magic).toBeNull();
+    expect(applyAction(landed, { type: 'FINISH_LANDING' }).magic).toBeNull();
   });
 });
 
-describe('总资产（施法条件 ahead/behind 依赖）', () => {
+describe('TILE-11 魔法屋 · 波 2 的八档', () => {
+  /** 一个住宅格：脚下格类效果（拆除 / 加盖 / 拍卖）都拿它当布景 */
+  const OWNED_CELL = 1;
+  type OnePlayer = GameState['players'][number];
+
+  /** 钉「财产最多的人」这条标语，并让 `id` 是唯一对得上的人 */
+  function magicOn(seed: number, id: string): GameState {
+    return applyAction(setupLanding(richest(newGame(seed), id), MAGIC_CELL, 3, seedForCondition(0)), {
+      type: 'ROLL_DICE',
+    });
+  }
+
+  /**
+   * 施法前的布景。改的是**当下**的状态而不是落格之前 —— 命中名单本来就在施法那一刻
+   * 从活状态现算（决策表 §7.6），所以布景晚一步做反而更贴近引擎的判法。
+   */
+  function prepare(landed: GameState, id: string, mutate: (p: OnePlayer) => void): GameState {
+    const s = structuredClone(landed);
+    mutate(s.players.find((p) => p.id === id)!);
+    return s;
+  }
+
+  /** 让他站在自己名下的一块地上 */
+  function standOnOwn(grade: 1 | 2 | 3 | 4 | 5) {
+    return (p: OnePlayer) => {
+      p.position = OWNED_CELL;
+      p.properties = [{ cellId: OWNED_CELL, grade }];
+    };
+  }
+
+  it('「抽取命运三张」＝连抽三张公共池命运（M-17）', () => {
+    const next = applyAction(prepare(magicOn(201, 'p2'), 'p2', (p) => { p.cash = 200_000; }), {
+      type: 'CAST_MAGIC',
+      effect: 'fate-x3',
+    });
+    expect(next.log.filter((l) => l.text.startsWith('【命运】小美')).length).toBe(3);
+  });
+
+  it('「原地停留一回合」挂 holdTurns，与停留卡同一字段（M-23）', () => {
+    const next = applyAction(magicOn(203, 'p2'), { type: 'CAST_MAGIC', effect: 'hold' });
+    expect(next.players[1]!.holdTurns).toBe(1);
+  });
+
+  it('「就地拆除房屋」拆一层；1 级已是最低一级，算落空（Q-03）', () => {
+    const down = applyAction(prepare(magicOn(205, 'p2'), 'p2', standOnOwn(3)), {
+      type: 'CAST_MAGIC',
+      effect: 'demolish',
+    });
+    expect(down.players[1]!.properties[0]!.grade).toBe(2);
+
+    const flat = applyAction(prepare(magicOn(207, 'p2'), 'p2', standOnOwn(1)), {
+      type: 'CAST_MAGIC',
+      effect: 'demolish',
+    });
+    expect(flat.players[1]!.properties[0]!.grade).toBe(1);
+    expect(flat.log.some((l) => l.text.includes('没有落点'))).toBe(true);
+  });
+
+  it('「就地加盖房屋」免费加一层，钱一分不动（Q-02 不挑）', () => {
+    const before = magicOn(209, 'p2');
+    const cashBefore = before.players[1]!.cash;
+    const next = applyAction(prepare(before, 'p2', standOnOwn(2)), { type: 'CAST_MAGIC', effect: 'build-up' });
+    expect(next.players[1]!.properties[0]!.grade).toBe(3);
+    expect(next.players[1]!.cash).toBe(cashBefore);
+  });
+
+  it('连锁店不能加盖（help[21]：改建后即无法再往上加）', () => {
+    const next = applyAction(
+      prepare(magicOn(210, 'p2'), 'p2', (p) => {
+        p.position = OWNED_CELL;
+        p.properties = [{ cellId: OWNED_CELL, grade: 2, chain: true }];
+      }),
+      { type: 'CAST_MAGIC', effect: 'build-up' },
+    );
+    expect(next.players[1]!.properties[0]!.grade).toBe(2);
+    expect(next.log.some((l) => l.text.includes('没有落点'))).toBe(true);
+  });
+
+  it('「得一张卡片」走免费卡格那条通道（M-22）', () => {
+    const before = magicOn(211, 'p2');
+    const cardsBefore = before.players[1]!.cards.length;
+    const next = applyAction(before, { type: 'CAST_MAGIC', effect: 'gain-card' });
+    expect(next.players[1]!.cards.length).toBe(cardsBefore + 1);
+    expect(next.log.some((l) => l.text.includes('在魔法屋抽到卡片'))).toBe(true);
+  });
+
+  it('「存入所有现金」把现金账整笔搬进存款账（M-21）', () => {
+    const before = magicOn(213, 'p2');
+    const { cash, deposit } = before.players[1]!;
+    const next = applyAction(before, { type: 'CAST_MAGIC', effect: 'to-deposit' });
+    expect(next.players[1]!.cash).toBe(0);
+    expect(next.players[1]!.deposit).toBe(deposit + cash);
+  });
+
+  it('「向后转」翻朝向，与转向卡同一条算式（M-20）', () => {
+    const before = magicOn(215, 'p2');
+    const was = before.players[1]!.heading;
+    const next = applyAction(before, { type: 'CAST_MAGIC', effect: 'turn-back' });
+    expect(next.players[1]!.heading).not.toBe(was);
+  });
+
+  it('「拍卖当格土地」挂进拍卖队列，成交后回合恢复为拍卖阶段（M-24）', () => {
+    const next = applyAction(prepare(magicOn(217, 'p2'), 'p2', standOnOwn(2)), {
+      type: 'CAST_MAGIC',
+      effect: 'auction-cell',
+    });
+    // sellerId = 被施法者 ⇒ 成交价归他自己（A 只在坐牢/住院那条写了"记在踩屋者名下"）
+    expect(next.auction?.cellId).toBe(OWNED_CELL);
+    expect(next.auction?.sellerId).toBe('p2');
+    expect(next.auction?.trigger).toBe('magic');
+    expect(next.phase).toBe('awaiting_auction');
+  });
+
+  it('脚下是别人的地也照办：拆的是地主的楼，不是踩着它的那位', () => {
+    const s = prepare(magicOn(227, 'p2'), 'p2', (p) => { p.position = OWNED_CELL; });
+    s.players[2]!.properties = [{ cellId: OWNED_CELL, grade: 3 }]; // 小美站在老王的洋房上
+    const next = applyAction(s, { type: 'CAST_MAGIC', effect: 'demolish' });
+    expect(next.players[2]!.properties[0]!.grade).toBe(2);
+    expect(next.players[1]!.properties.some((q) => q.cellId === OWNED_CELL)).toBe(false);
+    expect(next.log.some((l) => l.text.includes('地主 老王'))).toBe(true);
+  });
+
+  it('脚下是无主之地时落空：没有卖方就不拍（拍出去等于白送一块地）', () => {
+    const next = applyAction(magicOn(219, 'p2'), { type: 'CAST_MAGIC', effect: 'auction-cell' });
+    expect(next.auction).toBeNull();
+    expect(next.auctionQueue).toEqual([]);
+    expect(next.log.some((l) => l.text.includes('没有落点'))).toBe(true);
+  });
+
+  it('bot 施法：命中含自己时强制改「得一张卡片」自保（M-25）', () => {
+    const s = structuredClone(newGame(221));
+    s.currentPlayerIndex = 1;
+    s.phase = 'awaiting_action';
+    s.players[1]!.cash = 9_999_999; // 「财产最多的人」＝它自己
+    s.magic = { condition: 'richest' };
+    expect(botDecide(s, 'p2', () => 0.5)).toEqual({ type: 'CAST_MAGIC', effect: 'gain-card' });
+  });
+
+  it('bot 施法：没烧到自己时从坏档里挑', () => {
+    const s = structuredClone(newGame(223));
+    s.currentPlayerIndex = 0;
+    s.phase = 'awaiting_action';
+    s.players[1]!.cash = 9_999_999; // 最富的是 p2，施法的 p1 不在名单里
+    s.magic = { condition: 'richest' };
+    const act = botDecide(s, 'p1', () => 0.5);
+    expect(act?.type).toBe('CAST_MAGIC');
+    expect(MAGIC_EFFECTS[(act as { effect: MagicEffectKind }).effect].polarity).toBe('bad');
+  });
+});
+
+describe('总资产（魔法屋「财产最多的人」依赖）', () => {
   it('totalAssets 可用于比较前后资产', () => {
     const g = newGame(401);
     const a = totalAssets(g, g.players[0]!);

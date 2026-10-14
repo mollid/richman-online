@@ -29,7 +29,7 @@ import { holdLanding, landingBlocker, openBankWindow } from './effect_ctx.js';
 import { landPrice, scaled } from './economy.js';
 import { FATE_MAP_IDS, fateCardById, renderFateText } from './fate.js';
 import { LOTTERY_TICKET_COST } from './lottery.js';
-import { CURSES, CURSE_ORDER, MAGIC_CONDITIONS, MAGIC_CONDITION_LABEL } from './npc.js';
+import { MAGIC_CONDITIONS, MAGIC_CONDITION_LABEL } from './npc.js';
 import { nextRandom } from './rng.js';
 import {
   FACILITIES,
@@ -44,7 +44,7 @@ import {
   vehicleLabel,
   vehicleLevel,
 } from './tiles.js';
-import type { CellType, MagicOffer, MinigameState, PlayerAction, VillainKind } from './types.js';
+import type { CellType, MinigameState, PlayerAction, VillainKind } from './types.js';
 
 /**
  * EVT-02：机会/危险格的违法事件风险。
@@ -464,36 +464,19 @@ function onLandingLottery(ctx: CellLandingCtx): LandingResult {
   return blocker === null ? holdLanding(ctx) : 'advance';
 }
 
-/** TILE-11 魔法屋（NPC-06 女巫）：水晶球给出施法条件 + 诅咒，由玩家指定受罚者 */
+/**
+ * TILE-11 魔法屋（NPC-06 女巫）：水晶球随机报一条目标标语，魔法由玩家自选，
+ * 符合条件者**全部**中招（A §二、决策表 §七）。
+ */
 function onLandingMagic(ctx: CellLandingCtx): LandingResult {
   const { state, self: p, cell: c } = ctx;
-  const conditionRoll = nextRandom(state.rngState);
-  state.rngState = conditionRoll.nextState;
-  const condition = MAGIC_CONDITIONS[Math.floor(conditionRoll.value * MAGIC_CONDITIONS.length)]!.kind;
-  const curseRoll = nextRandom(state.rngState);
-  state.rngState = curseRoll.nextState;
-  const curse = CURSE_ORDER[Math.floor(curseRoll.value * CURSE_ORDER.length)]!;
-  const curseDef = CURSES[curse];
-  const candidateIds = ctx.magicCandidates(state, p, condition);
-  const offer: MagicOffer = {
-    condition,
-    curse,
-    candidateIds,
-    amount: curse === 'fine' ? scaled(state, curseDef.amount ?? 0) : 0,
-    days: curseDef.days ?? 0,
-  };
-  state.magic = offer;
-  // R4：单步窗 —— 施完法就结束回合。0 个候选时今天也照样开窗，玩家面对一个没有任何按钮的面板，
-  // 只能靠逃生门出来；现在直接推进，并把「悻悻收回水晶球」这条本就写好的播报留在原位。
-  const blocker = landingBlocker(ctx, candidateIds.map((id): PlayerAction => ({ type: 'CAST_MAGIC', targetPlayerId: id })));
-  ctx.log(
-    state,
-    `${p.name} 进入「${c.name}」，女巫的水晶球亮起：${MAGIC_CONDITION_LABEL[condition]}；若施法，将降下「${curseDef.name}」`,
-  );
-  if (blocker !== null) {
-    ctx.log(state, '当前没有符合条件的受罚对象，女巫悻悻收回水晶球');
-    return 'advance';
-  }
+  const roll = nextRandom(state.rngState);
+  state.rngState = roll.nextState;
+  const condition = MAGIC_CONDITIONS[Math.floor(roll.value * MAGIC_CONDITIONS.length)]!.kind;
+  state.magic = { condition };
+  // 轮盘**无条件开**。命中名单本来就不显示（§7.6），所以"没人对上"只能等玩家选完魔法才发现，
+  // 再由 castMagic 播报收回水晶球 —— 旧实现拿候选数当开窗条件，正是因为它把名单摊成了按钮。
+  ctx.log(state, `${p.name} 进入「${c.name}」，女巫的水晶球亮起：${MAGIC_CONDITION_LABEL[condition]}`);
   return holdLanding(ctx);
 }
 

@@ -8,6 +8,7 @@ import {
   MAX_LOAN,
   MINIGAME_POINTS_PER_HIT,
   PASS_START_SALARY,
+  boardNeighbors,
   pathAhead,
   stepAlong,
   POINTS_START,
@@ -72,13 +73,17 @@ import {
 import { buyTrade, buyTradeRefusal, cancelTrade, cancelTradeRefusal, postTrade, postTradeRefusal, refreshTrades, tradableAssets } from './trade.js';
 import {
   BAIL_FEE,
-  CURSES,
+  MAGIC_CONDITION_LABEL,
+  MAGIC_EFFECTS,
+  MAGIC_EFFECT_ORDER,
+  MAGIC_INSURANCE_CLAIM,
   PROTECTION_FEE_RATE,
   THIEF_POINTS_TAKE,
   TREASURE_POINTS,
   VILLAIN_DAYS,
   VILLAIN_KINDS,
   VILLAINS,
+  type MagicEffectDef,
   type VillainDef,
 } from './npc.js';
 import {
@@ -125,7 +130,7 @@ import type {
   DisasterKind,
   FacilityType,
   GameState,
-  MagicOffer,
+  MagicCondition,
   NpcUnit,
   PayReason,
   Player,
@@ -2737,24 +2742,46 @@ function dischargeFee(state: GameState): number {
   return scaled(state, DISCHARGE_FEE);
 }
 
-/** 魔法屋施法条件对应的候选受罚者（排除施法者本人与已倒闭玩家） */
-function magicCandidates(state: GameState, caster: Player, condition: MagicOffer['condition']): string[] {
-  const others = activePlayers(state).filter((p) => p.id !== caster.id);
+/**
+ * 魔法屋目标条件筛出的命中集合（A §三：符合条件者**全部**中招，最高值并列一起中）。
+ *
+ * 与旧实现的两处口径差别：
+ * - **含施法者本人**（M-04）：条件不区分敌我，而玩家看不见名单 —— 把自己算进去是判断失误的后果；
+ * - 只排除倒闭玩家。
+ *
+ * 名单**不进 `MagicOffer`**：进了就随快照下发到客户端，而这条玩法的整个赌注正是
+ * 「水晶球只报标语，谁中招自己判断」（决策表 §7.6）。所以每次施法当场从活状态重算。
+ */
+export function magicHits(state: GameState, condition: MagicCondition): string[] {
+  const pool = activePlayers(state);
+  if (pool.length === 0) return [];
+  /** 取最大值那一档，并列者全收（开局人人 0 地时，「土地最多的人」就是全体） */
+  const top = (score: (p: Player) => number): string[] => {
+    const max = Math.max(...pool.map(score));
+    return pool.filter((p) => score(p) === max).map((p) => p.id);
+  };
+  const byDice = (test: (diceCount: number) => boolean) => pool.filter((p) => test(p.diceCount)).map((p) => p.id);
   switch (condition) {
-    case 'all':
-      return others.map((p) => p.id);
-    case 'ahead':
-      return others.filter((p) => totalAssets(state, p) > totalAssets(state, caster)).map((p) => p.id);
-    case 'behind':
-      return others.filter((p) => totalAssets(state, p) < totalAssets(state, caster)).map((p) => p.id);
-    case 'vehicle':
-      // 拥有交通工具（机车 diceCount=2 / 汽车 diceCount=3）
-      return others.filter((p) => p.diceCount > 1).map((p) => p.id);
-    case 'landowner':
-      return others.filter((p) => p.properties.some((q) => {
-        const cell = state.board[q.cellId];
-        return cell ? (cell.type === 'property' || cell.type === 'commercial') : false;
-      })).map((p) => p.id);
+    case 'richest':
+      return top((p) => totalAssets(state, p));
+    case 'most-land':
+      return top((p) => p.properties.length);
+    case 'most-house':
+      return top((p) => p.properties.filter((q) => q.grade > 0).length);
+    case 'richest-cash':
+      return top((p) => p.cash);
+    case 'richest-deposit':
+      return top((p) => p.deposit);
+    case 'richest-points':
+      return top((p) => p.points);
+    case 'walker':
+      return byDice((n) => n <= 1);
+    case 'motorbike':
+      return byDice((n) => n === 2);
+    case 'car':
+      return byDice((n) => n >= 3);
+    case 'godded':
+      return pool.filter((p) => p.god !== null).map((p) => p.id);
     default: {
       const exhaustive: never = condition;
       throw new Error(`未知施法条件: ${JSON.stringify(exhaustive)}`);
@@ -2819,56 +2846,145 @@ function dischargePatient(state: GameState, action: Extract<PlayerAction, { type
   finishIfSingleStep(state);
 }
 
-/** TILE-11：女巫施法，对指定候选降下诅咒 */
+/**
+ * TILE-11：玩家自选一档魔法降下，符合条件者**全部**中招、依次结算（A §二.3 / §五.5）。
+ *
+ * 两处刻意与旧实现相反：
+ * - **不走 `applyDisaster`**（M-16）：魔法屋定性为无解硬惩罚，免罪 / 嫁祸 / 复仇一律拦不住；
+ * - 0 命中要等玩家把魔法选完才发现（Q-07）：名单本来就不显示，所以轮盘照开。
+ */
 function castMagic(state: GameState, action: Extract<PlayerAction, { type: 'CAST_MAGIC' }>): void {
   assertLegal(state, action);
   const offer = state.magic!;
-  const p = currentPlayer(state);
-  const target = state.players.find((q) => q.id === action.targetPlayerId)!;
-  const curseDef = CURSES[offer.curse];
+  const caster = currentPlayer(state);
+  const effect = MAGIC_EFFECTS[action.effect];
+  const label = MAGIC_CONDITION_LABEL[offer.condition];
   state.magic = null;
-  log(state, `${p.name} 对 ${target.name} 施法，诅咒「${curseDef.name}」降临`);
-  switch (offer.curse) {
-    case 'fine':
-      payCash(state, target, offer.amount, null, 'god');
-      break;
+  const hitIds = magicHits(state, offer.condition);
+  if (hitIds.length === 0) {
+    log(state, `${caster.name} 施下「${effect.name}」，但${label}这一局无人对上，女巫悻悻收回水晶球`);
+    finishIfSingleStep(state);
+    return;
+  }
+  const names = hitIds.map((id) => state.players.find((q) => q.id === id)!.name).join('、');
+  log(state, `${caster.name} 施下「${effect.name}」：${label} —— ${names}`);
+  let landed = 0;
+  for (const id of hitIds) {
+    if (applyMagicEffect(state, state.players.find((q) => q.id === id)!, effect)) landed += 1;
+  }
+  // 有人对上、但这一档在每个人脚下都没有落点（全员站空地 / 全没钱 / 全没地）—— 说清楚，
+  // 否则玩家只会看到"施了法却什么都没发生"，分不清是规则还是 bug。
+  if (landed === 0) log(state, '魔法在各人脚下都没有落点，水晶球的光熄了');
+  finishIfSingleStep(state);
+}
+
+/**
+ * 一档魔法对一个命中者的结算。返回 false 表示**这一档在他身上落空**（脚下没建筑可拆、
+ * 没别人的地可拍、现金为零…），由 `castMagic` 汇总成"魔法无处降落"的播报。
+ *
+ * 作用于脚下格的三档按 Q-02/Q-03/Q-04 定案：不挑地价、不设 A 那条未解的前置。
+ * 决策人补的一条口径：**脚下无论是谁的地，效果都照办** —— 站在对手的楼上就被拆一层，
+ * 站在对手的空地上就替他加盖一层（是的，这可能便宜第三方）。落点不成立时只跳过这一个目标，
+ * 其余命中者照常结算。唯一保留的前提是拍卖：无主之地没有卖方，拍出去等于白送一块地。
+ */
+function applyMagicEffect(state: GameState, target: Player, effect: MagicEffectDef): boolean {
+  const here = cellAt(state, target.position);
+  const under = cellOwner(state, target.position);
+  switch (effect.kind) {
+    case 'sell-cards': {
+      // A §附把变卖拆成手牌与道具两处调用，所得点券归目标自己 —— 清手牌，不产生损失（M-13）
+      if (target.cards.length === 0 && Object.keys(target.items).length === 0) return false;
+      let gained = 0;
+      for (const cardId of target.cards) gained += Math.floor((CARDS[cardId]?.cost ?? 0) / 2);
+      for (const [itemId, count] of Object.entries(target.items)) gained += itemSellValue(itemId) * count;
+      target.cards = [];
+      target.items = {};
+      target.points += gained;
+      log(state, `${target.name} 的卡片道具全部变卖，回收 ${gained} 点券`);
+      return true;
+    }
+    case 'fate-x3':
+      // 相当于连踩三格机会格（Q-07 定：公共池 33 张，不含地图专属那 16 张）。
+      // 中途被抽到倒闭就停 —— 剩下的两张没有承受者，硬抽只会把随机数白烧掉。
+      for (let i = 0; i < 3 && !target.bankrupt; i++) resolveFateCard(state, target);
+      return true;
     case 'jail':
-      applyDisaster(state, target, 'jail', p, (v) => {
-        imposeCustody(state, v, 'jail', offer.days);
-        log(state, `${v.name} 被关进监狱，暂停 ${offer.days} 回合并丧失收租权`);
-      });
-      break;
+      imposeCustody(state, target, 'jail', effect.days ?? 0);
+      log(state, `${target.name} 被关进监狱，暂停 ${effect.days} 回合并丧失收租权`);
+      claimMagicInsurance(state, target);
+      return true;
+    case 'hold':
+      // 与停留卡 CARD-14 同一个字段：下一次前进时原地停留
+      target.holdTurns += 1;
+      log(state, `${target.name} 被定在「${here.name}」，下一回合原地停留`);
+      return true;
+    case 'demolish':
+      // 拆一层（Q-03）。1 级就是空地（`GRADE_NAMES[1]`），所以平房被拆一级即还原成空地，
+      // 已经在空地上再拆就没有东西可拆 —— 算落空，不越级去动地权。
+      if (!under || under.property.grade <= 1) return false;
+      under.property.grade = (under.property.grade - 1) as 1 | 2 | 3 | 4 | 5;
+      log(
+        state,
+        `${target.name} 脚下的「${here.name}」被拆至${gradeName(under.property.grade)}（地主 ${under.player.name}）`,
+      );
+      return true;
     case 'hospital':
-      applyDisaster(state, target, 'jail', p, (v) => {
-        imposeCustody(state, v, 'hospital', offer.days);
-        log(state, `${v.name} 怪病缠身，住院 ${offer.days} 天并丧失收租权`);
-      });
-      break;
-    case 'abroad':
-      applyDisaster(state, target, 'jail', p, (v) => {
-        v.abroadTurns = Math.max(v.abroadTurns, offer.days);
-        v.skipTurns = Math.max(v.skipTurns, offer.days);
-        log(state, `${v.name} 被放逐异界 ${offer.days} 回合`);
-      });
-      break;
-    case 'lose-card':
-      applyDisaster(state, target, 'jail', p, (v) => {
-        if (v.cards.length === 0) {
-          log(state, `${v.name} 身上没有卡片，诅咒无处降落`);
-          return;
-        }
-        const idx = randomIndex(state, v.cards.length);
-        const cardId = v.cards[idx]!;
-        v.cards.splice(idx, 1);
-        log(state, `${v.name} 的卡片「${CARDS[cardId]?.name ?? cardId}」凭空消失`);
-      });
-      break;
+      imposeCustody(state, target, 'hospital', effect.days ?? 0);
+      log(state, `${target.name} 住院检查 ${effect.days} 天并丧失收租权`);
+      claimMagicInsurance(state, target);
+      return true;
+    case 'gain-card':
+      // 走免费卡格那条现成通道：额满时挂 `pendingCards` 让被施法者自己弃一张
+      drawChanceCard(state, target, '魔法屋');
+      return true;
+    case 'build-up':
+      // 免费加盖一层（Q-02 定"不挑"：不查地价区间，也不查 A 那条未解的前置）。
+      // 不可加盖的算落空：连锁店（help[21] 改建后不能再加盖）、已封顶、
+      // 以及公园 / 加油站这类 `upgradeable:false` 的设施。
+      if (!under || under.property.chain) return false;
+      if (under.property.grade >= MAX_GRADE) return false;
+      if (here.type === 'commercial' && !FACILITIES[under.property.facility!]?.upgradeable) return false;
+      under.property.grade = (under.property.grade + 1) as 1 | 2 | 3 | 4 | 5;
+      log(
+        state,
+        `${target.name} 脚下的「${here.name}」凭空加盖一层，现为${gradeName(under.property.grade)}（地主 ${under.player.name}）`,
+      );
+      return true;
+    case 'to-deposit':
+      if (target.cash <= 0) return false;
+      target.deposit += target.cash;
+      log(state, `${target.name} 手头的 ¥${target.cash} 现金全部存入银行`);
+      target.cash = 0;
+      return true;
+    case 'turn-back': {
+      // 与转向卡同一条算式：朝向存的是邻接表下标，翻一格即掉头
+      const ways = boardNeighbors(state.board, target.position).length || 1;
+      target.heading = (target.heading + 1) % ways;
+      log(state, `${target.name} 的行进方向被拧了 180°`);
+      return true;
+    }
+    case 'auction-cell':
+      // 拍的是脚下那一格，**成交价归地主**（`beginAuction` 的 sellerId 语义）：被拍卖的是他，
+      // 拿钱的也是他。A 只在坐牢/住院那条写了"记在踩屋者名下"，这档没写，就不替踩屋者加钱。
+      // 无主之地不拍 —— 没有卖方，拍出去等于白送一块地，这是"脚下是谁的地都照办"之后
+      // 我仍然保留的唯一一条前提。多个命中者各拍一块 → 进 `auctionQueue` 逐场开，不互相覆盖。
+      if (!under || (here.type !== 'property' && here.type !== 'commercial')) return false;
+      state.auctionQueue.push({ cellId: here.id, sellerId: under.player.id, trigger: 'magic' });
+      log(state, `${target.name} 脚下的「${here.name}」被挂上拍卖台（地主 ${under.player.name}）`);
+      return true;
     default: {
-      const exhaustive: never = offer.curse;
-      throw new Error(`未知诅咒: ${JSON.stringify(exhaustive)}`);
+      const exhaustive: never = effect.kind;
+      throw new Error(`未知魔法: ${JSON.stringify(exhaustive)}`);
     }
   }
-  finishIfSingleStep(state);
+}
+
+/** 保险理赔（M-15 / Q-01）：在保才赔，钱给**被施法者本人**，按物价指数缩放 */
+function claimMagicInsurance(state: GameState, p: Player): void {
+  if (!p.insurance) return;
+  const amount = scaled(state, MAGIC_INSURANCE_CLAIM);
+  p.cash += amount;
+  log(state, `${p.name} 的保单生效，领取保险金 ¥${amount}`);
 }
 
 // ---------------------------------------------------------------------------
@@ -3170,7 +3286,6 @@ const LANDING_KIT: Omit<CellLandingCtx, 'state' | 'self' | 'cell' | 'moved'> = {
   bailFee,
   resolveFateCard,
   resolveNewsEvent,
-  magicCandidates,
 };
 
 /**
@@ -4032,14 +4147,11 @@ function checkDischargePatient(state: GameState, p: Player | null, action: Actio
 }
 
 function checkCastMagic(state: GameState, p: Player | null, action: ActionOf<'CAST_MAGIC'>): ActionRefusal {
-  const offer = state.magic;
-  if (!offer) return '当前没有可施法的机会';
+  if (!state.magic) return '当前没有可施法的机会';
   if (state.phase !== 'awaiting_action') return '当前不能施法';
   if (!p) return NO_ACTOR_MESSAGE;
-  const target = state.players.find((q) => q.id === action.targetPlayerId);
-  if (!target) return '受罚对象不存在';
-  if (target.id === p.id) return '不能诅咒自己';
-  if (!offer.candidateIds.includes(target.id)) return '该对象不满足施法条件';
+  // 没有「目标合法吗」这一问：玩家选的是魔法，落在谁头上由条件当场筛，含施法者本人（M-03/M-04）
+  if (!MAGIC_EFFECT_ORDER.includes(action.effect)) return '魔法书上没有这一档';
   return null;
 }
 

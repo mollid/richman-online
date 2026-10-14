@@ -8,7 +8,6 @@ import type {
   DisasterKind,
   GameState,
   LandingVenue,
-  MagicCondition,
   PayReason,
   Player,
   PlayerAction,
@@ -322,6 +321,4 @@ export interface CellLandingCtx extends EngineCtx {
   resolveFateCard(state: GameState, p: Player): void;
   /** 新闻格的游标轮询选事件并结算 */
   resolveNewsEvent(state: GameState): void;
-  /** 魔法屋：给定施法条件，列出可选的受罚者 id */
-  magicCandidates(state: GameState, caster: Player, condition: MagicCondition): string[];
 }
