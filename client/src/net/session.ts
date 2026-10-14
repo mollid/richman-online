@@ -1,5 +1,5 @@
 import type { ChatMessage } from './remote.js';
-import { applyAction, createGame, normalizeGameState, type DateSerial, type GameState, type PlayerAction } from '@richman/shared';
+import { applyAction, characterOfSeat, createGame, normalizeGameState, type DateSerial, type GameState, type PlayerAction } from '@richman/shared';
 import { getSettings } from '../game/settings.js';
 
 /** 会话抽象：本地热座与联机共用同一套 UI */
@@ -86,13 +86,12 @@ export class LocalHotseatSession implements GameSession {
       this.game = resume;
       return;
     }
-    const names = ['阿福', '小美', '大宝', '金宝'];
-    const colors = [0xef5350, 0x42a5f5, 0x66bb6a, 0xffee58];
-    const players = Array.from({ length: playerCount }, (_, i) => ({
-      id: `local-${i}`,
-      name: names[i]!,
-      color: colors[i]!,
-    }));
+    // 角色按座位取（`CHARACTERS` 排成男女交替）。这里原先自带一份名字表与一份颜色表 ——
+    // 与 `characters.ts` 各写各的，正是 hud.js 黑屏那一类"两处拷贝"的下一个候选，所以收掉。
+    const players = Array.from({ length: playerCount }, (_, i) => {
+      const ch = characterOfSeat(i);
+      return { id: `local-${i}`, name: ch.name, color: ch.color, characterId: ch.id };
+    });
     // CORE-04 / §14 第 2 项：热座默认不限天数（结束条件仍只有「对手全破产」），上限由开局面板选
     this.game = applyAction(createGame(players, seed, { startDate: resolveStartDate(), maxDays, mapId }), { type: 'START_GAME' });
   }

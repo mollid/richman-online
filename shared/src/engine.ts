@@ -32,6 +32,7 @@ import {
   summonGod,
 } from './gods.js';
 import { addMonths, DEFAULT_START_DATE, gameDate, toSerial } from './calendar.js';
+import { characterById, characterOfSeat } from './characters.js';
 import { landPrice, landRent, landPriceLevel, landUpgradeCost, mapLandPriceLevel, scaled, totalAssets } from './economy.js';
 import { boardGodAt, clearBoardGodsOnCells, detachGodForPossession, godSpawnHook, godSummonRefusal } from './godspawn.js';
 import {
@@ -233,9 +234,15 @@ export function spawnCells(seed: number, count: number, board: BoardCell[]): num
 }
 
 /** 新玩家的初始字段（createGame 与 addPlayer 共用） */
-function basePlayer(def: PlayerDef, spawnAt: number): Player {
+function basePlayer(def: PlayerDef, spawnAt: number, seat: number): Player {
+  // 角色：显式选的就用选的，否则按座位取（`CHARACTERS` 排成男女交替，
+  // 于是 2~4 人局天然各有一男一女，魔法屋那两条性别条件不会退化成"全体"或"无人"）
+  const ch = (def.characterId ? characterById(def.characterId) : null) ?? characterOfSeat(seat);
   return {
     ...def,
+    characterId: ch.id,
+    gender: ch.gender,
+    avatar: ch.avatar,
     cash: STARTING_CASH,
     deposit: 0,
     points: POINTS_START,
@@ -293,7 +300,7 @@ export function createGame(players: PlayerDef[], seed = Date.now() % 2147483647,
   // 开局基准就在这一块算，日切那头走 `economy.mapLandPriceLevel` —— 同一段代码，两个入口。
   const landPriceBase = landPriceLevel(board);
   return {
-    players: players.map((p, i) => basePlayer(p, spawns[i] ?? 0)),
+    players: players.map((p, i) => basePlayer(p, spawns[i] ?? 0, i)),
     board,
     currentPlayerIndex: 0,
     phase: 'lobby',
@@ -400,7 +407,7 @@ export function addPlayer(state: GameState, def: PlayerDef): GameState {
   const next = clone(state);
   const seat = next.players.length;
   const spawns = spawnCells(state.seed, seat + 1, state.board);
-  next.players.push(basePlayer(def, spawns[seat] ?? 0));
+  next.players.push(basePlayer(def, spawns[seat] ?? 0, seat));
   log(next, `${def.name} 加入了房间`);
   return next;
 }
@@ -2782,6 +2789,10 @@ export function magicHits(state: GameState, condition: MagicCondition): string[]
       return byDice((n) => n >= 3);
     case 'godded':
       return pool.filter((p) => p.god !== null).map((p) => p.id);
+    case 'all-male':
+      return pool.filter((p) => p.gender === 'male').map((p) => p.id);
+    case 'all-female':
+      return pool.filter((p) => p.gender === 'female').map((p) => p.id);
     default: {
       const exhaustive: never = condition;
       throw new Error(`未知施法条件: ${JSON.stringify(exhaustive)}`);

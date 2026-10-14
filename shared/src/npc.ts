@@ -72,8 +72,7 @@ export interface MagicConditionDef {
 }
 
 /**
- * A §三 的 12 条标语，波 1 只上 10 条：「所有男生 / 所有女生」要角色性别字段，
- * 那条挪到波 3（Q-06 定：字段没落地前不进随机池，而不是进池恒不命中）。
+ * A §三 的 12 条标语。性别那两条要角色表带 `gender` 才判得了，波 3 补回后满 12 条。
  */
 export const MAGIC_CONDITIONS: MagicConditionDef[] = [
   { kind: 'richest', label: '财产最多的人' },
@@ -86,6 +85,8 @@ export const MAGIC_CONDITIONS: MagicConditionDef[] = [
   { kind: 'motorbike', label: '骑机车的人' },
   { kind: 'car', label: '开汽车的人' },
   { kind: 'godded', label: '神明附身的人' },
+  { kind: 'all-male', label: '所有男生' },
+  { kind: 'all-female', label: '所有女生' },
 ];
 
 export const MAGIC_CONDITION_LABEL: Record<MagicCondition, string> = Object.fromEntries(

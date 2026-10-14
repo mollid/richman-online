@@ -35,12 +35,11 @@
   const css = (color) => `#${color.toString(16).padStart(6, '0')}`;
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
-  const AVA = { 'bot-1': '🐸', 'bot-2': '🐬', 'bot-3': '🐻', 'bot-4': '🐷' };
-  /* 头像统一走 avaOf：认得的 id 用固定动物，其余（热座 local-*、联机 uuid）按座位序稳定取一只。
-     早前各处直接写 AVA[p.id]，热座 id 是 local-0..3 不在表里，账本与股市两处漏了兜底，
-     模板字符串就把「undefined」当头像印了出来。 */
-  const AVA_REST = ['🐵', '🐰', '🦊', '🐼', '🐨', '🦁'];
-  const avaOf = (p) => AVA[p.id] ?? AVA_REST[st.players.findIndex((x) => x.id === p.id) % AVA_REST.length] ?? '🧑‍🌾';
+  /* 头像取玩家身上的 `avatar`（由 shared 的角色表在开局时派生，见 `characters.ts`）。
+     这里原先自带两张表：认得的 id 用固定动物、其余按座位序取一只。问题不是兜底不够，
+     而是表现数据在一个不参与 typecheck 的静态脚本里又存了一份 —— 角色表一改名字或顺序，
+     这边就静静地对不上。波 3 把它们收回角色表，本文件只认结构。 */
+  const avaOf = (p) => p.avatar || '🧑‍🌾';
   const GROUP = {
     residential: '#8fd07a', commercial: '#7ec8ef', industrial: '#c9b48a',
     tech: '#b7a6e6', coastal: '#7fd8c8', financial: '#f0b96a',

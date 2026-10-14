@@ -1,3 +1,5 @@
+import type { Gender } from './characters.js';
+
 /**
  * 棋盘格类型（波 3 扩棋盘后覆盖文档 §9 全部 TILE-01..30 + TILE-31）。
  * 括号内为文档对标编号。
@@ -147,6 +149,8 @@ export interface PlayerDef {
   id: string;
   name: string;
   color: number;
+  /** 选定的角色 id；省略则按座位取 `CHARACTERS[seat]`（座位序是男女交替排的） */
+  characterId?: string;
 }
 
 /** 公历日期（month 1-12），确定性回放的时间基线 */
@@ -276,6 +280,16 @@ export interface Player {
   name: string;
   /** PixiJS 可用的 0xRRGGBB 颜色 */
   color: number;
+  /** 角色 id（`characters.ts` 的 `id`）。被动技能系统按它挂 —— 名字会改，id 不动 */
+  characterId: string;
+  /**
+   * 性别：魔法屋「所有男生 / 所有女生」两条条件读它。
+   * 由角色表在开局时派生，不是玩家可改的字段；放状态里而不是每次查表，
+   * 是为了让回放与存档拿到的是同一份判定依据。
+   */
+  gender: Gender;
+  /** 头像 emoji：HUD 与棋盘共用。放状态里，`hud.js` 就不必再自带一张 id→emoji 的表 */
+  avatar: string;
   cash: number;
   /** 银行存款（月末结算利息；租金入账、可被动用于支付） */
   deposit: number;
@@ -768,7 +782,9 @@ export type MagicCondition =
   | 'walker'
   | 'motorbike'
   | 'car'
-  | 'godded';
+  | 'godded'
+  | 'all-male'
+  | 'all-female';
 
 /** 四大恶人（NPC-01..04） */
 export type VillainKind = 'thief' | 'protection' | 'robber' | 'rent-thief';
