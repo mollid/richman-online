@@ -802,11 +802,13 @@ export type MagicCondition =
 export type VillainKind = 'thief' | 'protection' | 'robber' | 'rent-thief';
 
 /**
- * TILE-11 魔法屋：玩家自选的魔法档（A §四 的 11 档 + 原为隐藏的拍卖档，M-24 定其进池）。
- * 顺序即轮盘顺序：6 坏 → 3 好 → 1 中性 → 拍卖。
+ * TILE-11 魔法屋：玩家自选的魔法档（A §四 的 11 档 + 原为隐藏的拍卖档，M-24 定其进池；
+ * 第 12 档「变卖所有道具」由 Q-08 结案补上 —— 轮盘本来就是 12 路，`case 0-0xB`）。
+ * 顺序即轮盘顺序：7 坏 → 3 好 → 1 中性 → 拍卖。
  */
 export type MagicEffectKind =
   | 'sell-cards'
+  | 'sell-items'
   | 'fate-x3'
   | 'jail'
   | 'hold'

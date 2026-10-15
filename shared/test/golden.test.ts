@@ -306,18 +306,13 @@ const FOUR_PLAYER_HASHES = [
   '#310@152:2a8e3b3a',
 ];
 
-/** 两人局：turn=58 自然收束（game_over），108 个动作（与四人局走完全不同的落格与结算序列） */
+/** 两人局：turn=33 自然收束（game_over），55 个动作（与四人局走完全不同的落格与结算序列） */
 const TWO_PLAYER_HASHES = [
-  '#10@6:efc10347',
-  '#20@13:3ec0b136',
-  '#30@18:5a19801a',
-  '#40@23:c70dadfd',
-  '#50@28:3b44321d',
-  '#60@35:541e8aca',
-  '#70@42:10b82cba',
-  '#80@45:91439396',
-  '#90@48:d2740985',
-  '#100@54:c555b571',
+  '#10@6:2d721081',
+  '#20@13:e20d1834',
+  '#30@19:51a110f3',
+  '#40@25:d52fffdf',
+  '#50@31:abb9b1ed',
 ];
 
 const MAX_TURNS = 600;
@@ -352,7 +347,7 @@ describe('golden 逐帧基线（重构期间行为不变的唯一证明）', () 
       players: GOLDEN_PLAYERS.slice(0, 2),
     });
     expect(run.hashes).toEqual(TWO_PLAYER_HASHES);
-    expect(run.steps).toBe(108);
+    expect(run.steps).toBe(55);
     expect(run.stalls).toBe(0);
   });
 

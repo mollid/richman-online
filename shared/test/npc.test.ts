@@ -565,7 +565,7 @@ describe('TILE-11 魔法屋（NPC-06 女巫）', () => {
     expect(next.log.some((l) => l.text.includes('免罪卡'))).toBe(false);
   });
 
-  it('「变卖所有卡片」：卡片与道具清空，点券归目标自己（M-13）', () => {
+  it('「变卖所有卡片」只清手牌，道具一格不动（M-13 / Q-08 拆档）', () => {
     const g = setupLanding(richest(newGame(113), 'p2'), MAGIC_CELL, 3, seedForCondition(0));
     // 整手清成已知的一卡两道具：开局发的牌与道具一并算进变卖，等式才有意义
     g.players[1]!.cards = ['tax-audit'];
@@ -575,11 +575,32 @@ describe('TILE-11 魔法屋（NPC-06 女巫）', () => {
     const next = applyAction(landed, { type: 'CAST_MAGIC', effect: 'sell-cards' });
     const after = next.players[1]!;
     expect(after.cards).toEqual([]);
-    expect(after.items).toEqual({});
+    expect(after.items).toEqual({ roadblock: 2 });
     // 半价口径与商店卖卡、命运卡「变卖所有卡片道具」是同一条
-    expect(after.points).toBe(
-      pointsBefore + Math.floor(CARDS['tax-audit']!.cost / 2) + itemSellValue('roadblock') * 2,
-    );
+    expect(after.points).toBe(pointsBefore + Math.floor(CARDS['tax-audit']!.cost / 2));
+  });
+
+  it('「变卖所有道具」是轮盘第 12 档：只清道具，手牌一格不动', () => {
+    const g = setupLanding(richest(newGame(113), 'p2'), MAGIC_CELL, 3, seedForCondition(0));
+    g.players[1]!.cards = ['tax-audit'];
+    g.players[1]!.items = { roadblock: 2 };
+    const pointsBefore = g.players[1]!.points;
+    const landed = applyAction(g, { type: 'ROLL_DICE' });
+    const next = applyAction(landed, { type: 'CAST_MAGIC', effect: 'sell-items' });
+    const after = next.players[1]!;
+    expect(after.items).toEqual({});
+    expect(after.cards).toEqual(['tax-audit']);
+    expect(after.points).toBe(pointsBefore + itemSellValue('roadblock') * 2);
+  });
+
+  it('身上没有对应那一类时，这一档在他身上没有落点（不记进"命中几人"）', () => {
+    const g = setupLanding(richest(newGame(113), 'p2'), MAGIC_CELL, 3, seedForCondition(0));
+    g.players[1]!.cards = ['tax-audit'];
+    g.players[1]!.items = {};
+    const landed = applyAction(g, { type: 'ROLL_DICE' });
+    const next = applyAction(landed, { type: 'CAST_MAGIC', effect: 'sell-items' });
+    expect(next.log.some((l) => /道具全部变卖/.test(l.text))).toBe(false);
+    expect(next.players[1]!.cards).toEqual(['tax-audit']);
   });
 
   it('魔法机会不跨回合残留（advanceTurn 清空 magic）', () => {

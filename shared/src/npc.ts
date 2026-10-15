@@ -112,6 +112,7 @@ export interface MagicEffectDef {
  */
 export const MAGIC_EFFECTS: Record<MagicEffectKind, MagicEffectDef> = {
   'sell-cards': { kind: 'sell-cards', name: '变卖所有卡片', polarity: 'bad' },
+  'sell-items': { kind: 'sell-items', name: '变卖所有道具', polarity: 'bad' },
   'fate-x3': { kind: 'fate-x3', name: '抽取命运三张', polarity: 'bad' },
   jail: { kind: 'jail', name: '立刻坐牢三天', polarity: 'bad', days: 3 },
   hold: { kind: 'hold', name: '原地停留一回合', polarity: 'bad' },
@@ -126,6 +127,7 @@ export const MAGIC_EFFECTS: Record<MagicEffectKind, MagicEffectDef> = {
 
 export const MAGIC_EFFECT_ORDER: MagicEffectKind[] = [
   'sell-cards',
+  'sell-items',
   'fate-x3',
   'jail',
   'hold',

@@ -2956,15 +2956,23 @@ function applyMagicEffect(state: GameState, target: Player, effect: MagicEffectD
   const under = cellOwner(state, target.position);
   switch (effect.kind) {
     case 'sell-cards': {
-      // A §附把变卖拆成手牌与道具两处调用，所得点券归目标自己 —— 清手牌，不产生损失（M-13）
-      if (target.cards.length === 0 && Object.keys(target.items).length === 0) return false;
+      // 变卖是两档（Q-08 结案的轮盘第 12 格 = 道具档），所得点券归目标自己 ——
+      // 清仓不产生损失（M-13）
+      if (target.cards.length === 0) return false;
       let gained = 0;
       for (const cardId of target.cards) gained += Math.floor((CARDS[cardId]?.cost ?? 0) / 2);
-      for (const [itemId, count] of Object.entries(target.items)) gained += itemSellValue(itemId) * count;
       target.cards = [];
+      target.points += gained;
+      log(state, `${target.name} 的卡片全部变卖，回收 ${gained} 点券`);
+      return true;
+    }
+    case 'sell-items': {
+      if (Object.keys(target.items).length === 0) return false;
+      let gained = 0;
+      for (const [itemId, count] of Object.entries(target.items)) gained += itemSellValue(itemId) * count;
       target.items = {};
       target.points += gained;
-      log(state, `${target.name} 的卡片道具全部变卖，回收 ${gained} 点券`);
+      log(state, `${target.name} 的道具全部变卖，回收 ${gained} 点券`);
       return true;
     }
     case 'fate-x3':
