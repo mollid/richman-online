@@ -151,6 +151,8 @@ export interface PlayerDef {
   color: number;
   /** 选定的角色 id；省略则按座位取 `CHARACTERS[seat]`（座位序是男女交替排的） */
   characterId?: string;
+  /** 大厅准备态，省略即 true（见 `Player.ready`） */
+  ready?: boolean;
 }
 
 /** 公历日期（month 1-12），确定性回放的时间基线 */
@@ -290,6 +292,11 @@ export interface Player {
   gender: Gender;
   /** 头像 emoji：HUD 与棋盘共用。放状态里，`hud.js` 就不必再自带一张 id→emoji 的表 */
   avatar: string;
+  /**
+   * 大厅准备态：全员为 true 才允许 START_GAME。默认 true 是有意的 ——
+   * 只有联机进房会显式给 false，热座、AI、测试建局因此一律不受这道门影响。
+   */
+  ready: boolean;
   cash: number;
   /** 银行存款（月末结算利息；租金入账、可被动用于支付） */
   deposit: number;
@@ -627,6 +634,11 @@ export interface PendingCard {
 
 export interface GameState {
   players: Player[];
+  /**
+   * 房主（大厅）：第一个进房的人，房主离开后转给最早加入的幸存者。
+   * 只管「谁能按开始 / 加 AI」，不影响任何对局规则，所以开局之后就再没人读它。
+   */
+  hostId: string | null;
   board: BoardCell[];
   currentPlayerIndex: number;
   phase: Phase;

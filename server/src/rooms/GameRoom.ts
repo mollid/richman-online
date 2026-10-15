@@ -13,6 +13,8 @@ import {
   removePlayer,
   resolveCharacter,
   resolveMaxDays,
+  setLobbyCharacter,
+  setLobbyReady,
   ONLINE_DEFAULT_MAX_DAYS,
   type DateSerial,
   type GameState,
@@ -149,6 +151,8 @@ export class GameRoom extends Room {
 
     this.onTracked('start_game', (client) => {
       try {
+        // 「全员准备」是规则，交给引擎挡；「谁能按」是房间权限，留在这里
+        if (client.sessionId !== this.game.hostId) throw new Error('只有房主能开始对局');
         this.game = applyAction(this.game, { type: 'START_GAME' });
         this.actionLog.push({ turn: this.game.turn, action: { type: 'START_GAME' } });
         this.updateMetadata('playing');
@@ -183,11 +187,30 @@ export class GameRoom extends Room {
 
     this.onTracked('action', (client, message: { action: PlayerAction }) => {
       try {
-        if (message.action.type !== 'START_GAME') {
-          this.assertCurrentPlayer(client);
-        }
+        // 开局只认 'start_game' 那条通道：房主校验挂在那儿，从 action 递进来等于绕权限
+        if (message.action.type === 'START_GAME') throw new Error('请用「开始对局」开局');
+        this.assertCurrentPlayer(client);
         this.game = applyAction(this.game, message.action);
         this.actionLog.push({ turn: this.game.turn, action: message.action });
+        this.broadcastState();
+      } catch (e) {
+        this.sendError(client, e);
+      }
+    });
+
+    this.onTracked('set_ready', (client, message: { ready?: unknown }) => {
+      try {
+        this.game = setLobbyReady(this.game, client.sessionId, message.ready === true);
+        this.broadcastState();
+      } catch (e) {
+        this.sendError(client, e);
+      }
+    });
+
+    this.onTracked('set_character', (client, message: { characterId?: unknown }) => {
+      try {
+        const id = typeof message.characterId === 'string' ? message.characterId : '';
+        this.game = setLobbyCharacter(this.game, client.sessionId, id);
         this.broadcastState();
       } catch (e) {
         this.sendError(client, e);
@@ -212,6 +235,8 @@ export class GameRoom extends Room {
       name,
       color: ch.color,
       characterId,
+      // 真人进房先算「没准备」，AI 与热座走默认 true —— 准备是点出来的，不是白送出来的
+      ready: false,
     });
     // 换角必须出声：不然被抢的人只看见自己莫名奇妙换了个角色
     if (requested && requested !== characterId) {

@@ -14,8 +14,15 @@
   z-index: 60;
   display: grid;
   place-items: center;
+  overflow: auto;
   padding: 24px;
   background: rgba(60, 48, 30, 0.42);
+}
+
+/* 弹层比视口高时（大厅最甚），居中会把顶部推出可视区。grid 里的 auto 外边距在
+   没有剩余空间时归零，于是超高自动退化成从顶部开始排，照样能滚到两端。 */
+.ac-scrim > * {
+  margin: auto;
 }
 
 .ac-note {
@@ -37,7 +44,7 @@
 
 /* ---------- 联机大厅 ---------- */
 .ac-lobby {
-  width: min(460px, 92vw);
+  width: min(560px, 94vw);
   padding: 18px;
   border-radius: 18px;
   border: 3px solid var(--ac-brown, #7a6547);
@@ -101,6 +108,74 @@
   font-size: 13px;
   color: var(--ac-dim, #b0a184);
   font-weight: 800;
+}
+
+/* ---------- 大厅：准备态与选角 ---------- */
+
+.ac-lobby__row--ready {
+  border-color: var(--ac-green, #6fbf5a);
+  background: #eef9e6;
+}
+
+.ac-lobby__ava {
+  font-size: 17px;
+  line-height: 1;
+}
+
+.ac-lobby__char {
+  color: var(--ac-orange-dk, #d1802a);
+  font-size: 12px;
+}
+
+.ac-lobby__tag {
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--ac-brown, #7a6547);
+  color: #fff;
+  font-size: 11px;
+}
+
+.ac-lobby__tag--off {
+  background: var(--ac-dim, #b0a184);
+}
+
+.ac-lobby__rd {
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--ac-dim, #b0a184);
+}
+
+.ac-lobby__row--ready .ac-lobby__rd {
+  color: var(--ac-green-dk, #3f8f3a);
+}
+
+.ac-lobby__wait {
+  align-self: center;
+  font-weight: 800;
+  font-size: 13px;
+  color: var(--ac-dim, #b0a184);
+}
+
+/* 开局面板的 `.char-card` 是深色皮肤，搬进奶油色的大厅必须换一套 token */
+.char-grid--lobby {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  margin-top: 8px;
+}
+
+.char-grid--lobby .char-card {
+  background: var(--ac-cream2, #fbf2d7);
+  border-color: var(--ac-line, #e8d9b0);
+  color: var(--ac-text, #6b5940);
+}
+
+.char-grid--lobby .char-card--on {
+  background: #eef9e6;
+  border-color: var(--ac-green, #6fbf5a);
+}
+
+.char-grid--lobby .char-card--taken {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 /* ---------- 输入型流程的弹层（银行 / 商店 / 股市 / 挂出 / 拍卖 / 小游戏…） ----------

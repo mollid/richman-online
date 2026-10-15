@@ -63,20 +63,18 @@ export class ColyseusSession implements GameSession {
     seed?: number;
     maxDays?: number | null;
     mapId?: number | null;
-    /** 想要的角色。服务端按「先到先得」裁决，被抢走会另给一个没人占的，不会拒绝加入 */
-    characterId?: string | null;
     /** 私密房：不进大厅列表，只能凭房间码加入。只对建房有效 */
     isPrivate?: boolean;
   }): Promise<ColyseusSession> {
     const client = new Client(serverUrl());
     const token = localStorage.getItem('richman.token') ?? undefined;
+    // 不带 characterId：选角挪进了大厅，进房时由服务端按表序给一个没人占的
     const room = opts.roomId
-      ? await client.joinById(opts.roomId, { name: opts.playerName, token, characterId: opts.characterId })
+      ? await client.joinById(opts.roomId, { name: opts.playerName, token })
       : await client.create('game', {
           name: opts.playerName,
           seed: opts.seed,
           token,
-          characterId: opts.characterId,
           isPrivate: opts.isPrivate === true,
           startDate: getSettings().startDate ?? undefined,
           // 建房者选的天数上限：null 要原样送达（那是「显式不限」），所以只在有值时才带这个键
@@ -238,6 +236,14 @@ export class ColyseusSession implements GameSession {
     this.room.send('add_bot', {});
   }
 
+  setReady(ready: boolean): void {
+    this.room.send('set_ready', { ready });
+  }
+
+  setCharacter(characterId: string): void {
+    this.room.send('set_character', { characterId });
+  }
+
   onError(fn: (message: string) => void): () => void {
     this.messageHandlers.add(fn);
     return () => this.messageHandlers.delete(fn);
@@ -274,6 +280,7 @@ export class ColyseusSession implements GameSession {
 function emptyState(): GameState {
   return {
     players: [],
+    hostId: null,
     board: [],
     currentPlayerIndex: 0,
     phase: 'lobby',

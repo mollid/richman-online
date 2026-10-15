@@ -103,34 +103,17 @@ function RoomVisibilityRow({ value, onChange }: { value: boolean; onChange: (isP
  * 交互取"点击顺序即座位号"而不是"每座一个下拉"：下拉要把 10 个名字藏进 N 层点击，
  * 而棋盘上真正想知道的是"这一号位是谁"，卡片上的座位徽章一眼就能看完。
  */
-function CharacterRow({
-  count,
-  picks,
-  onChange,
-  replaceWhenFull = false,
-  badge = (seat) => `${seat + 1} 号位`,
-}: {
-  count: number;
-  picks: string[];
-  onChange: (next: string[]) => void;
-  /** 联机只选一个：点另一张应当换人，而不是"先取消再选"两步 */
-  replaceWhenFull?: boolean;
-  /** 徽章文案：热座是座位号，联机是"你的角色" */
-  badge?: (seat: number) => string;
-}) {
+function CharacterRow({ count, picks, onChange }: { count: number; picks: string[]; onChange: (next: string[]) => void }) {
   const seatOf = (id: string) => picks.indexOf(id);
   const toggle = (id: string) => {
     if (seatOf(id) >= 0) return onChange(picks.filter((p) => p !== id));
-    // 满了：热座不吃这次点击（座位数由上面那排「N 人」决定，这里只管"谁来坐"），
-    // 联机单选则直接换人
-    if (picks.length >= count) return replaceWhenFull ? onChange([id]) : undefined;
+    // 满了就不吃这次点击：座位数由上面那排「N 人」决定，这一行只管"谁来坐"
+    if (picks.length >= count) return undefined;
     onChange([...picks, id]);
   };
   return (
     <div className="char-row">
-      <div className="char-row__hint">
-        {count === 1 ? '选一个角色 · 服务端按先到先得裁决，被抢走会另给一个没人占的' : '点角色卡按点击顺序占座 · 再点一次腾出位子'}
-      </div>
+      <div className="char-row__hint">点角色卡按点击顺序占座 · 再点一次腾出位子</div>
       <div className="char-grid">
         {CHARACTERS.map((c) => {
           const seat = seatOf(c.id);
@@ -148,7 +131,7 @@ function CharacterRow({
               <span className="char-card__meta">
                 {c.gender === 'male' ? '男' : '女'} · {c.age} 岁
               </span>
-              {seat >= 0 && <span className="char-card__seat">{badge(seat)}</span>}
+              {seat >= 0 && <span className="char-card__seat">{seat + 1} 号位</span>}
             </button>
           );
         })}
@@ -218,7 +201,6 @@ export default function App() {
     roomId?: string,
     maxDays?: number | null,
     mapId?: number | null,
-    characterId?: string | null,
     isPrivate?: boolean,
   ) => {
     setConnecting(true);
@@ -229,7 +211,6 @@ export default function App() {
         roomId: roomId?.trim() || undefined,
         maxDays,
         mapId,
-        characterId,
         isPrivate,
       });
       session?.destroy();
@@ -316,7 +297,7 @@ function SetupScreen({
   onOpenHelp,
 }: {
   onStartLocal: (playerCount: number, maxDays: number | null, mapId: number | null, characterIds?: string[]) => void;
-  onConnect: (playerName: string, roomId?: string, maxDays?: number | null, mapId?: number | null, characterId?: string | null, isPrivate?: boolean) => void;
+  onConnect: (playerName: string, roomId?: string, maxDays?: number | null, mapId?: number | null, isPrivate?: boolean) => void;
   onResume: () => void;
   onWatchReplay: (recordId: string) => void;
   connecting: boolean;
@@ -350,8 +331,6 @@ function SetupScreen({
   // 建房默认可公开 —— 大厅列表本来就是给「顺手凑一桌」用的，想只发给好友再切成私密
   const [onlinePrivate, setOnlinePrivate] = useState(false);
   const [playerName, setPlayerName] = useState('');
-  // 联机只选一个角色（服务端按先到先得裁决）。给个默认值，避免出现"没选"这个空状态
-  const [onlinePick, setOnlinePick] = useState<string>(CHARACTERS[0]!.id);
   const [roomId, setRoomId] = useState('');
   const [rooms, setRooms] = useState<RoomSummary[]>([]);
   const [canResume] = useState(() => hasSavedSession());
@@ -505,20 +484,13 @@ function SetupScreen({
             value={playerName}
             onChange={(e) => setPlayerName(e.target.value)}
           />
-          <CharacterRow
-            count={1}
-            picks={[onlinePick]}
-            onChange={(ids) => setOnlinePick(ids[ids.length - 1] ?? CHARACTERS[0]!.id)}
-            replaceWhenFull
-            badge={() => '你的角色'}
-          />
           <DayLimitRow value={onlineMaxDays} onChange={setOnlineMaxDays} />
           <MapRow value={onlineMap} onChange={setOnlineMap} />
           <RoomVisibilityRow value={onlinePrivate} onChange={setOnlinePrivate} />
           <button
             className="primary start-btn"
             disabled={!playerName.trim() || connecting}
-            onClick={() => onConnect(playerName.trim(), undefined, onlineMaxDays, onlineMap, onlinePick, onlinePrivate)}
+            onClick={() => onConnect(playerName.trim(), undefined, onlineMaxDays, onlineMap, onlinePrivate)}
           >
             {connecting ? '连接中…' : '创建房间'}
           </button>
@@ -530,7 +502,7 @@ function SetupScreen({
             />
             <button
               disabled={!playerName.trim() || !roomId.trim() || connecting}
-              onClick={() => onConnect(playerName.trim(), roomId, undefined, undefined, onlinePick)}
+              onClick={() => onConnect(playerName.trim(), roomId)}
             >
               加入房间
             </button>
@@ -719,6 +691,8 @@ function GameScreen({
       onExit={onExit}
       onStartGame={() => session.startGame?.()}
       onAddBot={() => session.addBot?.()}
+      onSetReady={(ready) => session.setReady?.(ready)}
+      onSetCharacter={(id) => session.setCharacter?.(id)}
     />
   );
 }

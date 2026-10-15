@@ -243,6 +243,7 @@ function basePlayer(def: PlayerDef, spawnAt: number, seat: number): Player {
     characterId: ch.id,
     gender: ch.gender,
     avatar: ch.avatar,
+    ready: def.ready ?? true,
     cash: STARTING_CASH,
     deposit: 0,
     points: POINTS_START,
@@ -301,6 +302,7 @@ export function createGame(players: PlayerDef[], seed = Date.now() % 2147483647,
   const landPriceBase = landPriceLevel(board);
   return {
     players: players.map((p, i) => basePlayer(p, spawns[i] ?? 0, i)),
+    hostId: players[0]?.id ?? null,
     board,
     currentPlayerIndex: 0,
     phase: 'lobby',
@@ -408,6 +410,8 @@ export function addPlayer(state: GameState, def: PlayerDef): GameState {
   const seat = next.players.length;
   const spawns = spawnCells(state.seed, seat + 1, state.board);
   next.players.push(basePlayer(def, spawns[seat] ?? 0, seat));
+  // 房主就地选举：第一个进房的拿槌子，不需要谁显式任命
+  if (next.hostId === null) next.hostId = def.id;
   log(next, `${def.name} 加入了房间`);
   return next;
 }
@@ -429,6 +433,50 @@ export function removePlayer(state: GameState, id: string): GameState {
     next.currentPlayerIndex = next.players.length - 1;
   }
   log(next, `${name} 离开了房间`);
+  if (next.hostId === id) {
+    // players 是按加入顺序追加的，所以第 0 个就是「最早还在房里的」
+    next.hostId = next.players[0]?.id ?? null;
+    if (next.hostId) log(next, `房主转给 ${next.players[0]!.name}`);
+  }
+  return next;
+}
+
+/** 大厅：点「准备 / 取消准备」。只在 lobby 阶段有效，开局后规则不再读它。 */
+export function setLobbyReady(state: GameState, playerId: string, ready: boolean): GameState {
+  if (state.phase !== 'lobby') throw new Error('对局已开始，不能改准备态');
+  const p = state.players.find((q) => q.id === playerId);
+  if (!p) throw new Error('没有这个玩家');
+  if (p.ready === ready) return state;
+  const next = clone(state);
+  next.players.find((q) => q.id === playerId)!.ready = ready;
+  return next;
+}
+
+/**
+ * 大厅：换角色。别人占着的换不动；换完自动退回未准备 —— 准备是对「我玩谁」的确认，
+ * 角色一变那个确认就不成立了，别让房主以为大家都在等开局。
+ */
+export function setLobbyCharacter(state: GameState, playerId: string, characterId: string): GameState {
+  if (state.phase !== 'lobby') throw new Error('对局已开始，不能换角色');
+  const ch = characterById(characterId);
+  if (!ch) throw new Error('没有这个角色');
+  if (state.players.some((p) => p.id !== playerId && p.characterId === characterId)) {
+    throw new Error(`${ch.name} 已被别人选走`);
+  }
+  const me = state.players.find((q) => q.id === playerId);
+  if (!me) throw new Error('没有这个玩家');
+  if (me.characterId === characterId) return state;
+  const next = clone(state);
+  const mine = next.players.find((q) => q.id === playerId)!;
+  const old = characterById(mine.characterId);
+  mine.characterId = ch.id;
+  mine.gender = ch.gender;
+  mine.avatar = ch.avatar;
+  mine.color = ch.color;
+  // 没填过昵称的人，名字就是旧角色名 —— 不跟着换就会出现「牌子写阿福、头像是小美」
+  if (old && mine.name === old.name) mine.name = ch.name;
+  mine.ready = false;
+  log(next, `${mine.name} 选定了 ${ch.name}`);
   return next;
 }
 
@@ -3712,6 +3760,8 @@ function assertLegal(state: GameState, action: PlayerAction): void {
 function checkStartGame(state: GameState, _p: Player | null, _action: ActionOf<'START_GAME'>): ActionRefusal {
   if (state.phase !== 'lobby') return '游戏已经开始';
   if (state.players.length < 2) return '至少需要 2 名玩家才能开始';
+  const waiting = state.players.filter((p) => !p.ready);
+  if (waiting.length) return `还有 ${waiting.length} 人未准备（${waiting.map((p) => p.name).join('、')}）`;
   return null;
 }
 

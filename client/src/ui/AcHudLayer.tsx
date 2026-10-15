@@ -11,7 +11,7 @@
  * 所以它不开面板，改在行囊格上方就地展开一条 `HandQuickBar`，棋盘全程可见可点。
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { actionRefusal } from '@richman/shared';
+import { actionRefusal, CHARACTERS, characterById } from '@richman/shared';
 import type { GameState, PlayerAction } from '@richman/shared';
 import { buildAcSnapshot } from '../game/acSnapshot.js';
 import { ControlPanel } from './ControlPanel.js';
@@ -227,6 +227,8 @@ export function AcHudLayer({
   onExit,
   onStartGame,
   onAddBot,
+  onSetReady,
+  onSetCharacter,
 }: {
   game: GameState;
   myPlayerId: string | null;
@@ -245,6 +247,10 @@ export function AcHudLayer({
   onExit: () => void;
   onStartGame?: () => void;
   onAddBot?: () => void;
+  /** 联机大厅：准备 / 取消准备 */
+  onSetReady?: (ready: boolean) => void;
+  /** 联机大厅：换角色 */
+  onSetCharacter?: (characterId: string) => void;
 }) {
   const [ready, setReady] = useState(false);
   const [loadError, setLoadError] = useState('');
@@ -630,37 +636,104 @@ export function AcHudLayer({
 
   const current = game.players[game.currentPlayerIndex];
 
+  /* 大厅准备态。开局按钮的可用性在这里只算一遍，服务端仍会独立拒绝越权的请求。 */
+  const me = game.players.find((p) => p.id === myPlayerId) ?? null;
+  const isHost = !!me && game.hostId === me.id;
+  const hostName = game.players.find((p) => p.id === game.hostId)?.name ?? '房主';
+  const readyCount = game.players.filter((p) => p.ready).length;
+  const iAmReady = me?.ready ?? false;
+  const allReady = game.players.length > 0 && readyCount === game.players.length;
+  const startLabel =
+    game.players.length < 2 ? '开始对局（至少 2 人）' : allReady ? '开始对局' : `开始对局（还有 ${game.players.length - readyCount} 人未准备）`;
+
   return (
     <>
       <div id="ac-hud-root" className="ac-hud-root" />
 
       {loadError && <div className="ac-scrim"><div className="ac-note ac-note--danger">HUD 加载失败：{loadError}</div></div>}
 
-      {/* 联机大厅：开局前覆盖在棋盘上 */}
+      {/* 联机大厅：开局前覆盖在棋盘上。选角挪到这里 —— 人在房里才看得见谁占了谁 */}
       {game.phase === 'lobby' && isRemote && (
         <div className="ac-scrim">
           <div className="ac-lobby">
             <div className="ac-lobby__code">
               房间码 <b>{roomId}</b>
+              {roomId && (
+                <button
+                  className="ac-btn ac-btn--sm ac-btn--cream"
+                  onClick={() => void navigator.clipboard?.writeText(roomId)}
+                >
+                  复制
+                </button>
+              )}
             </div>
             <div className="ac-lobby__title">房间玩家（{game.players.length}/4）</div>
             <div className="ac-lobby__list">
               {game.players.map((p) => (
-                <div key={p.id} className="ac-lobby__row">
-                  {p.name}
+                <div key={p.id} className={`ac-lobby__row${p.ready ? ' ac-lobby__row--ready' : ''}`}>
+                  <span className="ac-lobby__ava">{p.avatar}</span>
+                  <span className="ac-lobby__name">{p.name}</span>
+                  <span className="ac-lobby__char">{characterById(p.characterId)?.name ?? p.characterId}</span>
+                  {p.id === game.hostId && <span className="ac-lobby__tag">房主</span>}
                   {p.id === myPlayerId && <span className="ac-lobby__me">你</span>}
+                  {!p.online && <span className="ac-lobby__tag ac-lobby__tag--off">离线</span>}
+                  <span className="ac-lobby__rd">{p.ready ? '✅ 已准备' : '⏳ 未准备'}</span>
                 </div>
               ))}
             </div>
-            <div className="ac-lobby__acts">
-              <button className="ac-btn ac-btn--green ac-btn--lg" disabled={game.players.length < 2} onClick={() => onStartGame?.()}>
-                开始对局{game.players.length < 2 ? '（至少 2 人）' : ''}
-              </button>
-              <button className="ac-btn ac-btn--cream" disabled={game.players.length >= 4} onClick={() => onAddBot?.()}>
-                🤖 添加 AI
-              </button>
+
+            <div className="ac-lobby__title">选一个角色</div>
+            <div className="char-grid char-grid--lobby">
+              {CHARACTERS.map((c) => {
+                const holder = game.players.find((p) => p.characterId === c.id);
+                const mine = holder?.id === myPlayerId;
+                return (
+                  <button
+                    key={c.id}
+                    type="button"
+                    className={`char-card${mine ? ' char-card--on' : ''}${holder && !mine ? ' char-card--taken' : ''}`}
+                    title={holder && !mine ? `${holder.name} 占着` : c.blurb}
+                    aria-pressed={mine}
+                    disabled={!!holder && !mine}
+                    onClick={() => onSetCharacter?.(c.id)}
+                  >
+                    <span className="char-card__face">{c.avatar}</span>
+                    <span className="char-card__name">{c.name}</span>
+                    <span className="char-card__meta">{holder && !mine ? holder.name : `${c.gender === 'male' ? '男' : '女'} · ${c.age} 岁`}</span>
+                  </button>
+                );
+              })}
             </div>
-            <p className="ac-lobby__hint">把房间码发给好友即可加入</p>
+
+            <div className="ac-lobby__acts">
+              <button
+                className={`ac-btn ac-btn--lg ${iAmReady ? 'ac-btn--cream' : 'ac-btn--green'}`}
+                onClick={() => onSetReady?.(!iAmReady)}
+              >
+                {iAmReady ? '取消准备' : '准备'}
+              </button>
+              {isHost ? (
+                <button
+                  className="ac-btn ac-btn--green ac-btn--lg"
+                  disabled={game.players.length < 2 || !allReady}
+                  onClick={() => onStartGame?.()}
+                >
+                  {startLabel}
+                </button>
+              ) : (
+                <span className="ac-lobby__wait">等房主 {hostName} 开始</span>
+              )}
+              {isHost && (
+                <button className="ac-btn ac-btn--cream" disabled={game.players.length >= 4} onClick={() => onAddBot?.()}>
+                  🤖 添加 AI
+                </button>
+              )}
+            </div>
+            <p className="ac-lobby__hint">
+              {game.players.length < 2
+                ? '把房间码发给好友，2 人即可开局'
+                : `${readyCount}/${game.players.length} 已准备 · 换角色会自动退回未准备`}
+            </p>
           </div>
         </div>
       )}

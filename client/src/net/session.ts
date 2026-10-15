@@ -16,6 +16,10 @@ export interface GameSession {
   startGame?(): void;
   /** 联机模式：向房间添加 AI 玩家 */
   addBot?(): void;
+  /** 联机大厅：准备 / 取消准备 */
+  setReady?(ready: boolean): void;
+  /** 联机大厅：换角色。服务端换完会把自己退回未准备 */
+  setCharacter?(characterId: string): void;
   /** 联机模式：服务器错误消息订阅 */
   onError?(fn: (message: string) => void): () => void;
   /** 联机模式：聊天 */
