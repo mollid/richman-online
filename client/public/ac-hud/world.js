@@ -692,6 +692,8 @@
     const skin = mat(0xffe6c4, { roughness: 0.6 });
     const dark = mat(0x3b3026, { roughness: 0.45 });
     const shadowMat = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.2 });
+    /* 人偶身高（头顶到格顶）：广告牌贴图按这个值对齐，名牌锚点在 tileTop+1.8 */
+    const TOKEN_H = 1.5;
     const OFFSETS = [[-0.42, -0.42], [0.42, -0.42], [-0.42, 0.42], [0.42, 0.42]];
     const byCell = new Map();
     for (const p of state.players) {
@@ -700,6 +702,9 @@
     }
     for (const p of state.players) {
       const g = new THREE.Group();
+      /* 3D 人偶整体装进 puppet：贴图加载成功后把它整组隐藏，缺图时它继续当兜底表现 */
+      const puppet = new THREE.Group();
+      g.add(puppet);
       const cloth = mat(new THREE.Color(p.color), { roughness: 0.5 });
       /* 手臂用略深一档的玩家色：同色时手臂会和躯干糊成一整块，近景下看不出人形 */
       const clothDark = mat(new THREE.Color(p.color).multiplyScalar(0.86), { roughness: 0.55 });
@@ -708,7 +713,7 @@
         m.position.set(x, y, z);
         if (rz) m.rotation.z = rz;
         m.castShadow = true;
-        g.add(m); return m;
+        puppet.add(m); return m;
       };
       for (const dx of [-0.115, 0.115]) put(G.leg, dark, dx, tileTop + 0.165, 0);
       put(G.hip, dark, 0, tileTop + 0.30, 0);
@@ -738,11 +743,29 @@
       hp(G.cap, cloth, 0, G.capY, 0);
       const visor = hp(G.visor, cloth, 0, G.visorY, G.visorZ);
       visor.rotation.x = 0.14; visor.castShadow = false;
-      g.add(pivot);
+      puppet.add(pivot);
 
       const shadow = new THREE.Mesh(G.shadow, shadowMat);
       shadow.rotation.x = -Math.PI / 2; shadow.position.y = tileTop + 0.018;
       g.add(shadow);
+
+      /* 角色贴图广告牌（美术 v6 的 char_<id>@v6.png）：Sprite 恒正对相机，所以不吃
+         `g.rotation.y` 的转身摆动。贴图到位才隐藏人偶；加载失败就把 Sprite 摘掉，
+         人偶留下兜底 —— 这个文件不参与 typecheck，宁可退回旧表现也不能画出一个看不见的棋子。 */
+      if (p.characterId) {
+        const spMat = new THREE.SpriteMaterial({ transparent: true, depthWrite: false });
+        const sp = new THREE.Sprite(spMat);
+        /* 交付是 256 方图且主体占满高度，所以宽高同值 = 主体正好 TOKEN_H 高、脚落在格顶 */
+        sp.scale.set(TOKEN_H, TOKEN_H, 1);
+        sp.position.set(0, tileTop + TOKEN_H / 2, 0);
+        g.add(sp);
+        new THREE.TextureLoader().load(`/art/char_${p.characterId}@v6.png`, (t) => {
+          t.colorSpace = THREE.SRGBColorSpace;
+          spMat.map = t;
+          spMat.needsUpdate = true;
+          puppet.visible = false;
+        }, undefined, () => { g.remove(sp); });
+      }
 
       const list = byCell.get(p.position);
       const k = list.indexOf(p);
