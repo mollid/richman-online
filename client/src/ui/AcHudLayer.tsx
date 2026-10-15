@@ -229,13 +229,14 @@ export function AcHudLayer({
   onAddBot,
   onSetReady,
   onSetCharacter,
+  onKick,
 }: {
   game: GameState;
   myPlayerId: string | null;
   isRemote: boolean;
   interactive: boolean;
   muted: boolean;
-  connection: 'connected' | 'reconnecting' | 'closed';
+  connection: 'connected' | 'reconnecting' | 'closed' | 'kicked';
   netError: string;
   roomId?: string;
   onAction: (a: PlayerAction) => void;
@@ -251,6 +252,8 @@ export function AcHudLayer({
   onSetReady?: (ready: boolean) => void;
   /** 联机大厅：换角色 */
   onSetCharacter?: (characterId: string) => void;
+  /** 联机大厅：房主把某人请出房间 */
+  onKick?: (playerId: string) => void;
 }) {
   const [ready, setReady] = useState(false);
   const [loadError, setLoadError] = useState('');
@@ -653,7 +656,7 @@ export function AcHudLayer({
       {loadError && <div className="ac-scrim"><div className="ac-note ac-note--danger">HUD 加载失败：{loadError}</div></div>}
 
       {/* 联机大厅：开局前覆盖在棋盘上。选角挪到这里 —— 人在房里才看得见谁占了谁 */}
-      {game.phase === 'lobby' && isRemote && (
+      {game.phase === 'lobby' && isRemote && connection !== 'kicked' && (
         <div className="ac-scrim">
           <div className="ac-lobby">
             <div className="ac-lobby__code">
@@ -678,6 +681,15 @@ export function AcHudLayer({
                   {p.id === myPlayerId && <span className="ac-lobby__me">你</span>}
                   {!p.online && <span className="ac-lobby__tag ac-lobby__tag--off">离线</span>}
                   <span className="ac-lobby__rd">{p.ready ? '✅ 已准备' : '⏳ 未准备'}</span>
+                  {isHost && p.id !== myPlayerId && (
+                    <button
+                      className="ac-lobby__kick"
+                      title={`把 ${p.name} 请出房间（凭房间码还能再进来）`}
+                      onClick={() => onKick?.(p.id)}
+                    >
+                      ✕
+                    </button>
+                  )}
                 </div>
               ))}
             </div>
@@ -744,6 +756,9 @@ export function AcHudLayer({
         {/* 收房 / 服务端重启都会走到这里：不出一条死信，画面就只剩一个再也点不动的大厅 */}
         {connection === 'closed' && (
           <div className="ac-banner ac-banner--danger">⚡ 房间已关闭（无人操作超时或服务端重启）· 点「退出」回大厅</div>
+        )}
+        {connection === 'kicked' && (
+          <div className="ac-banner ac-banner--danger">👋 你被房主请出了房间 · 点「退出」回大厅，拿到房间码还可以再进</div>
         )}
         {netError && <div className="ac-banner ac-banner--danger">{netError}</div>}
         {!interactive && current && game.phase !== 'lobby' && game.phase !== 'game_over' && (

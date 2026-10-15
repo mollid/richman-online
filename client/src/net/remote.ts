@@ -14,7 +14,7 @@ export interface ChatMessage {
   text: string;
 }
 
-export type ConnectionState = 'connected' | 'reconnecting' | 'closed';
+export type ConnectionState = 'connected' | 'reconnecting' | 'closed' | 'kicked';
 
 export interface RoomSummary {
   roomId: string;
@@ -45,6 +45,8 @@ export class ColyseusSession implements GameSession {
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private reconnectAttempts = 0;
   private manuallyClosed = false;
+  /** 服务端请人出去之前会先发这条，于是「被踢」能和「断网」区分开 */
+  private kicked = false;
   private playerName: string;
 
   constructor(room: Room<unknown>, playerName: string, initialGame: GameState) {
@@ -141,7 +143,22 @@ export class ColyseusSession implements GameSession {
       for (const fn of this.chatHandlers) fn(this.chatHistory);
     });
 
+    room.onMessage('kicked', () => {
+      // 被踢不是断网：不走 10 次 × 3s 的重连退避，也别留一个进不去的房给「回到上次对局」
+      this.kicked = true;
+      this.manuallyClosed = true;
+      try {
+        localStorage.removeItem(STORAGE_KEY);
+      } catch {
+        // localStorage 不可用时忽略
+      }
+    });
+
     room.onLeave(() => {
+      if (this.kicked) {
+        this.notifyConnection('kicked');
+        return;
+      }
       if (this.manuallyClosed) {
         this.notifyConnection('closed');
         return;
@@ -242,6 +259,10 @@ export class ColyseusSession implements GameSession {
 
   setCharacter(characterId: string): void {
     this.room.send('set_character', { characterId });
+  }
+
+  kick(playerId: string): void {
+    this.room.send('kick', { playerId });
   }
 
   onError(fn: (message: string) => void): () => void {

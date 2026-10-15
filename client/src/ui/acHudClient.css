@@ -156,6 +156,24 @@
   color: var(--ac-dim, #b0a184);
 }
 
+.ac-lobby__kick {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 2px solid var(--ac-line, #e8d9b0);
+  border-radius: 50%;
+  background: transparent;
+  color: var(--ac-dim, #b0a184);
+  font-size: 11px;
+  line-height: 1;
+}
+
+.ac-lobby__kick:hover {
+  border-color: var(--ac-red, #d9534f);
+  color: var(--ac-red, #d9534f);
+  filter: none;
+}
+
 /* 开局面板的 `.char-card` 是深色皮肤，搬进奶油色的大厅必须换一套 token */
 .char-grid--lobby {
   grid-template-columns: repeat(5, minmax(0, 1fr));

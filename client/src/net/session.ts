@@ -20,13 +20,15 @@ export interface GameSession {
   setReady?(ready: boolean): void;
   /** 联机大厅：换角色。服务端换完会把自己退回未准备 */
   setCharacter?(characterId: string): void;
+  /** 联机大厅：房主把某人请出房间（凭房间码还能再进来，不是封禁） */
+  kick?(playerId: string): void;
   /** 联机模式：服务器错误消息订阅 */
   onError?(fn: (message: string) => void): () => void;
   /** 联机模式：聊天 */
   sendChat?(text: string): void;
   onChat?(fn: (messages: ChatMessage[]) => void): () => void;
   /** 联机模式：连接状态变化 */
-  onConnectionChange?(fn: (state: 'connected' | 'reconnecting' | 'closed') => void): () => void;
+  onConnectionChange?(fn: (state: 'connected' | 'reconnecting' | 'closed' | 'kicked') => void): () => void;
 }
 
 /** UI-12 自动存档的 localStorage 键（每回合记录一次快照） */

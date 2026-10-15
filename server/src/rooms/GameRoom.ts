@@ -162,6 +162,29 @@ export class GameRoom extends Room {
       }
     });
 
+    this.onTracked('kick', (client, message: { playerId?: unknown }) => {
+      try {
+        if (this.game.phase !== 'lobby') throw new Error('对局已开始，不能请人出去');
+        if (client.sessionId !== this.game.hostId) throw new Error('只有房主能请人出房间');
+        const id = typeof message.playerId === 'string' ? message.playerId : '';
+        if (id === client.sessionId) throw new Error('不能把自己请出去');
+        if (!this.game.players.some((p) => p.id === id)) throw new Error('没有这个玩家');
+        if (this.botIds.delete(id)) {
+          // AI 没有连接可切，直接从名单里摘掉
+          this.game = removePlayer(this.game, id);
+          this.broadcastState();
+          return;
+        }
+        // 先递一句为什么再切断：不然对方只看到一次莫名断线，然后开始 30s 重连退避
+        const target = this.clients.getById(id);
+        target?.send('kicked', {});
+        // 4000 = WS_CLOSE_CONSENTED：走「自愿离开」那条 onLeave，不进 60s 重连窗口留幽灵位
+        target?.leave(4000);
+      } catch (e) {
+        this.sendError(client, e);
+      }
+    });
+
     this.onTracked('get_state', (client) => {
       client.send('state', { game: this.game, actions: availableActions(this.game) });
     });

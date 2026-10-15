@@ -603,7 +603,7 @@ function GameScreen({
 }) {
   const [game, setGame] = useState<GameState>(session.getGame());
   const [netError, setNetError] = useState('');
-  const [connection, setConnection] = useState<'connected' | 'reconnecting' | 'closed'>('connected');
+  const [connection, setConnection] = useState<'connected' | 'reconnecting' | 'closed' | 'kicked'>('connected');
   const [muted, setMuted] = useState(sfx.isMuted());
 
   useGameSfx(game);
@@ -693,6 +693,7 @@ function GameScreen({
       onAddBot={() => session.addBot?.()}
       onSetReady={(ready) => session.setReady?.(ready)}
       onSetCharacter={(id) => session.setCharacter?.(id)}
+      onKick={(id) => session.kick?.(id)}
     />
   );
 }
