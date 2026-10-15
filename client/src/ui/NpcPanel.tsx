@@ -1,3 +1,4 @@
+import type { CSSProperties } from 'react';
 import {
   availableActions,
   MAGIC_CONDITION_LABEL,
@@ -68,27 +69,41 @@ export function NpcPanel({
       {magic && (
         <>
           <div className="panel-title">魔法屋 · 女巫的水晶球</div>
-          <div className="npc-magic-condition">{MAGIC_CONDITION_LABEL[magic.condition]}</div>
-          {/* 名单不显示是规则本身，不是 UI 缺了一块：引擎压根没把 candidateIds 放进状态（决策表 §7.6） */}
-          <div className="npc-magic-hint">水晶球只报这一句 —— 谁对得上要自己判断，符合条件的人一个都跑不掉。</div>
-          <div className="npc-magic-targets">
-            {MAGIC_EFFECT_ORDER.map((kind) => {
+          {/* 原版六芒星盘面（event_018.png）：12 档落在 6 个星尖与 6 个内交点上，
+              标签一律不旋转 —— 转 60° 的中文读不了。窄屏由 CSS 退回换行流。
+              名单不显示是规则本身，不是 UI 缺了一块：引擎压根没把 candidateIds 放进状态（决策表 §7.6）。 */}
+          <div className="magic-wheel" role="group" aria-label="施法效果轮盘">
+            <svg className="magic-wheel__star" viewBox="0 0 100 100" aria-hidden="true" focusable="false">
+              <circle cx="50" cy="50" r="47" />
+              <polygon points="50,7 87,71 13,71" />
+              <polygon points="50,93 13,29 87,29" />
+            </svg>
+            <div className="magic-wheel__core">
+              <span className="magic-wheel__cond">{MAGIC_CONDITION_LABEL[magic.condition]}</span>
+              <span className="magic-wheel__ask">选一档施放</span>
+            </div>
+            {MAGIC_EFFECT_ORDER.map((kind, slot) => {
               const def = MAGIC_EFFECTS[kind];
               // 好事档不能和诅咒长得一样（M-10「面板要能表达增益」）。
               // 类名走 pol-* 三态：先前写的 `danger` 在整份 CSS 里根本没有定义，等于没分色。
               return (
                 <button
                   key={kind}
-                  className={`mini pol-${def.polarity}`}
+                  className={`mini magic-wheel__slot pol-${def.polarity}`}
+                  // 偶数位上星尖、奇数位进内交点，与原版盘面交替排布的读法一致；
+                  // 角度按数组序推进，所以 Tab 走的顺序就是眼睛扫的顺序。
+                  style={{ '--a': `${slot * 30}deg`, '--r': slot % 2 === 0 ? '41%' : '26%' } as CSSProperties}
                   disabled={!interactive}
+                  aria-label={`施放「${def.name}」`}
                   title={def.polarity === 'good' ? '这一档对命中者是好事' : def.polarity === 'bad' ? '这一档对命中者是惩罚' : '中性：好坏取决于局面'}
                   onClick={() => onAction({ type: 'CAST_MAGIC', effect: kind })}
                 >
-                  施放「{def.name}」
+                  {def.name}
                 </button>
               );
             })}
           </div>
+          <div className="npc-magic-hint">水晶球只报一句标语 —— 谁对得上要自己判断，符合条件的人一个都跑不掉。</div>
           <div className="npc-magic-hint">拆除 / 加盖 / 拍卖都作用于各人脚下那一格，落点不成立的人自动跳过。</div>
           <div className="npc-magic-hint">不施法可直接结束回合，水晶球机会随即消散。</div>
         </>
