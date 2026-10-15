@@ -759,6 +759,7 @@
         sp.scale.set(TOKEN_H, TOKEN_H, 1);
         sp.position.set(0, tileTop + TOKEN_H / 2, 0);
         g.add(sp);
+        g.userData.sprite = sp;   // 动画循环拿它做呼吸（人偶兜底时没有这个键）
         new THREE.TextureLoader().load(`/art/char_${p.characterId}@v6.png`, (t) => {
           t.colorSpace = THREE.SRGBColorSpace;
           spMat.map = t;
@@ -1388,6 +1389,16 @@
       if (REDUCED) { g.rotation.y = faceYaw; continue; }
       g.position.y = Math.sin(t * 2.1 + g.userData.phase) * 0.055;
       g.rotation.y = faceYaw + Math.sin(t * 0.9 + g.userData.phase) * 0.13;
+      /* 广告牌恒正对相机，上面那句 rotation.y 对它无效，所以转身摆动改在这里补：
+         宽度按同一个相位微缩（±3%）+ 极小倾角，读起来是站着呼吸而不是一张贴纸。
+         上下浮动不用另做 —— Sprite 挂在 g 底下，直接继承 g.position.y 的 bob。
+         每个棋子有自己的 SpriteMaterial，转 material.rotation 不会串到别人身上。 */
+      const sp = g.userData.sprite;
+      if (sp) {
+        const sway = Math.sin(t * 0.9 + g.userData.phase);
+        sp.scale.x = sp.scale.y * (1 + sway * 0.03);
+        sp.material.rotation = sway * 0.022;
+      }
     }
     if (hopQ) stepHop(dt);
     for (const cube of diceGroup.children) {
