@@ -183,7 +183,9 @@ const PANEL_TITLE: Record<string, string> = {
   stock: '📈 股市 · 行情与原始股权益',
   lottery: '🎰 乐透行',
   trade: '🤝 公布栏 · 挂牌与买入',
-  magic: '🔮 魔法屋 · 监狱保释',
+  // 标题不再写「监狱保释」：这个面板只有水晶球会打开（保释与出院是 dock 上的直接动作，
+  // 不走面板），留着那半截只会让人以为面板缺一块
+  magic: '🔮 魔法屋 · 女巫的水晶球',
   company: '🏢 公司企业',
   auction: '🔨 拍卖会',
   surrender: '🚩 认输投降',

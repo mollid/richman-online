@@ -74,12 +74,14 @@ export function NpcPanel({
           <div className="npc-magic-targets">
             {MAGIC_EFFECT_ORDER.map((kind) => {
               const def = MAGIC_EFFECTS[kind];
-              // 好事档不套 danger 红：轮盘上六坏三好一中性，全涂红就等于告诉玩家"这盘没有选择"
+              // 好事档不能和诅咒长得一样（M-10「面板要能表达增益」）。
+              // 类名走 pol-* 三态：先前写的 `danger` 在整份 CSS 里根本没有定义，等于没分色。
               return (
                 <button
                   key={kind}
-                  className={def.polarity === 'bad' ? 'mini danger' : 'mini'}
+                  className={`mini pol-${def.polarity}`}
                   disabled={!interactive}
+                  title={def.polarity === 'good' ? '这一档对命中者是好事' : def.polarity === 'bad' ? '这一档对命中者是惩罚' : '中性：好坏取决于局面'}
                   onClick={() => onAction({ type: 'CAST_MAGIC', effect: kind })}
                 >
                   施放「{def.name}」

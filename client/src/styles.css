@@ -662,6 +662,23 @@ button.mini {
   border-radius: 4px;
 }
 
+/* 魔法屋轮盘的三态配色（M-10：面板要能表达增益）。
+   颜色沿用 HUD 主题里已有的两组语义色（money 绿 / npc 粉），不新造色板；
+   选择器带上 .npc-magic-targets button 两级，压过皮肤里 `.hud-shell :is(button,…)` 那条。 */
+.npc-magic-targets button.pol-bad {
+  background: #ffe9ef;
+  border: 1.5px solid var(--ac-pink, #e91e63);
+  color: #8c2b46;
+}
+
+.npc-magic-targets button.pol-good {
+  background: #e7f8dc;
+  border: 1.5px solid var(--ac-green, #43a047);
+  color: #2e6d1f;
+}
+
+/* 中性档（向後轉 / 拍卖）不另配色：跟着面板默认的奶油底，读起来就是"说不好" */
+
 /* ---------- 股市面板（ECON-09：随时可买卖） ---------- */
 .stock-panel {
   display: flex;
