@@ -1,0 +1,448 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 1000" width="1400" height="1000" font-family="Microsoft YaHei,Noto Sans CJK TC,sans-serif">
+<rect width="1400" height="1000" fill="#f7f8fa"/>
+<text x="28" y="44" font-size="26" font-weight="700" fill="#1f2937">大富翁4 · 超时空之旅 — 地图 4（map.mkf 块 #9）</text>
+<text x="28" y="70" font-size="15" fill="#6b7280">节点 135 · 连线 115 · 普通地块 47 · 设施 5 · 企业 3 · 景观 2</text>
+<line x1="704.1" y1="201.5" x2="680.2" y2="193.7" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="704.1" y1="201.5" x2="732.0" y2="231.3" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="680.2" y1="193.7" x2="653.8" y2="193.7" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="653.8" y1="193.7" x2="627.4" y2="194.2" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="627.4" y1="194.2" x2="603.4" y2="194.2" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="603.4" y1="194.2" x2="577.0" y2="202.0" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="577.0" y1="202.0" x2="554.5" y2="225.4" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="554.5" y1="225.4" x2="516.4" y2="237.7" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="516.4" y1="237.7" x2="468.0" y2="239.6" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="468.0" y1="239.6" x2="463.6" y2="283.1" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="463.6" y1="283.1" x2="446.5" y2="322.7" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="446.5" y1="322.7" x2="424.0" y2="345.7" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="424.0" y1="345.7" x2="401.0" y2="368.7" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="401.0" y1="368.7" x2="378.5" y2="394.1" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="378.5" y1="394.1" x2="358.0" y2="419.6" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="358.0" y1="419.6" x2="358.0" y2="448.9" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="358.0" y1="448.9" x2="359.4" y2="478.7" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="359.4" y1="478.7" x2="359.9" y2="508.6" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="359.9" y1="508.6" x2="394.1" y2="537.4" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="394.1" y1="537.4" x2="435.2" y2="550.6" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="435.2" y1="550.6" x2="463.1" y2="550.1" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="463.1" y1="550.1" x2="485.1" y2="543.8" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="485.1" y1="543.8" x2="503.7" y2="527.6" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="503.7" y1="527.6" x2="528.6" y2="496.8" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="528.6" y1="496.8" x2="531.5" y2="456.2" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="531.5" y1="456.2" x2="530.6" y2="431.8" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="530.6" y1="431.8" x2="522.7" y2="411.3" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="522.7" y1="411.3" x2="502.2" y2="391.2" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="502.2" y1="391.2" x2="481.2" y2="381.9" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="481.2" y1="381.9" x2="440.6" y2="381.4" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="440.6" y1="381.4" x2="350.6" y2="381.9" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="350.6" y1="381.9" x2="322.3" y2="391.2" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="322.3" y1="391.2" x2="301.7" y2="412.7" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="301.7" y1="412.7" x2="280.2" y2="436.2" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="280.2" y1="436.2" x2="231.3" y2="443.5" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="231.3" y1="443.5" x2="192.7" y2="488.0" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="192.7" y1="488.0" x2="193.2" y2="514.9" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="193.2" y1="514.9" x2="199.0" y2="538.4" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="199.0" y1="538.4" x2="215.7" y2="554.5" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="215.7" y1="554.5" x2="242.6" y2="560.4" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="242.6" y1="560.4" x2="268.5" y2="569.2" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="268.5" y1="569.2" x2="292.4" y2="600.0" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="292.4" y1="600.0" x2="327.1" y2="613.7" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="327.1" y1="613.7" x2="354.5" y2="614.7" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="354.5" y1="614.7" x2="381.4" y2="625.4" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="381.4" y1="625.4" x2="400.5" y2="644.5" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="400.5" y1="644.5" x2="409.8" y2="671.9" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="409.8" y1="671.9" x2="410.3" y2="695.8" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="410.3" y1="695.8" x2="408.8" y2="721.7" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="408.8" y1="721.7" x2="409.8" y2="749.6" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="409.8" y1="749.6" x2="430.3" y2="778.5" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="430.3" y1="778.5" x2="453.3" y2="802.4" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="453.3" y1="802.4" x2="486.6" y2="804.9" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="486.6" y1="804.9" x2="519.8" y2="805.4" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="519.8" y1="805.4" x2="561.9" y2="805.4" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="561.9" y1="805.4" x2="598.0" y2="773.6" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="598.0" y1="773.6" x2="633.2" y2="721.3" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="633.2" y1="721.3" x2="632.8" y2="688.5" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="632.8" y1="688.5" x2="632.3" y2="665.0" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="632.3" y1="665.0" x2="625.9" y2="645.5" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="625.9" y1="645.5" x2="609.3" y2="628.4" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="609.3" y1="628.4" x2="590.2" y2="609.8" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="590.2" y1="609.8" x2="557.0" y2="595.1" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="557.0" y1="595.1" x2="519.8" y2="601.5" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="519.8" y1="601.5" x2="499.8" y2="622.0" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="499.8" y1="622.0" x2="480.7" y2="646.0" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="480.7" y1="646.0" x2="481.2" y2="677.3" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="481.2" y1="677.3" x2="480.7" y2="706.6" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="480.7" y1="706.6" x2="502.7" y2="725.2" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="502.7" y1="725.2" x2="525.7" y2="743.8" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="525.7" y1="743.8" x2="551.1" y2="752.6" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="551.1" y1="752.6" x2="580.4" y2="753.0" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="580.4" y1="753.0" x2="647.9" y2="751.6" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="647.9" y1="751.6" x2="700.7" y2="752.1" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="700.7" y1="752.1" x2="737.4" y2="717.8" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="700.7" y1="752.1" x2="745.2" y2="795.6" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="737.4" y1="717.8" x2="757.4" y2="698.8" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="757.4" y1="698.8" x2="778.0" y2="679.7" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="778.0" y1="679.7" x2="796.1" y2="660.1" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="796.1" y1="660.1" x2="797.0" y2="635.2" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="797.0" y1="635.2" x2="797.5" y2="612.2" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="797.5" y1="612.2" x2="799.0" y2="583.9" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="799.0" y1="583.9" x2="824.4" y2="561.4" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="824.4" y1="561.4" x2="856.2" y2="527.1" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="856.2" y1="527.1" x2="911.0" y2="513.4" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="911.0" y1="513.4" x2="918.8" y2="494.9" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="918.8" y1="494.9" x2="919.3" y2="470.4" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="919.3" y1="470.4" x2="912.4" y2="446.9" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="912.4" y1="446.9" x2="854.7" y2="422.5" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="854.7" y1="422.5" x2="826.9" y2="388.8" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="826.9" y1="388.8" x2="773.6" y2="367.7" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="773.6" y1="367.7" x2="738.9" y2="368.2" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="738.9" y1="368.2" x2="711.0" y2="368.2" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="711.0" y1="368.2" x2="682.6" y2="376.5" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="682.6" y1="376.5" x2="666.0" y2="395.6" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="666.0" y1="395.6" x2="642.5" y2="426.4" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="642.5" y1="426.4" x2="643.5" y2="484.1" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="643.5" y1="484.1" x2="674.3" y2="516.9" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="674.3" y1="516.9" x2="693.9" y2="533.5" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="693.9" y1="533.5" x2="714.4" y2="537.9" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="714.4" y1="537.9" x2="739.8" y2="536.4" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="739.8" y1="536.4" x2="768.7" y2="535.5" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="768.7" y1="535.5" x2="798.0" y2="508.6" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="798.0" y1="508.6" x2="799.5" y2="457.7" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="799.5" y1="457.7" x2="799.0" y2="425.9" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="799.0" y1="425.9" x2="798.5" y2="393.6" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="798.5" y1="393.6" x2="798.0" y2="337.4" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="798.0" y1="337.4" x2="776.5" y2="312.0" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="776.5" y1="312.0" x2="757.4" y2="294.9" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="757.4" y1="294.9" x2="736.4" y2="271.9" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="736.4" y1="271.9" x2="732.0" y2="231.3" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="745.2" y1="795.6" x2="745.2" y2="822.5" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="745.2" y1="822.5" x2="745.2" y2="847.9" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="745.2" y1="847.9" x2="761.4" y2="869.9" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="761.4" y1="869.9" x2="793.1" y2="869.9" stroke="#dbe0e6" stroke-width="3"/>
+<text x="583.9" y="496.8" font-size="9" fill="#b6bcc6" text-anchor="middle">醫院</text>
+<text x="837.6" y="869.9" font-size="9" fill="#b6bcc6" text-anchor="middle">監獄</text>
+<circle cx="704.1" cy="201.5" r="9" fill="#a06bd6" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="680.2" cy="193.7" r="9" fill="rgb(179,146,114)" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="653.8" cy="193.7" r="9" fill="rgb(179,146,114)" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="627.4" cy="194.2" r="9" fill="rgb(179,146,114)" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="603.4" cy="194.2" r="9" fill="rgb(179,146,114)" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="577.0" cy="202.0" r="9" fill="#a06bd6" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="554.5" cy="225.4" r="9" fill="#a06bd6" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="516.4" cy="237.7" r="9" fill="#a06bd6" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="468.0" cy="239.6" r="9" fill="#a06bd6" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="463.6" cy="283.1" r="9" fill="#a06bd6" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="446.5" cy="322.7" r="9" fill="#f0a04b" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="424.0" cy="345.7" r="9" fill="#f0a04b" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="401.0" cy="368.7" r="9" fill="#a06bd6" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="378.5" cy="394.1" r="9" fill="#a06bd6" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="358.0" cy="419.6" r="9" fill="#a06bd6" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="358.0" cy="448.9" r="9" fill="#a06bd6" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="359.4" cy="478.7" r="9" fill="#f0a04b" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="359.9" cy="508.6" r="9" fill="#f0a04b" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="394.1" cy="537.4" r="9" fill="#5b8def" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="435.2" cy="550.6" r="9" fill="rgb(194,128,106)" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="463.1" cy="550.1" r="9" fill="rgb(194,128,106)" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="485.1" cy="543.8" r="9" fill="rgb(194,128,106)" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="503.7" cy="527.6" r="9" fill="rgb(194,128,106)" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="528.6" cy="496.8" r="9" fill="#e05c5c" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="531.5" cy="456.2" r="9" fill="#a06bd6" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="530.6" cy="431.8" r="9" fill="rgb(149,182,130)" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="522.7" cy="411.3" r="9" fill="rgb(149,182,130)" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="502.2" cy="391.2" r="9" fill="rgb(149,182,130)" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="481.2" cy="381.9" r="9" fill="rgb(149,182,130)" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="440.6" cy="381.4" r="9" fill="#5b8def" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="350.6" cy="381.9" r="9" fill="rgb(194,128,106)" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="322.3" cy="391.2" r="9" fill="rgb(194,128,106)" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="301.7" cy="412.7" r="9" fill="rgb(194,128,106)" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="280.2" cy="436.2" r="9" fill="#a06bd6" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="231.3" cy="443.5" r="9" fill="#a06bd6" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="192.7" cy="488.0" r="9" fill="rgb(209,110,98)" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="193.2" cy="514.9" r="9" fill="rgb(209,110,98)" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="199.0" cy="538.4" r="9" fill="#f0a04b" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="215.7" cy="554.5" r="9" fill="#f0a04b" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="242.6" cy="560.4" r="9" fill="rgb(209,110,98)" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="268.5" cy="569.2" r="9" fill="#a06bd6" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="292.4" cy="600.0" r="9" fill="#a06bd6" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="327.1" cy="613.7" r="9" fill="#a06bd6" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="354.5" cy="614.7" r="9" fill="#a06bd6" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="381.4" cy="625.4" r="9" fill="#a06bd6" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="400.5" cy="644.5" r="9" fill="rgb(149,182,130)" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="409.8" cy="671.9" r="9" fill="rgb(149,182,130)" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="410.3" cy="695.8" r="9" fill="rgb(149,182,130)" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="408.8" cy="721.7" r="9" fill="rgb(149,182,130)" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="409.8" cy="749.6" r="9" fill="#a06bd6" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="430.3" cy="778.5" r="9" fill="#a06bd6" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="453.3" cy="802.4" r="9" fill="rgb(134,201,138)" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="486.6" cy="804.9" r="9" fill="rgb(134,201,138)" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="519.8" cy="805.4" r="9" fill="rgb(134,201,138)" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="561.9" cy="805.4" r="9" fill="#a06bd6" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="598.0" cy="773.6" r="9" fill="#a06bd6" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="633.2" cy="721.3" r="9" fill="#a06bd6" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="632.8" cy="688.5" r="9" fill="#5b8def" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="632.3" cy="665.0" r="9" fill="#5b8def" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="625.9" cy="645.5" r="9" fill="rgb(224,92,90)" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="609.3" cy="628.4" r="9" fill="rgb(224,92,90)" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="590.2" cy="609.8" r="9" fill="rgb(224,92,90)" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="557.0" cy="595.1" r="9" fill="#a06bd6" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="519.8" cy="601.5" r="9" fill="#a06bd6" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="499.8" cy="622.0" r="9" fill="#a06bd6" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="480.7" cy="646.0" r="9" fill="#a06bd6" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="481.2" cy="677.3" r="9" fill="#a06bd6" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="480.7" cy="706.6" r="9" fill="#a06bd6" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="502.7" cy="725.2" r="9" fill="rgb(224,92,90)" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="525.7" cy="743.8" r="9" fill="rgb(224,92,90)" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="551.1" cy="752.6" r="9" fill="rgb(224,92,90)" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="580.4" cy="753.0" r="9" fill="rgb(224,92,90)" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="647.9" cy="751.6" r="9" fill="#a06bd6" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="700.7" cy="752.1" r="9" fill="#a06bd6" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="737.4" cy="717.8" r="9" fill="rgb(194,128,106)" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="757.4" cy="698.8" r="9" fill="rgb(194,128,106)" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="778.0" cy="679.7" r="9" fill="rgb(194,128,106)" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="796.1" cy="660.1" r="9" fill="#a06bd6" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="797.0" cy="635.2" r="9" fill="#f0a04b" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="797.5" cy="612.2" r="9" fill="#f0a04b" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="799.0" cy="583.9" r="9" fill="#a06bd6" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="824.4" cy="561.4" r="9" fill="#a06bd6" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="856.2" cy="527.1" r="9" fill="#5b8def" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="911.0" cy="513.4" r="9" fill="rgb(164,164,122)" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="918.8" cy="494.9" r="9" fill="rgb(164,164,122)" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="919.3" cy="470.4" r="9" fill="rgb(164,164,122)" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="912.4" cy="446.9" r="9" fill="rgb(164,164,122)" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="854.7" cy="422.5" r="9" fill="#a06bd6" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="826.9" cy="388.8" r="9" fill="#a06bd6" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="773.6" cy="367.7" r="9" fill="#a06bd6" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="738.9" cy="368.2" r="9" fill="rgb(134,201,138)" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="711.0" cy="368.2" r="9" fill="rgb(134,201,138)" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="682.6" cy="376.5" r="9" fill="rgb(134,201,138)" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="666.0" cy="395.6" r="9" fill="rgb(134,201,138)" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="642.5" cy="426.4" r="9" fill="#a06bd6" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="643.5" cy="484.1" r="9" fill="#a06bd6" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="674.3" cy="516.9" r="9" fill="rgb(209,110,98)" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="693.9" cy="533.5" r="9" fill="rgb(209,110,98)" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="714.4" cy="537.9" r="9" fill="rgb(209,110,98)" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="739.8" cy="536.4" r="9" fill="rgb(209,110,98)" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="768.7" cy="535.5" r="9" fill="#a06bd6" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="798.0" cy="508.6" r="9" fill="#5b8def" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="799.5" cy="457.7" r="9" fill="#a06bd6" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="799.0" cy="425.9" r="9" fill="#a06bd6" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="798.5" cy="393.6" r="9" fill="#a06bd6" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="798.0" cy="337.4" r="9" fill="#a06bd6" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="776.5" cy="312.0" r="9" fill="#f0a04b" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="757.4" cy="294.9" r="9" fill="#f0a04b" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="736.4" cy="271.9" r="9" fill="#a06bd6" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="732.0" cy="231.3" r="9" fill="#a06bd6" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="720.3" cy="461.6" r="9" fill="#a06bd6" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="90.0" cy="547.2" r="9" fill="#a06bd6" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="307.1" cy="286.6" r="9" fill="#a06bd6" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="549.1" cy="312.5" r="9" fill="#a06bd6" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="448.4" cy="474.3" r="9" fill="#a06bd6" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="655.7" cy="282.7" r="9" fill="#a06bd6" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="561.4" cy="668.9" r="9" fill="#a06bd6" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="335.5" cy="698.8" r="9" fill="#a06bd6" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="1017.1" cy="479.2" r="9" fill="#a06bd6" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="475.3" cy="910.0" r="9" fill="#a06bd6" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="866.0" cy="716.4" r="9" fill="#a06bd6" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="885.6" cy="316.9" r="9" fill="#a06bd6" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="659.6" cy="90.0" r="9" fill="#a06bd6" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="745.2" cy="795.6" r="9" fill="#a06bd6" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="745.2" cy="822.5" r="9" fill="#a06bd6" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="745.2" cy="847.9" r="9" fill="#a06bd6" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="761.4" cy="869.9" r="9" fill="#a06bd6" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="793.1" cy="869.9" r="9" fill="#e05c5c" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="471.9" cy="130.6" r="9" fill="#a06bd6" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="167.3" cy="381.9" r="9" fill="#a06bd6" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="809.8" cy="154.1" r="9" fill="#a06bd6" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="662.6" cy="834.7" r="9" fill="#a06bd6" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="728.6" cy="622.5" r="9" fill="#a06bd6" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="236.2" cy="649.9" r="9" fill="#a06bd6" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="260.6" cy="502.7" r="9" fill="#a06bd6" stroke="#ffffff" stroke-width="1.5"/>
+<text x="704.1" y="189.5" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">得５０點</text>
+<text x="680.2" y="181.7" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">魔羯座區</text>
+<text x="653.8" y="181.7" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">魔羯座區</text>
+<text x="627.4" y="182.2" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">魔羯座區</text>
+<text x="603.4" y="182.2" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">魔羯座區</text>
+<text x="577.0" y="190.0" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">得３０點</text>
+<text x="554.5" y="213.4" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">七彩氣球</text>
+<text x="516.4" y="225.7" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">得３０點</text>
+<text x="468.0" y="227.6" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">命運</text>
+<text x="463.6" y="271.1" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">得１０點</text>
+<text x="446.5" y="310.7" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">白羊座區</text>
+<text x="424.0" y="333.7" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">白羊座區</text>
+<text x="401.0" y="356.7" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">得３０點</text>
+<text x="378.5" y="382.1" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">得１０點</text>
+<text x="358.0" y="407.6" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">企鵝挖寶</text>
+<text x="358.0" y="436.9" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">得１０點</text>
+<text x="359.4" y="466.7" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">水星區</text>
+<text x="359.9" y="496.6" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">水星區</text>
+<text x="394.1" y="525.4" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">百貨公司</text>
+<text x="435.2" y="538.6" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">獅子座區</text>
+<text x="463.1" y="538.1" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">獅子座區</text>
+<text x="485.1" y="531.8" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">獅子座區</text>
+<text x="503.7" y="515.6" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">獅子座區</text>
+<text x="528.6" y="484.8" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">醫院</text>
+<text x="531.5" y="444.2" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">得１０點</text>
+<text x="530.6" y="419.8" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">水瓶座區</text>
+<text x="522.7" y="399.3" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">水瓶座區</text>
+<text x="502.2" y="379.2" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">水瓶座區</text>
+<text x="481.2" y="369.9" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">水瓶座區</text>
+<text x="440.6" y="369.4" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">銀行</text>
+<text x="350.6" y="369.9" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">白羊座區</text>
+<text x="322.3" y="379.2" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">白羊座區</text>
+<text x="301.7" y="400.7" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">白羊座區</text>
+<text x="280.2" y="424.2" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">得５０點</text>
+<text x="231.3" y="431.5" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">新聞</text>
+<text x="192.7" y="476.0" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">天秤座區</text>
+<text x="193.2" y="502.9" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">天秤座區</text>
+<text x="199.0" y="526.4" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">天秤座區</text>
+<text x="215.7" y="542.5" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">天秤座區</text>
+<text x="242.6" y="548.4" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">天秤座區</text>
+<text x="268.5" y="557.2" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">得１０點</text>
+<text x="292.4" y="588.0" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">卡片</text>
+<text x="327.1" y="601.7" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">得１０點</text>
+<text x="354.5" y="602.7" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">喜從天降</text>
+<text x="381.4" y="613.4" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">得１０點</text>
+<text x="400.5" y="632.5" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">巨蟹座區</text>
+<text x="409.8" y="659.9" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">巨蟹座區</text>
+<text x="410.3" y="683.8" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">巨蟹座區</text>
+<text x="408.8" y="709.7" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">巨蟹座區</text>
+<text x="409.8" y="737.6" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">得３０點</text>
+<text x="430.3" y="766.5" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">得１０點</text>
+<text x="453.3" y="790.4" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">處女座區</text>
+<text x="486.6" y="792.9" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">處女座區</text>
+<text x="519.8" y="793.4" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">處女座區</text>
+<text x="561.9" y="793.4" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">魔法屋</text>
+<text x="598.0" y="761.6" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">得１０點</text>
+<text x="633.2" y="709.3" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">得１０點</text>
+<text x="632.8" y="676.5" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">銀河保險</text>
+<text x="632.3" y="653.0" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">銀河保險</text>
+<text x="625.9" y="633.5" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">地球區</text>
+<text x="609.3" y="616.4" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">地球區</text>
+<text x="590.2" y="597.8" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">地球區</text>
+<text x="557.0" y="583.1" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">樂透</text>
+<text x="519.8" y="589.5" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">得１０點</text>
+<text x="499.8" y="610.0" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">得５０點</text>
+<text x="480.7" y="634.0" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">七彩氣球</text>
+<text x="481.2" y="665.3" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">得３０點</text>
+<text x="480.7" y="694.6" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">得１０點</text>
+<text x="502.7" y="713.2" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">地球區</text>
+<text x="525.7" y="731.8" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">地球區</text>
+<text x="551.1" y="740.6" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">地球區</text>
+<text x="580.4" y="741.0" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">地球區</text>
+<text x="647.9" y="739.6" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">得１０點</text>
+<text x="700.7" y="740.1" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">監獄</text>
+<text x="737.4" y="705.8" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">雙子座區</text>
+<text x="757.4" y="686.8" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">雙子座區</text>
+<text x="778.0" y="667.7" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">雙子座區</text>
+<text x="796.1" y="648.1" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">得５０點</text>
+<text x="797.0" y="623.2" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">雙子座區</text>
+<text x="797.5" y="600.2" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">雙子座區</text>
+<text x="799.0" y="571.9" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">得３０點</text>
+<text x="824.4" y="549.4" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">得１０點</text>
+<text x="856.2" y="515.1" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">銀行</text>
+<text x="911.0" y="501.4" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">射手座區</text>
+<text x="918.8" y="482.9" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">射手座區</text>
+<text x="919.3" y="458.4" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">射手座區</text>
+<text x="912.4" y="434.9" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">射手座區</text>
+<text x="854.7" y="410.5" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">魔法屋</text>
+<text x="826.9" y="376.8" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">得１０點</text>
+<text x="773.6" y="355.7" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">得１０點</text>
+<text x="738.9" y="356.2" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">雙魚座區</text>
+<text x="711.0" y="356.2" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">雙魚座區</text>
+<text x="682.6" y="364.5" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">雙魚座區</text>
+<text x="666.0" y="383.6" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">雙魚座區</text>
+<text x="642.5" y="414.4" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">樂透</text>
+<text x="643.5" y="472.1" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">得３０點</text>
+<text x="674.3" y="504.9" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">金牛座區</text>
+<text x="693.9" y="521.5" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">金牛座區</text>
+<text x="714.4" y="525.9" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">金牛座區</text>
+<text x="739.8" y="524.4" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">金牛座區</text>
+<text x="768.7" y="523.5" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">得１０點</text>
+<text x="798.0" y="496.6" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">百貨公司</text>
+<text x="799.5" y="445.7" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">得１０點</text>
+<text x="799.0" y="413.9" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">企鵝挖寶</text>
+<text x="798.5" y="381.6" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">得１０點</text>
+<text x="798.0" y="325.4" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">得１０點</text>
+<text x="776.5" y="300.0" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">天蠍座區</text>
+<text x="757.4" y="282.9" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">天蠍座區</text>
+<text x="736.4" y="259.9" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">得１０點</text>
+<text x="732.0" y="219.3" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">卡片</text>
+<text x="720.3" y="449.6" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">金牛座</text>
+<text x="90.0" y="535.2" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">天秤座</text>
+<text x="307.1" y="274.6" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">白羊座</text>
+<text x="549.1" y="300.5" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">水瓶座</text>
+<text x="448.4" y="462.3" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">獅子座</text>
+<text x="655.7" y="270.7" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">雙魚座</text>
+<text x="561.4" y="656.9" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">地球</text>
+<text x="335.5" y="686.8" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">巨蟹座</text>
+<text x="1017.1" y="467.2" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">射手座</text>
+<text x="475.3" y="898.0" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">處女座</text>
+<text x="866.0" y="704.4" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">雙子座</text>
+<text x="885.6" y="304.9" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">天蠍座</text>
+<text x="659.6" y="78.0" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">魔羯座</text>
+<text x="745.2" y="783.6" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">得１０點</text>
+<text x="761.4" y="857.9" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">得５０點</text>
+<text x="471.9" y="118.6" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">土星</text>
+<text x="167.3" y="369.9" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">火星</text>
+<text x="809.8" y="142.1" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">木星</text>
+<text x="662.6" y="822.7" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">金星</text>
+<text x="728.6" y="610.5" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">海王星</text>
+<text x="236.2" y="637.9" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">天王星</text>
+<text x="260.6" y="490.7" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">水星</text>
+<text x="679.7" y="170.2" font-size="9" fill="#4b5563" text-anchor="middle">魔羯座區</text>
+<text x="652.8" y="170.2" font-size="9" fill="#4b5563" text-anchor="middle">魔羯座區</text>
+<text x="626.9" y="169.7" font-size="9" fill="#4b5563" text-anchor="middle">魔羯座區</text>
+<text x="600.5" y="169.2" font-size="9" fill="#4b5563" text-anchor="middle">魔羯座區</text>
+<text x="434.7" y="572.6" font-size="9" fill="#4b5563" text-anchor="middle">獅子座區</text>
+<text x="463.1" y="572.6" font-size="9" fill="#4b5563" text-anchor="middle">雙子座區</text>
+<text x="502.7" y="562.8" font-size="9" fill="#4b5563" text-anchor="middle">獅子座區</text>
+<text x="521.3" y="543.8" font-size="9" fill="#4b5563" text-anchor="middle">雙子座區</text>
+<text x="557.0" y="432.3" font-size="9" fill="#4b5563" text-anchor="middle">水瓶座區</text>
+<text x="545.2" y="396.1" font-size="9" fill="#4b5563" text-anchor="middle">水瓶座區</text>
+<text x="519.3" y="372.1" font-size="9" fill="#4b5563" text-anchor="middle">水瓶座區</text>
+<text x="481.2" y="357.0" font-size="9" fill="#4b5563" text-anchor="middle">水瓶座區</text>
+<text x="348.7" y="357.5" font-size="9" fill="#4b5563" text-anchor="middle">白羊座區</text>
+<text x="305.1" y="373.1" font-size="9" fill="#4b5563" text-anchor="middle">白羊座區</text>
+<text x="283.6" y="394.6" font-size="9" fill="#4b5563" text-anchor="middle">白羊座區</text>
+<text x="169.2" y="488.0" font-size="9" fill="#4b5563" text-anchor="middle">天秤座區</text>
+<text x="168.7" y="515.4" font-size="9" fill="#4b5563" text-anchor="middle">天秤座區</text>
+<text x="241.6" y="583.9" font-size="9" fill="#4b5563" text-anchor="middle">天秤座區</text>
+<text x="644.0" y="629.3" font-size="9" fill="#4b5563" text-anchor="middle">地球區</text>
+<text x="624.9" y="609.8" font-size="9" fill="#4b5563" text-anchor="middle">地球區</text>
+<text x="606.8" y="590.2" font-size="9" fill="#4b5563" text-anchor="middle">地球區</text>
+<text x="420.1" y="625.9" font-size="9" fill="#4b5563" text-anchor="middle">巨蟹座區</text>
+<text x="433.7" y="670.9" font-size="9" fill="#4b5563" text-anchor="middle">巨蟹座區</text>
+<text x="434.2" y="695.8" font-size="9" fill="#4b5563" text-anchor="middle">巨蟹座區</text>
+<text x="434.2" y="721.7" font-size="9" fill="#4b5563" text-anchor="middle">巨蟹座區</text>
+<text x="488.5" y="740.3" font-size="9" fill="#4b5563" text-anchor="middle">地球區</text>
+<text x="508.1" y="758.9" font-size="9" fill="#4b5563" text-anchor="middle">地球區</text>
+<text x="551.1" y="727.1" font-size="9" fill="#4b5563" text-anchor="middle">地球區</text>
+<text x="580.9" y="727.1" font-size="9" fill="#4b5563" text-anchor="middle">地球區</text>
+<text x="756.0" y="736.9" font-size="9" fill="#4b5563" text-anchor="middle">雙子座區</text>
+<text x="775.0" y="717.3" font-size="9" fill="#4b5563" text-anchor="middle">雙子座區</text>
+<text x="794.6" y="699.3" font-size="9" fill="#4b5563" text-anchor="middle">雙子座區</text>
+<text x="931.0" y="530.1" font-size="9" fill="#4b5563" text-anchor="middle">射手座區</text>
+<text x="943.7" y="495.4" font-size="9" fill="#4b5563" text-anchor="middle">射手座區</text>
+<text x="943.2" y="469.4" font-size="9" fill="#4b5563" text-anchor="middle">射手座區</text>
+<text x="932.0" y="431.8" font-size="9" fill="#4b5563" text-anchor="middle">射手座區</text>
+<text x="738.9" y="345.2" font-size="9" fill="#4b5563" text-anchor="middle">雙魚座區</text>
+<text x="710.5" y="344.8" font-size="9" fill="#4b5563" text-anchor="middle">雙魚座區</text>
+<text x="666.0" y="355.0" font-size="9" fill="#4b5563" text-anchor="middle">雙魚座區</text>
+<text x="645.5" y="375.6" font-size="9" fill="#4b5563" text-anchor="middle">雙魚座區</text>
+<text x="655.7" y="533.0" font-size="9" fill="#4b5563" text-anchor="middle">金牛座區</text>
+<text x="674.8" y="553.1" font-size="9" fill="#4b5563" text-anchor="middle">金牛座區</text>
+<text x="712.9" y="561.9" font-size="9" fill="#4b5563" text-anchor="middle">金牛座區</text>
+<text x="740.8" y="561.9" font-size="9" fill="#4b5563" text-anchor="middle">金牛座區</text>
+<text x="519.3" y="828.8" font-size="9" fill="#4b5563" text-anchor="middle">處女座區</text>
+<text x="487.0" y="828.8" font-size="9" fill="#4b5563" text-anchor="middle">處女座區</text>
+<text x="437.7" y="824.9" font-size="9" fill="#4b5563" text-anchor="middle">處女座區</text>
+<rect x="60" y="890" width="12" height="12" rx="2" fill="#cbd5e1"/>
+<text x="78" y="900" font-size="12" fill="#4b5563">灰色=普通路面</text>
+<rect x="60" y="912" width="12" height="12" rx="2" fill="#86c98a"/>
+<text x="78" y="922" font-size="12" fill="#4b5563">绿色→红色=地价低→高</text>
+<rect x="60" y="934" width="12" height="12" rx="2" fill="#f0a04b"/>
+<text x="78" y="944" font-size="12" fill="#4b5563">橙=设施</text>
+<rect x="390" y="890" width="12" height="12" rx="2" fill="#5b8def"/>
+<text x="408" y="900" font-size="12" fill="#4b5563">蓝=上市企业</text>
+<rect x="390" y="912" width="12" height="12" rx="2" fill="#a06bd6"/>
+<text x="408" y="922" font-size="12" fill="#4b5563">紫=功能格</text>
+<rect x="390" y="934" width="12" height="12" rx="2" fill="#e05c5c"/>
+<text x="408" y="944" font-size="12" fill="#4b5563">红=特殊起点/事件</text>
+</svg>

@@ -1,0 +1,386 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 1000" width="1400" height="1000" font-family="Microsoft YaHei,Noto Sans CJK TC,sans-serif">
+<rect width="1400" height="1000" fill="#f7f8fa"/>
+<text x="28" y="44" font-size="26" font-weight="700" fill="#1f2937">大富翁4 · 超时空之旅 — 地图 7（map.mkf 块 #15）</text>
+<text x="28" y="70" font-size="15" fill="#6b7280">节点 101 · 连线 104 · 普通地块 0 · 设施 20 · 企业 7 · 景观 79</text>
+<line x1="151.7" y1="291.7" x2="131.1" y2="312.2" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="151.7" y1="291.7" x2="209.4" y2="261.2" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="131.1" y1="312.2" x2="94.6" y2="349.4" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="94.6" y1="349.4" x2="90.7" y2="404.5" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="90.7" y1="404.5" x2="90.0" y2="431.7" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="90.0" y1="431.7" x2="90.0" y2="472.1" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="90.0" y1="472.1" x2="90.0" y2="508.6" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="90.0" y1="508.6" x2="90.0" y2="533.2" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="90.0" y1="533.2" x2="97.3" y2="585.6" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="97.3" y1="585.6" x2="141.7" y2="624.1" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="141.7" y1="624.1" x2="161.7" y2="644.6" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="161.7" y1="644.6" x2="207.4" y2="675.8" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="207.4" y1="675.8" x2="267.8" y2="682.4" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="267.8" y1="682.4" x2="305.0" y2="681.1" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="305.0" y1="681.1" x2="343.4" y2="681.1" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="343.4" y1="681.1" x2="396.5" y2="654.6" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="396.5" y1="654.6" x2="437.0" y2="605.5" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="437.0" y1="605.5" x2="464.2" y2="577.0" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="464.2" y1="577.0" x2="496.0" y2="546.4" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="496.0" y1="546.4" x2="506.6" y2="490.0" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="506.6" y1="490.0" x2="504.0" y2="427.7" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="504.0" y1="427.7" x2="504.6" y2="357.4" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="504.0" y1="427.7" x2="553.7" y2="429.0" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="504.0" y1="427.7" x2="438.3" y2="427.7" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="504.6" y1="357.4" x2="553.7" y2="310.3" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="553.7" y1="310.3" x2="582.9" y2="279.1" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="582.9" y1="279.1" x2="619.4" y2="247.2" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="619.4" y1="247.2" x2="682.4" y2="243.9" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="682.4" y1="243.9" x2="742.8" y2="245.2" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="682.4" y1="243.9" x2="681.8" y2="190.2" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="682.4" y1="243.9" x2="684.4" y2="301.0" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="742.8" y1="245.2" x2="781.3" y2="246.6" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="781.3" y1="246.6" x2="805.8" y2="272.4" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="805.8" y1="272.4" x2="823.8" y2="291.7" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="823.8" y1="291.7" x2="856.3" y2="324.2" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="856.3" y1="324.2" x2="882.8" y2="347.4" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="882.8" y1="347.4" x2="895.4" y2="388.5" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="895.4" y1="388.5" x2="895.4" y2="421.1" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="895.4" y1="421.1" x2="895.4" y2="470.1" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="897.4" y1="559.7" x2="932.6" y2="608.8" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="897.4" y1="559.7" x2="895.4" y2="470.1" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="932.6" y1="608.8" x2="955.8" y2="628.0" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="955.8" y1="628.0" x2="967.1" y2="655.9" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="967.1" y1="655.9" x2="966.4" y2="693.7" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="966.4" y1="693.7" x2="965.7" y2="723.6" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="965.7" y1="723.6" x2="966.4" y2="764.0" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="966.4" y1="764.0" x2="939.2" y2="792.6" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="939.2" y1="792.6" x2="916.0" y2="817.8" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="916.0" y1="817.8" x2="874.8" y2="858.9" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="874.8" y1="858.9" x2="814.5" y2="866.2" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="814.5" y1="866.2" x2="779.3" y2="865.6" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="779.3" y1="865.6" x2="745.5" y2="865.6" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="745.5" y1="865.6" x2="709.0" y2="864.2" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="709.0" y1="864.2" x2="688.4" y2="844.3" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="688.4" y1="844.3" x2="667.2" y2="821.8" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="667.2" y1="821.8" x2="627.4" y2="782.0" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="627.4" y1="782.0" x2="620.7" y2="731.5" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="627.4" y1="782.0" x2="586.9" y2="823.1" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="620.7" y1="731.5" x2="619.4" y2="703.7" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="619.4" y1="703.7" x2="622.1" y2="654.6" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="622.1" y1="654.6" x2="624.1" y2="604.2" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="624.1" y1="604.2" x2="653.3" y2="573.6" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="653.3" y1="573.6" x2="700.4" y2="531.8" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="700.4" y1="531.8" x2="757.4" y2="492.7" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="757.4" y1="492.7" x2="793.2" y2="493.4" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="793.2" y1="493.4" x2="825.7" y2="495.4" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="825.7" y1="495.4" x2="863.6" y2="496.0" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="863.6" y1="496.0" x2="895.4" y2="470.1" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="895.4" y1="470.1" x2="920.6" y2="443.6" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="920.6" y1="443.6" x2="939.2" y2="423.7" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="939.2" y1="423.7" x2="967.1" y2="397.2" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="967.1" y1="397.2" x2="987.6" y2="377.3" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="987.6" y1="377.3" x2="1025.4" y2="336.8" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="1025.4" y1="336.8" x2="1024.8" y2="277.8" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="1024.8" y1="277.8" x2="1024.8" y2="249.2" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="1024.8" y1="249.2" x2="1026.1" y2="212.1" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="1026.1" y1="212.1" x2="1015.5" y2="174.9" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="1015.5" y1="174.9" x2="989.6" y2="151.7" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="989.6" y1="151.7" x2="967.1" y2="130.5" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="967.1" y1="130.5" x2="923.3" y2="91.3" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="923.3" y1="91.3" x2="854.9" y2="91.3" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="854.9" y1="91.3" x2="821.1" y2="90.0" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="821.1" y1="90.0" x2="754.1" y2="94.0" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="754.1" y1="94.0" x2="715.0" y2="131.8" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="715.0" y1="131.8" x2="695.0" y2="155.7" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="695.0" y1="155.7" x2="681.8" y2="190.2" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="684.4" y1="301.0" x2="681.1" y2="342.1" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="681.1" y1="342.1" x2="654.6" y2="372.0" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="654.6" y1="372.0" x2="625.4" y2="397.8" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="625.4" y1="397.8" x2="596.2" y2="427.7" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="596.2" y1="427.7" x2="553.7" y2="429.0" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="438.3" y1="427.7" x2="393.9" y2="385.2" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="393.9" y1="385.2" x2="382.6" y2="352.1" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="382.6" y1="352.1" x2="383.9" y2="323.5" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="383.9" y1="323.5" x2="356.0" y2="273.8" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="356.0" y1="273.8" x2="305.6" y2="261.8" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="305.6" y1="261.8" x2="257.8" y2="261.2" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="257.8" y1="261.2" x2="209.4" y2="261.2" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="586.9" y1="823.1" x2="561.0" y2="845.0" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="561.0" y1="845.0" x2="540.5" y2="866.9" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="540.5" y1="866.9" x2="519.9" y2="887.4" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="519.9" y1="887.4" x2="498.0" y2="909.3" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="498.0" y1="909.3" x2="462.8" y2="910.0" stroke="#dbe0e6" stroke-width="3"/>
+<line x1="462.8" y1="910.0" x2="425.7" y2="910.0" stroke="#dbe0e6" stroke-width="3"/>
+<text x="45.6" y="631.4" font-size="9" fill="#b6bcc6" text-anchor="middle">醫院</text>
+<text x="353.4" y="918.0" font-size="9" fill="#b6bcc6" text-anchor="middle">監獄</text>
+<text x="492.7" y="691.7" font-size="9" fill="#b6bcc6" text-anchor="middle">海灘</text>
+<text x="300.3" y="389.9" font-size="9" fill="#b6bcc6" text-anchor="middle">樹</text>
+<text x="861.6" y="695.7" font-size="9" fill="#b6bcc6" text-anchor="middle">樹</text>
+<text x="881.5" y="727.6" font-size="9" fill="#b6bcc6" text-anchor="middle">樹</text>
+<text x="1067.9" y="801.2" font-size="9" fill="#b6bcc6" text-anchor="middle">樹</text>
+<text x="244.6" y="362.0" font-size="9" fill="#b6bcc6" text-anchor="middle">樹</text>
+<text x="127.2" y="186.9" font-size="9" fill="#b6bcc6" text-anchor="middle">樹</text>
+<text x="95.3" y="186.9" font-size="9" fill="#b6bcc6" text-anchor="middle">樹</text>
+<text x="117.9" y="158.3" font-size="9" fill="#b6bcc6" text-anchor="middle">樹</text>
+<text x="156.3" y="220.7" font-size="9" fill="#b6bcc6" text-anchor="middle">樹</text>
+<text x="163.0" y="393.9" font-size="9" fill="#b6bcc6" text-anchor="middle">樹</text>
+<text x="171.6" y="425.7" font-size="9" fill="#b6bcc6" text-anchor="middle">樹</text>
+<text x="946.5" y="978.3" font-size="9" fill="#b6bcc6" text-anchor="middle">樹</text>
+<text x="168.9" y="561.0" font-size="9" fill="#b6bcc6" text-anchor="middle">樹</text>
+<text x="184.9" y="531.8" font-size="9" fill="#b6bcc6" text-anchor="middle">樹</text>
+<text x="207.4" y="562.4" font-size="9" fill="#b6bcc6" text-anchor="middle">樹</text>
+<text x="216.1" y="591.6" font-size="9" fill="#b6bcc6" text-anchor="middle">樹</text>
+<text x="196.1" y="476.8" font-size="9" fill="#b6bcc6" text-anchor="middle">樹</text>
+<text x="-2.2" y="588.2" font-size="9" fill="#b6bcc6" text-anchor="middle">樹</text>
+<text x="14.4" y="335.5" font-size="9" fill="#b6bcc6" text-anchor="middle">樹</text>
+<text x="-4.2" y="352.1" font-size="9" fill="#b6bcc6" text-anchor="middle">樹</text>
+<text x="25.6" y="360.7" font-size="9" fill="#b6bcc6" text-anchor="middle">樹</text>
+<text x="326.2" y="123.8" font-size="9" fill="#b6bcc6" text-anchor="middle">樹</text>
+<text x="356.0" y="157.0" font-size="9" fill="#b6bcc6" text-anchor="middle">樹</text>
+<text x="277.1" y="142.4" font-size="9" fill="#b6bcc6" text-anchor="middle">樹</text>
+<text x="419.1" y="231.3" font-size="9" fill="#b6bcc6" text-anchor="middle">樹</text>
+<text x="488.7" y="272.4" font-size="9" fill="#b6bcc6" text-anchor="middle">樹</text>
+<text x="984.3" y="949.8" font-size="9" fill="#b6bcc6" text-anchor="middle">樹</text>
+<text x="1065.9" y="892.1" font-size="9" fill="#b6bcc6" text-anchor="middle">樹</text>
+<text x="348.1" y="423.0" font-size="9" fill="#b6bcc6" text-anchor="middle">樹</text>
+<text x="563.0" y="379.9" font-size="9" fill="#b6bcc6" text-anchor="middle">樹</text>
+<text x="817.1" y="622.7" font-size="9" fill="#b6bcc6" text-anchor="middle">樹</text>
+<text x="535.8" y="107.2" font-size="9" fill="#b6bcc6" text-anchor="middle">樹</text>
+<text x="569.7" y="171.6" font-size="9" fill="#b6bcc6" text-anchor="middle">樹</text>
+<text x="646.6" y="129.8" font-size="9" fill="#b6bcc6" text-anchor="middle">樹</text>
+<text x="573.0" y="124.5" font-size="9" fill="#b6bcc6" text-anchor="middle">樹</text>
+<text x="565.7" y="214.1" font-size="9" fill="#b6bcc6" text-anchor="middle">樹</text>
+<text x="460.2" y="232.6" font-size="9" fill="#b6bcc6" text-anchor="middle">樹</text>
+<text x="340.8" y="84.0" font-size="9" fill="#b6bcc6" text-anchor="middle">樹</text>
+<text x="139.8" y="115.2" font-size="9" fill="#b6bcc6" text-anchor="middle">樹</text>
+<text x="-17.5" y="622.7" font-size="9" fill="#b6bcc6" text-anchor="middle">樹</text>
+<text x="220.0" y="772.0" font-size="9" fill="#b6bcc6" text-anchor="middle">樹</text>
+<text x="182.9" y="752.8" font-size="9" fill="#b6bcc6" text-anchor="middle">樹</text>
+<text x="115.2" y="767.4" font-size="9" fill="#b6bcc6" text-anchor="middle">樹</text>
+<text x="419.1" y="744.8" font-size="9" fill="#b6bcc6" text-anchor="middle">樹</text>
+<text x="337.5" y="612.8" font-size="9" fill="#b6bcc6" text-anchor="middle">樹</text>
+<text x="438.3" y="772.0" font-size="9" fill="#b6bcc6" text-anchor="middle">樹</text>
+<text x="485.4" y="752.8" font-size="9" fill="#b6bcc6" text-anchor="middle">樹</text>
+<text x="1091.1" y="600.8" font-size="9" fill="#b6bcc6" text-anchor="middle">樹</text>
+<text x="711.0" y="947.2" font-size="9" fill="#b6bcc6" text-anchor="middle">樹</text>
+<text x="669.2" y="983.0" font-size="9" fill="#b6bcc6" text-anchor="middle">樹</text>
+<text x="1142.9" y="642.0" font-size="9" fill="#b6bcc6" text-anchor="middle">樹</text>
+<text x="632.7" y="975.7" font-size="9" fill="#b6bcc6" text-anchor="middle">樹</text>
+<text x="862.2" y="943.8" font-size="9" fill="#b6bcc6" text-anchor="middle">樹</text>
+<text x="667.2" y="686.4" font-size="9" fill="#b6bcc6" text-anchor="middle">樹</text>
+<text x="521.9" y="638.0" font-size="9" fill="#b6bcc6" text-anchor="middle">樹</text>
+<text x="492.7" y="815.8" font-size="9" fill="#b6bcc6" text-anchor="middle">樹</text>
+<text x="729.5" y="772.7" font-size="9" fill="#b6bcc6" text-anchor="middle">樹</text>
+<text x="690.4" y="776.7" font-size="9" fill="#b6bcc6" text-anchor="middle">樹</text>
+<text x="228.0" y="413.8" font-size="9" fill="#b6bcc6" text-anchor="middle">海灘</text>
+<text x="740.2" y="407.8" font-size="9" fill="#b6bcc6" text-anchor="middle">海灘</text>
+<text x="695.7" y="452.9" font-size="9" fill="#b6bcc6" text-anchor="middle">樹</text>
+<text x="783.3" y="446.9" font-size="9" fill="#b6bcc6" text-anchor="middle">樹</text>
+<text x="618.8" y="525.9" font-size="9" fill="#b6bcc6" text-anchor="middle">樹</text>
+<text x="1079.8" y="637.3" font-size="9" fill="#b6bcc6" text-anchor="middle">樹</text>
+<text x="1143.5" y="128.5" font-size="9" fill="#b6bcc6" text-anchor="middle">樹</text>
+<text x="1160.8" y="78.1" font-size="9" fill="#b6bcc6" text-anchor="middle">樹</text>
+<text x="1024.1" y="-10.2" font-size="9" fill="#b6bcc6" text-anchor="middle">樹</text>
+<text x="780.6" y="-48.7" font-size="9" fill="#b6bcc6" text-anchor="middle">樹</text>
+<text x="1159.4" y="369.3" font-size="9" fill="#b6bcc6" text-anchor="middle">樹</text>
+<text x="1140.9" y="335.5" font-size="9" fill="#b6bcc6" text-anchor="middle">樹</text>
+<text x="1197.9" y="117.2" font-size="9" fill="#b6bcc6" text-anchor="middle">樹</text>
+<text x="687.8" y="-14.2" font-size="9" fill="#b6bcc6" text-anchor="middle">樹</text>
+<text x="1074.5" y="-22.1" font-size="9" fill="#b6bcc6" text-anchor="middle">樹</text>
+<circle cx="151.7" cy="291.7" r="9" fill="#f0a04b" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="131.1" cy="312.2" r="9" fill="#f0a04b" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="94.6" cy="349.4" r="9" fill="#a06bd6" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="90.7" cy="404.5" r="9" fill="#f0a04b" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="90.0" cy="431.7" r="9" fill="#f0a04b" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="90.0" cy="472.1" r="9" fill="#a06bd6" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="90.0" cy="508.6" r="9" fill="#f0a04b" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="90.0" cy="533.2" r="9" fill="#f0a04b" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="97.3" cy="585.6" r="9" fill="#e05c5c" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="141.7" cy="624.1" r="9" fill="#f0a04b" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="161.7" cy="644.6" r="9" fill="#f0a04b" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="207.4" cy="675.8" r="9" fill="#a06bd6" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="267.8" cy="682.4" r="9" fill="#5b8def" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="305.0" cy="681.1" r="9" fill="#5b8def" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="343.4" cy="681.1" r="9" fill="#5b8def" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="396.5" cy="654.6" r="9" fill="#a06bd6" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="437.0" cy="605.5" r="9" fill="#a06bd6" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="464.2" cy="577.0" r="9" fill="#a06bd6" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="496.0" cy="546.4" r="9" fill="#a06bd6" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="506.6" cy="490.0" r="9" fill="#a06bd6" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="504.0" cy="427.7" r="9" fill="#a06bd6" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="504.6" cy="357.4" r="9" fill="#5b8def" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="553.7" cy="310.3" r="9" fill="#a06bd6" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="582.9" cy="279.1" r="9" fill="#a06bd6" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="619.4" cy="247.2" r="9" fill="#5b8def" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="682.4" cy="243.9" r="9" fill="#a06bd6" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="742.8" cy="245.2" r="9" fill="#5b8def" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="781.3" cy="246.6" r="9" fill="#a06bd6" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="805.8" cy="272.4" r="9" fill="#f0a04b" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="823.8" cy="291.7" r="9" fill="#f0a04b" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="856.3" cy="324.2" r="9" fill="#f0a04b" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="882.8" cy="347.4" r="9" fill="#f0a04b" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="895.4" cy="388.5" r="9" fill="#f0a04b" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="895.4" cy="421.1" r="9" fill="#f0a04b" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="897.4" cy="559.7" r="9" fill="#5b8def" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="932.6" cy="608.8" r="9" fill="#f0a04b" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="955.8" cy="628.0" r="9" fill="#f0a04b" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="967.1" cy="655.9" r="9" fill="#a06bd6" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="966.4" cy="693.7" r="9" fill="#f0a04b" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="965.7" cy="723.6" r="9" fill="#f0a04b" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="966.4" cy="764.0" r="9" fill="#a06bd6" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="939.2" cy="792.6" r="9" fill="#f0a04b" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="916.0" cy="817.8" r="9" fill="#f0a04b" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="874.8" cy="858.9" r="9" fill="#a06bd6" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="814.5" cy="866.2" r="9" fill="#f0a04b" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="779.3" cy="865.6" r="9" fill="#f0a04b" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="745.5" cy="865.6" r="9" fill="#a06bd6" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="709.0" cy="864.2" r="9" fill="#a06bd6" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="688.4" cy="844.3" r="9" fill="#f0a04b" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="667.2" cy="821.8" r="9" fill="#f0a04b" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="627.4" cy="782.0" r="9" fill="#a06bd6" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="620.7" cy="731.5" r="9" fill="#5b8def" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="619.4" cy="703.7" r="9" fill="#5b8def" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="622.1" cy="654.6" r="9" fill="#a06bd6" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="624.1" cy="604.2" r="9" fill="#a06bd6" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="653.3" cy="573.6" r="9" fill="#a06bd6" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="700.4" cy="531.8" r="9" fill="#a06bd6" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="757.4" cy="492.7" r="9" fill="#f0a04b" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="793.2" cy="493.4" r="9" fill="#f0a04b" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="825.7" cy="495.4" r="9" fill="#a06bd6" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="863.6" cy="496.0" r="9" fill="#a06bd6" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="895.4" cy="470.1" r="9" fill="#a06bd6" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="920.6" cy="443.6" r="9" fill="#f0a04b" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="939.2" cy="423.7" r="9" fill="#f0a04b" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="967.1" cy="397.2" r="9" fill="#f0a04b" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="987.6" cy="377.3" r="9" fill="#f0a04b" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="1025.4" cy="336.8" r="9" fill="#a06bd6" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="1024.8" cy="277.8" r="9" fill="#f0a04b" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="1024.8" cy="249.2" r="9" fill="#f0a04b" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="1026.1" cy="212.1" r="9" fill="#a06bd6" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="1015.5" cy="174.9" r="9" fill="#a06bd6" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="989.6" cy="151.7" r="9" fill="#f0a04b" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="967.1" cy="130.5" r="9" fill="#f0a04b" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="923.3" cy="91.3" r="9" fill="#5b8def" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="854.9" cy="91.3" r="9" fill="#f0a04b" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="821.1" cy="90.0" r="9" fill="#f0a04b" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="754.1" cy="94.0" r="9" fill="#a06bd6" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="715.0" cy="131.8" r="9" fill="#f0a04b" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="695.0" cy="155.7" r="9" fill="#f0a04b" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="681.8" cy="190.2" r="9" fill="#5b8def" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="684.4" cy="301.0" r="9" fill="#5b8def" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="681.1" cy="342.1" r="9" fill="#a06bd6" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="654.6" cy="372.0" r="9" fill="#a06bd6" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="625.4" cy="397.8" r="9" fill="#a06bd6" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="596.2" cy="427.7" r="9" fill="#a06bd6" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="553.7" cy="429.0" r="9" fill="#a06bd6" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="438.3" cy="427.7" r="9" fill="#5b8def" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="393.9" cy="385.2" r="9" fill="#a06bd6" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="382.6" cy="352.1" r="9" fill="#f0a04b" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="383.9" cy="323.5" r="9" fill="#f0a04b" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="356.0" cy="273.8" r="9" fill="#a06bd6" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="305.6" cy="261.8" r="9" fill="#5b8def" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="257.8" cy="261.2" r="9" fill="#5b8def" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="209.4" cy="261.2" r="9" fill="#5b8def" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="586.9" cy="823.1" r="9" fill="#a06bd6" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="561.0" cy="845.0" r="9" fill="#a06bd6" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="540.5" cy="866.9" r="7" fill="#cbd5e1" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="519.9" cy="887.4" r="9" fill="#a06bd6" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="498.0" cy="909.3" r="7" fill="#cbd5e1" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="462.8" cy="910.0" r="9" fill="#a06bd6" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="425.7" cy="910.0" r="9" fill="#e05c5c" stroke="#ffffff" stroke-width="1.5"/>
+<text x="151.7" y="279.7" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">凱薩大道</text>
+<text x="131.1" y="300.2" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">凱薩大道</text>
+<text x="94.6" y="337.4" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">卡片</text>
+<text x="90.7" y="392.5" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">流星城</text>
+<text x="90.0" y="419.7" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">流星城</text>
+<text x="90.0" y="460.1" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">得５０點</text>
+<text x="90.0" y="496.6" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">星月城</text>
+<text x="90.0" y="521.2" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">星月城</text>
+<text x="97.3" y="573.6" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">醫院</text>
+<text x="141.7" y="612.1" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">新香港</text>
+<text x="161.7" y="632.6" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">新香港</text>
+<text x="207.4" y="663.8" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">樂透</text>
+<text x="396.5" y="642.6" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">魔法屋</text>
+<text x="437.0" y="593.5" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">得３０點</text>
+<text x="464.2" y="565.0" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">得３０點</text>
+<text x="496.0" y="534.4" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">得１０點</text>
+<text x="506.6" y="478.0" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">得１０點</text>
+<text x="504.0" y="415.7" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">得５０點</text>
+<text x="504.6" y="345.4" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">百貨公司</text>
+<text x="553.7" y="298.3" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">得１０點</text>
+<text x="582.9" y="267.1" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">得１０點</text>
+<text x="619.4" y="235.2" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">狂徒大飯店</text>
+<text x="682.4" y="231.9" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">七彩氣球</text>
+<text x="742.8" y="233.2" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">豪華大飯店</text>
+<text x="781.3" y="234.6" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">得３０點</text>
+<text x="805.8" y="260.4" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">上海街</text>
+<text x="823.8" y="279.7" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">上海街</text>
+<text x="856.3" y="312.2" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">翡翠城</text>
+<text x="882.8" y="335.4" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">翡翠城</text>
+<text x="895.4" y="376.5" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">小紐約</text>
+<text x="895.4" y="409.1" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">小紐約</text>
+<text x="897.4" y="547.7" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">銀行</text>
+<text x="932.6" y="596.8" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">小巴黎</text>
+<text x="955.8" y="616.0" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">小巴黎</text>
+<text x="967.1" y="643.9" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">得１０點</text>
+<text x="966.4" y="681.7" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">狂徒大道</text>
+<text x="965.7" y="711.6" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">狂徒大道</text>
+<text x="966.4" y="752.0" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">得１０點</text>
+<text x="939.2" y="780.6" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">珊瑚城</text>
+<text x="916.0" y="805.8" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">珊瑚城</text>
+<text x="874.8" y="846.9" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">魔法屋</text>
+<text x="814.5" y="854.2" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">南海街</text>
+<text x="779.3" y="853.6" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">南海街</text>
+<text x="745.5" y="853.6" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">得３０點</text>
+<text x="709.0" y="852.2" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">得１０點</text>
+<text x="688.4" y="832.3" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">南灣道</text>
+<text x="667.2" y="809.8" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">南灣道</text>
+<text x="627.4" y="770.0" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">監獄</text>
+<text x="622.1" y="642.6" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">得１０點</text>
+<text x="624.1" y="592.2" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">得３０點</text>
+<text x="653.3" y="561.6" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">得１０點</text>
+<text x="700.4" y="519.8" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">卡片</text>
+<text x="757.4" y="480.7" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">日落大道</text>
+<text x="793.2" y="481.4" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">日落大道</text>
+<text x="825.7" y="483.4" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">得１０點</text>
+<text x="863.6" y="484.0" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">得１０點</text>
+<text x="895.4" y="458.1" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">得５０點</text>
+<text x="920.6" y="431.6" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">千禧城</text>
+<text x="939.2" y="411.7" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">千禧城</text>
+<text x="967.1" y="385.2" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">新東京都</text>
+<text x="987.6" y="365.3" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">新東京都</text>
+<text x="1025.4" y="324.8" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">命運</text>
+<text x="1024.8" y="265.8" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">陽光大道</text>
+<text x="1024.8" y="237.2" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">陽光大道</text>
+<text x="1026.1" y="200.1" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">企鵝挖寶</text>
+<text x="1015.5" y="162.9" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">得１０點</text>
+<text x="989.6" y="139.7" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">東北角</text>
+<text x="967.1" y="118.5" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">東北角</text>
+<text x="923.3" y="79.3" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">百貨公司</text>
+<text x="821.1" y="78.0" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">北海岸</text>
+<text x="754.1" y="82.0" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">樂透</text>
+<text x="715.0" y="119.8" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">北澳門</text>
+<text x="681.8" y="178.2" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">狂徒大飯店</text>
+<text x="684.4" y="289.0" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">豪華大飯店</text>
+<text x="681.1" y="330.1" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">得５０點</text>
+<text x="654.6" y="360.0" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">得１０點</text>
+<text x="625.4" y="385.8" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">喜從天降</text>
+<text x="596.2" y="415.7" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">得３０點</text>
+<text x="553.7" y="417.0" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">得１０點</text>
+<text x="438.3" y="415.7" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">銀行</text>
+<text x="393.9" y="373.2" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">得１０點</text>
+<text x="382.6" y="340.1" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">大台北城</text>
+<text x="383.9" y="311.5" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">大台北城</text>
+<text x="356.0" y="261.8" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">新聞</text>
+<text x="586.9" y="811.1" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">得１０點</text>
+<text x="561.0" y="833.0" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">得３０點</text>
+<text x="519.9" y="875.4" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">得１０點</text>
+<text x="462.8" y="898.0" font-size="10.5" fill="#374151" text-anchor="middle" font-weight="600">得５０點</text>
+<rect x="60" y="890" width="12" height="12" rx="2" fill="#cbd5e1"/>
+<text x="78" y="900" font-size="12" fill="#4b5563">灰色=普通路面</text>
+<rect x="60" y="912" width="12" height="12" rx="2" fill="#86c98a"/>
+<text x="78" y="922" font-size="12" fill="#4b5563">绿色→红色=地价低→高</text>
+<rect x="60" y="934" width="12" height="12" rx="2" fill="#f0a04b"/>
+<text x="78" y="944" font-size="12" fill="#4b5563">橙=设施</text>
+<rect x="390" y="890" width="12" height="12" rx="2" fill="#5b8def"/>
+<text x="408" y="900" font-size="12" fill="#4b5563">蓝=上市企业</text>
+<rect x="390" y="912" width="12" height="12" rx="2" fill="#a06bd6"/>
+<text x="408" y="922" font-size="12" fill="#4b5563">紫=功能格</text>
+<rect x="390" y="934" width="12" height="12" rx="2" fill="#e05c5c"/>
+<text x="408" y="944" font-size="12" fill="#4b5563">红=特殊起点/事件</text>
+</svg>
