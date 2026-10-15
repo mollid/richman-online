@@ -757,9 +757,6 @@ export function AcHudLayer({
         {connection === 'closed' && (
           <div className="ac-banner ac-banner--danger">⚡ 房间已关闭（无人操作超时或服务端重启）· 点「退出」回大厅</div>
         )}
-        {connection === 'kicked' && (
-          <div className="ac-banner ac-banner--danger">👋 你被房主请出了房间 · 点「退出」回大厅，拿到房间码还可以再进</div>
-        )}
         {netError && <div className="ac-banner ac-banner--danger">{netError}</div>}
         {!interactive && current && game.phase !== 'lobby' && game.phase !== 'game_over' && (
           <div className="ac-banner">

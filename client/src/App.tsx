@@ -145,6 +145,8 @@ export default function App() {
   const [replayRecord, setReplayRecord] = useState<ReplayRecord | null>(null);
   const [connecting, setConnecting] = useState(false);
   const [connectError, setConnectError] = useState('');
+  /** 被弹回开局界面时的一句话（`connectError` 只在联机卡片里渲染，被踢时人可能在别的页签） */
+  const [connectNotice, setConnectNotice] = useState('');
   const [showSettings, setShowSettings] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
 
@@ -181,6 +183,7 @@ export default function App() {
   const resumeLast = async () => {
     setConnecting(true);
     setConnectError('');
+    setConnectNotice('');
     try {
       const restored = await ColyseusSession.resumeLast();
       if (restored) {
@@ -205,6 +208,7 @@ export default function App() {
   ) => {
     setConnecting(true);
     setConnectError('');
+    setConnectNotice('');
     try {
       const next = await ColyseusSession.connect({
         playerName,
@@ -261,6 +265,7 @@ export default function App() {
           }}
           connecting={connecting}
           error={connectError}
+          notice={connectNotice}
           onOpenSettings={() => setShowSettings(true)}
           onOpenHelp={() => setShowHelp(true)}
         />
@@ -275,6 +280,7 @@ export default function App() {
         key={`${session.roomId ?? 'local'}:${session.myPlayerId ?? 'hotseat'}`}
         session={session}
         onExit={exit}
+        onNotice={setConnectNotice}
         registerAction={registerAction}
         onOpenSettings={() => setShowSettings(true)}
         onOpenHelp={() => setShowHelp(true)}
@@ -293,6 +299,7 @@ function SetupScreen({
   onWatchReplay,
   connecting,
   error,
+  notice,
   onOpenSettings,
   onOpenHelp,
 }: {
@@ -302,6 +309,8 @@ function SetupScreen({
   onWatchReplay: (recordId: string) => void;
   connecting: boolean;
   error: string;
+  /** 从对局里被弹回来时带的话（被踢）。放在页签上方：`error` 只在联机分支里渲染 */
+  notice: string;
   onOpenSettings: () => void;
   /** UI-03 存 / 读档（仅热座模式） */
   onSaveGame?: () => void;
@@ -402,6 +411,8 @@ function SetupScreen({
     <div className="setup-screen">
       <h1>大富翁 Online</h1>
       <p className="subtitle">TypeScript · React · PixiJS · Colyseus</p>
+
+      {notice && <div className="setup-notice">{notice}</div>}
 
       <div className="mode-tabs">
         <button className={mode === 'local' ? 'active' : ''} onClick={() => setMode('local')}>
@@ -586,6 +597,7 @@ function SetupScreen({
 function GameScreen({
   session,
   onExit,
+  onNotice,
   registerAction,
   onOpenSettings,
   onOpenHelp,
@@ -594,6 +606,8 @@ function GameScreen({
 }: {
   session: GameSession;
   onExit: () => void;
+  /** 被弹回开局界面时带一句话（被踢）；不传就只是安静地退出 */
+  onNotice?: (text: string) => void;
   registerAction: (name: string, fn: () => void) => () => void;
   onOpenSettings: () => void;
   /** UI-03 存 / 读档（仅热座模式） */
@@ -618,6 +632,14 @@ function GameScreen({
       unsubscribeConnection?.();
     };
   }, [session]);
+
+  /* 被踢不是「留在原地看一条横幅」：这块棋盘已经没有你的位置了，
+     人和话一起送回开局界面。 */
+  useEffect(() => {
+    if (connection !== 'kicked') return;
+    onNotice?.('👋 你被房主请出了房间 · 拿到房间码还可以再进来');
+    onExit();
+  }, [connection, onExit, onNotice]);
 
   const current = game.players[game.currentPlayerIndex];
   const isMyTurn =

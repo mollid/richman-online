@@ -81,6 +81,17 @@ button.small {
   color: #90a4ae;
 }
 
+/* 被弹回开局界面时的那句话：警告色而不是错误红，它描述的是刚发生的事，不是填错了什么 */
+.setup-notice {
+  padding: 8px 16px;
+  border: 1px solid #e9a23b;
+  border-radius: 999px;
+  background: rgba(233, 162, 59, 0.12);
+  color: #ffcc80;
+  font-size: 14px;
+  font-weight: 700;
+}
+
 .setup-card {
   margin-top: 24px;
   max-width: 100%;
