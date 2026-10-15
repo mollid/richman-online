@@ -1,4 +1,5 @@
 import { Assets, Application, Container, Graphics, Sprite, Text, Texture } from 'pixi.js';
+import { CHARACTERS } from '@richman/shared';
 import type { BoardCell, FacilityType, GameState, Player } from '@richman/shared';
 import { getSettings, SETTINGS_CHANGED_EVENT } from './settings.js';
 
@@ -55,11 +56,14 @@ const ART_FILES: Record<string, string> = {
   hotel: 'env_hotel@v6.png',
   gas: 'env_gas@v6.png',
   lab: 'env_lab@v6.png',
-  char0: 'char_player_a@v6.png',
-  char1: 'char_player_b@v6.png',
-  char2: 'char_player_c@v6.png',
-  char3: 'char_player_d@v6.png',
 };
+
+/**
+ * 角色棋子贴图按 `characters.ts` 的 id 生成（`char_<id>@v6.png`）：
+ * 以前是 char0~char3 四张按座位取，角色表扩到 10 人后座位序与图序就错开了，
+ * 而 id 才是稳定键 —— 加人、改名都不用回来动这里。
+ */
+for (const c of CHARACTERS) ART_FILES[`char_${c.id}`] = `char_${c.id}@v6.png`;
 
 /** 非地产格的示意图标（系统字体 emoji，无素材依赖；已有贴图的格不再使用） */
 const CELL_ICONS: Partial<Record<BoardCell['type'], string>> = {
@@ -562,7 +566,7 @@ export class BoardRenderer {
     disc.stroke({ width: 1.5, color: 0xffffff });
     container.addChild(disc);
 
-    const character = this.artSprite(`char${seat % 4}`, 30);
+    const character = this.artSprite(`char_${player.characterId}`, 30);
     if (character) {
       character.position.set(0, 4);
       container.addChild(character);
