@@ -25,6 +25,16 @@ import {
 const OFFLINE_AUTO_ACT_DELAY_MS = 3000;
 const RECONNECT_TIMEOUT_SEC = 60;
 
+/**
+ * 房间空闲多久算死。只掐着「客户端真的发了消息」计时：浏览器后台不会掐 WS，
+ * 所以一个开着页走人的房主在服务端看来是活连接，`autoDispose` 永远等不到空房。
+ * 15 分钟够想清楚一步棋，又不至于让 AFK 的房主把房间一直钉在大厅里。
+ * 环境变量是给测试留的：收房行为必须真等一次才看得出问题。
+ */
+export const ROOM_IDLE_TIMEOUT_SEC = Number(process.env.RICHMAN_ROOM_IDLE_TIMEOUT_SEC ?? 15 * 60);
+/** 扫描粒度：阈值是分钟级，30s 一次足够，也不至于让元数据写得太密 */
+const ROOM_SWEEP_INTERVAL_MS = 30 * 1000;
+
 /** 系统时钟 → 日期序列（仅在本文件与 LocalHotseatSession 各读一次） */
 function todaySerial(): DateSerial {
   const now = new Date();
@@ -67,6 +77,12 @@ export class GameRoom extends Room {
   private botTimer: ReturnType<typeof setTimeout> | null = null;
   private botRngState = 1;
   private botCounter = 0;
+  /** 私密房不进大厅列表（见 index.ts 的 /api/rooms），但房间码照样能加 */
+  private isPrivate = false;
+  private lastActivityAt = Date.now();
+  private idleTimer: ReturnType<typeof setInterval> | null = null;
+  /** 元数据里那份 phase：收房扫描要照抄回去，不必再从 game.phase 反推 */
+  private listedPhase: 'lobby' | 'playing' | 'finished' = 'lobby';
 
   /** 携带 token 的玩家绑定账号，其余以游客身份进入 */
   async onAuth(_client: Client, options: { token?: string }): Promise<AuthResult | boolean> {
@@ -82,8 +98,16 @@ export class GameRoom extends Room {
     }
   }
 
-  onCreate(options: { seed?: number; maxPlayers?: number; startDate?: DateSerial; maxDays?: number | null; mapId?: number | null }) {
+  onCreate(options: {
+    seed?: number;
+    maxPlayers?: number;
+    startDate?: DateSerial;
+    maxDays?: number | null;
+    mapId?: number | null;
+    isPrivate?: boolean;
+  }) {
     this.maxClients = Math.min(Math.max(options.maxPlayers ?? 4, 2), 4);
+    this.isPrivate = options.isPrivate === true;
     this.seed = options.seed ?? Date.now() % 2147483647;
     this.botRngState = this.seed;
     this.startDate = isValidDateSerial(options.startDate) ? options.startDate : todaySerial();
@@ -95,9 +119,11 @@ export class GameRoom extends Room {
       // 地图同理要区分「没传」与「传了 null（自建默认图）」，而 0 号是合法地图
       mapId: options.mapId ?? null,
     });
+    this.touch();
     this.updateMetadata('lobby');
+    this.idleTimer = setInterval(() => this.sweepIdle(), ROOM_SWEEP_INTERVAL_MS);
 
-    this.onMessage('add_bot', (client) => {
+    this.onTracked('add_bot', (client) => {
       try {
         if (this.game.phase !== 'lobby') throw new Error('对局已开始，无法添加 AI');
         if (this.game.players.length >= this.maxClients) throw new Error('房间已满');
@@ -120,7 +146,7 @@ export class GameRoom extends Room {
       }
     });
 
-    this.onMessage('start_game', (client) => {
+    this.onTracked('start_game', (client) => {
       try {
         this.game = applyAction(this.game, { type: 'START_GAME' });
         this.actionLog.push({ turn: this.game.turn, action: { type: 'START_GAME' } });
@@ -131,19 +157,19 @@ export class GameRoom extends Room {
       }
     });
 
-    this.onMessage('get_state', (client) => {
+    this.onTracked('get_state', (client) => {
       client.send('state', { game: this.game, actions: availableActions(this.game) });
     });
 
     // 测试模式钩子（仅 RICHMAN_TEST_MODE=1 时注册）：走真实 game_over/战绩流程
     if (process.env.RICHMAN_TEST_MODE === '1') {
-      this.onMessage('test_finish', (client) => {
+      this.onTracked('test_finish', (client) => {
         this.game = forceGameOver(this.game, client.sessionId);
         this.broadcastState();
       });
     }
 
-    this.onMessage('chat', (client, message: { text?: unknown }) => {
+    this.onTracked('chat', (client, message: { text?: unknown }) => {
       const text = typeof message.text === 'string' ? message.text.trim().slice(0, 120) : '';
       if (!text) return;
       const player = this.game.players.find((p) => p.id === client.sessionId);
@@ -154,7 +180,7 @@ export class GameRoom extends Room {
       });
     });
 
-    this.onMessage('action', (client, message: { action: PlayerAction }) => {
+    this.onTracked('action', (client, message: { action: PlayerAction }) => {
       try {
         if (message.action.type !== 'START_GAME') {
           this.assertCurrentPlayer(client);
@@ -184,6 +210,7 @@ export class GameRoom extends Room {
       color: ch.color,
       characterId,
     });
+    this.touch();
     this.updateMetadata('lobby');
     this.broadcastState();
   }
@@ -215,6 +242,44 @@ export class GameRoom extends Room {
   onDispose() {
     if (this.autoActTimer) clearTimeout(this.autoActTimer);
     if (this.botTimer) clearTimeout(this.botTimer);
+    if (this.idleTimer) clearInterval(this.idleTimer);
+  }
+
+  /**
+   * 记一次「客户端真的说了话」。只挂着连接不发消息不算：那正是房主开着页走人的样子。
+   */
+  private touch() {
+    this.lastActivityAt = Date.now();
+  }
+
+  /**
+   * 包一层再注册，免得哪天新加一条消息忘了刷活跃时间 —— 漏一条就等于给那类消息
+   * 开了个「永不超时」的口子，而这种口子只会在大厅里多出一个僵尸房时才被发现。
+   */
+  private onTracked<T>(type: string, handler: (client: Client, message: T) => void) {
+    this.onMessage<T>(type, (client, message) => {
+      this.touch();
+      handler(client, message);
+    });
+  }
+
+  /**
+   * 空闲收房。只管还没开打的房：一旦进了对局，「没人发消息」可能是真有人在长考，
+   * 而那时列表里本来就没有它（列表只列 lobby），留着不碍事。
+   * `disconnect()` 走的是 consented 关闭，被收的一方不会进入 60s 重连窗口。
+   */
+  private sweepIdle() {
+    // 列表只列 lobby，也就只有 lobby 需要往元数据里刷活跃时间
+    if (this.listedPhase !== 'lobby') return;
+    const idleSec = Math.round((Date.now() - this.lastActivityAt) / 1000);
+    // 分两段：到点先只把 idleSec 写进元数据，让 /api/rooms 把它从列表里摘掉；
+    // 再晚一个扫描周期才真收。中间那 30s 是给「刚好回来的人」留的宽限 —— 房间码照样进得来。
+    if (idleSec < ROOM_IDLE_TIMEOUT_SEC + ROOM_SWEEP_INTERVAL_MS / 1000) {
+      this.updateMetadata('lobby');
+      return;
+    }
+    console.log(`[room] ${this.roomId} 开局后 ${Math.round(idleSec / 60)} 分钟无人应答，收房`);
+    void this.disconnect();
   }
 
   private setOnline(sessionId: string, online: boolean) {
@@ -225,10 +290,14 @@ export class GameRoom extends Room {
 
   /** 更新房间元数据（供大厅房间列表展示与过滤） */
   private updateMetadata(phase: 'lobby' | 'playing' | 'finished') {
+    this.listedPhase = phase;
     void this.setMetadata({
       phase,
       players: this.game.players.length,
       maxPlayers: this.maxClients,
+      private: this.isPrivate,
+      // 发给列表的是「距今多少秒」而不是时间戳：客户端与服务器的钟不必对得上
+      idleSec: Math.round((Date.now() - this.lastActivityAt) / 1000),
     });
   }
 

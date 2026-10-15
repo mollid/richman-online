@@ -21,6 +21,8 @@ export interface RoomSummary {
   players: number;
   maxPlayers: number;
   phase: string;
+  /** 距这房「最后一个玩家真的发了消息」过了多久。服务端每 30s 刷一次，够显示用 */
+  idleSec: number;
 }
 
 const STORAGE_KEY = 'richman.session';
@@ -63,6 +65,8 @@ export class ColyseusSession implements GameSession {
     mapId?: number | null;
     /** 想要的角色。服务端按「先到先得」裁决，被抢走会另给一个没人占的，不会拒绝加入 */
     characterId?: string | null;
+    /** 私密房：不进大厅列表，只能凭房间码加入。只对建房有效 */
+    isPrivate?: boolean;
   }): Promise<ColyseusSession> {
     const client = new Client(serverUrl());
     const token = localStorage.getItem('richman.token') ?? undefined;
@@ -73,6 +77,7 @@ export class ColyseusSession implements GameSession {
           seed: opts.seed,
           token,
           characterId: opts.characterId,
+          isPrivate: opts.isPrivate === true,
           startDate: getSettings().startDate ?? undefined,
           // 建房者选的天数上限：null 要原样送达（那是「显式不限」），所以只在有值时才带这个键
           ...(opts.maxDays === undefined ? {} : { maxDays: opts.maxDays }),
@@ -105,7 +110,7 @@ export class ColyseusSession implements GameSession {
       roomId: string;
       clients: number;
       maxClients: number;
-      metadata?: { phase?: string; players?: number; maxPlayers?: number };
+      metadata?: { phase?: string; players?: number; maxPlayers?: number; idleSec?: number };
     }>;
     return rooms
       .filter((r) => r.metadata?.phase === 'lobby')
@@ -114,6 +119,7 @@ export class ColyseusSession implements GameSession {
         players: r.metadata?.players ?? r.clients,
         maxPlayers: r.metadata?.maxPlayers ?? r.maxClients,
         phase: 'lobby',
+        idleSec: r.metadata?.idleSec ?? 0,
       }));
   }
 

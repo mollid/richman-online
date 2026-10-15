@@ -1141,6 +1141,10 @@ button.mini {
   font-size: 12px;
 }
 
+.room-idle {
+  color: #607d8b;
+}
+
 .resume-btn {
   width: 100%;
 }

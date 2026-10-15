@@ -668,6 +668,10 @@ export function AcHudLayer({
       {/* 连接 / 等待提示：贴顶居中，不挡操作 */}
       <div className="ac-banners">
         {connection === 'reconnecting' && <div className="ac-banner ac-banner--warn">⚡ 连接已断开，正在尝试重新连接…</div>}
+        {/* 收房 / 服务端重启都会走到这里：不出一条死信，画面就只剩一个再也点不动的大厅 */}
+        {connection === 'closed' && (
+          <div className="ac-banner ac-banner--danger">⚡ 房间已关闭（无人操作超时或服务端重启）· 点「退出」回大厅</div>
+        )}
         {netError && <div className="ac-banner ac-banner--danger">{netError}</div>}
         {!interactive && current && game.phase !== 'lobby' && game.phase !== 'game_over' && (
           <div className="ac-banner">

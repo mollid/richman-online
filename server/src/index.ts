@@ -4,7 +4,7 @@ import type { NextFunction, Request, Response } from 'express';
 import { createServer } from 'node:http';
 import { Server, matchMaker } from '@colyseus/core';
 import { WebSocketTransport } from '@colyseus/ws-transport';
-import { GameRoom } from './rooms/GameRoom.js';
+import { GameRoom, ROOM_IDLE_TIMEOUT_SEC } from './rooms/GameRoom.js';
 import { authRouter } from './auth.js';
 import { getLeaderboard, getRecord, initStorage, listRecentRecords } from './storage.js';
 
@@ -68,12 +68,21 @@ app.get('/api/rooms', async (_req, res) => {
     res.set('Access-Control-Allow-Origin', '*');
     const rooms = await matchMaker.query({ name: 'game' });
     res.json(
-      rooms.map((room) => ({
-        roomId: room.roomId,
-        clients: room.clients,
-        maxClients: room.maxClients,
-        metadata: room.metadata ?? {},
-      })),
+      rooms
+        .filter((room) => {
+          const meta = room.metadata as { private?: boolean; idleSec?: number } | undefined;
+          // 私密房不进列表：连 roomId 都不下发，只能靠房主主动发码加入
+          if (meta?.private === true) return false;
+          // 到点先由这里把它从列表摘掉，房间本身晚一个扫描周期才被真收（见 GameRoom.sweepIdle）
+          if ((meta?.idleSec ?? 0) >= ROOM_IDLE_TIMEOUT_SEC) return false;
+          return true;
+        })
+        .map((room) => ({
+          roomId: room.roomId,
+          clients: room.clients,
+          maxClients: room.maxClients,
+          metadata: room.metadata ?? {},
+        })),
     );
   } catch {
     res.status(500).json({ error: '查询房间列表失败' });

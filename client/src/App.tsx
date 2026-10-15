@@ -36,6 +36,11 @@ function dayLimitLabel(days: number | null): string {
   return days === null ? '不限' : `${days} 天`;
 }
 
+/** 房间多久没人动过。不到一分钟说「刚刚」，免得整列都是「0 分钟前」 */
+function idleLabel(sec: number): string {
+  return sec < 60 ? '刚刚' : `${Math.floor(sec / 60)} 分钟前`;
+}
+
 /**
  * 天数上限选择（CORE-04 / 玩法文档 §14 第 2 项）。
  * 热座默认「不限」（复刻原版的唯一结束条件），联机默认 60 天（长局收得了口）。
@@ -66,6 +71,24 @@ function MapRow({ value, onChange }: { value: number | null; onChange: (mapId: n
           {m.name} · {m.cells} 格
         </button>
       ))}
+    </div>
+  );
+}
+
+/**
+ * 房间可见性（只在建房时生效）。私密房不进大厅列表 —— 服务端连 roomId 都不下发，
+ * 所以防陌生人是真防，不是前端藏起来；想加的人只能拿房主发出的房间码走「加入房间」。
+ */
+function RoomVisibilityRow({ value, onChange }: { value: boolean; onChange: (isPrivate: boolean) => void }) {
+  return (
+    <div className="player-count-row day-limit-row">
+      <span className="setup-title">房间可见性</span>
+      <button className={value ? '' : 'primary'} onClick={() => onChange(false)}>
+        公开
+      </button>
+      <button className={value ? 'primary' : ''} onClick={() => onChange(true)}>
+        私密
+      </button>
     </div>
   );
 }
@@ -190,11 +213,25 @@ export default function App() {
     }
   };
 
-  const connectRemote = async (playerName: string, roomId?: string, maxDays?: number | null, mapId?: number | null, characterId?: string | null) => {
+  const connectRemote = async (
+    playerName: string,
+    roomId?: string,
+    maxDays?: number | null,
+    mapId?: number | null,
+    characterId?: string | null,
+    isPrivate?: boolean,
+  ) => {
     setConnecting(true);
     setConnectError('');
     try {
-      const next = await ColyseusSession.connect({ playerName, roomId: roomId?.trim() || undefined, maxDays, mapId, characterId });
+      const next = await ColyseusSession.connect({
+        playerName,
+        roomId: roomId?.trim() || undefined,
+        maxDays,
+        mapId,
+        characterId,
+        isPrivate,
+      });
       session?.destroy();
       setSession(next);
     } catch (e) {
@@ -279,7 +316,7 @@ function SetupScreen({
   onOpenHelp,
 }: {
   onStartLocal: (playerCount: number, maxDays: number | null, mapId: number | null, characterIds?: string[]) => void;
-  onConnect: (playerName: string, roomId?: string, maxDays?: number | null, mapId?: number | null, characterId?: string | null) => void;
+  onConnect: (playerName: string, roomId?: string, maxDays?: number | null, mapId?: number | null, characterId?: string | null, isPrivate?: boolean) => void;
   onResume: () => void;
   onWatchReplay: (recordId: string) => void;
   connecting: boolean;
@@ -310,6 +347,8 @@ function SetupScreen({
   // 地图（R5-b）：null = 自建的 64 格环。热座与联机各记一份，只有建房者/开局者说了算
   const [localMap, setLocalMap] = useState<number | null>(null);
   const [onlineMap, setOnlineMap] = useState<number | null>(null);
+  // 建房默认可公开 —— 大厅列表本来就是给「顺手凑一桌」用的，想只发给好友再切成私密
+  const [onlinePrivate, setOnlinePrivate] = useState(false);
   const [playerName, setPlayerName] = useState('');
   // 联机只选一个角色（服务端按先到先得裁决）。给个默认值，避免出现"没选"这个空状态
   const [onlinePick, setOnlinePick] = useState<string>(CHARACTERS[0]!.id);
@@ -372,6 +411,10 @@ function SetupScreen({
     if (mode === 'online') {
       void refreshRooms();
       void refreshLeaderboard();
+      // 服务端会在后台收房（空闲满 15 分钟、或最后一个玩家走清后 autoDispose），
+      // 不轮询的话列表就一直挂着已经没了的房，直到人手动点刷新。
+      const poll = setInterval(() => void refreshRooms(), 10_000);
+      return () => clearInterval(poll);
     }
     if (mode === 'replay') void refreshRecords();
   }, [mode]);
@@ -471,10 +514,11 @@ function SetupScreen({
           />
           <DayLimitRow value={onlineMaxDays} onChange={setOnlineMaxDays} />
           <MapRow value={onlineMap} onChange={setOnlineMap} />
+          <RoomVisibilityRow value={onlinePrivate} onChange={setOnlinePrivate} />
           <button
             className="primary start-btn"
             disabled={!playerName.trim() || connecting}
-            onClick={() => onConnect(playerName.trim(), undefined, onlineMaxDays, onlineMap, onlinePick)}
+            onClick={() => onConnect(playerName.trim(), undefined, onlineMaxDays, onlineMap, onlinePick, onlinePrivate)}
           >
             {connecting ? '连接中…' : '创建房间'}
           </button>
@@ -511,7 +555,7 @@ function SetupScreen({
                 <div key={room.roomId} className="room-row">
                   <span className="room-id">{room.roomId}</span>
                   <span className="room-players">
-                    {room.players}/{room.maxPlayers} 人
+                    {room.players}/{room.maxPlayers} 人<span className="room-idle"> · {idleLabel(room.idleSec)}</span>
                   </span>
                   <button
                     disabled={!playerName.trim() || connecting || room.players >= room.maxPlayers}
@@ -537,7 +581,7 @@ function SetupScreen({
               ))}
             </div>
           )}
-          <p className="hint">创建房间后把房间码发给好友，2 人即可开局（最多 4 人）</p>
+          <p className="hint">创建房间后把房间码发给好友，2 人即可开局（最多 4 人）；私密房不出现在下面的公开房间列表里，只能凭码加入</p>
         </div>
       ) : (
         <div className="setup-card replay-card">
