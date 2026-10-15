@@ -61,15 +61,18 @@ export class ColyseusSession implements GameSession {
     seed?: number;
     maxDays?: number | null;
     mapId?: number | null;
+    /** 想要的角色。服务端按「先到先得」裁决，被抢走会另给一个没人占的，不会拒绝加入 */
+    characterId?: string | null;
   }): Promise<ColyseusSession> {
     const client = new Client(serverUrl());
     const token = localStorage.getItem('richman.token') ?? undefined;
     const room = opts.roomId
-      ? await client.joinById(opts.roomId, { name: opts.playerName, token })
+      ? await client.joinById(opts.roomId, { name: opts.playerName, token, characterId: opts.characterId })
       : await client.create('game', {
           name: opts.playerName,
           seed: opts.seed,
           token,
+          characterId: opts.characterId,
           startDate: getSettings().startDate ?? undefined,
           // 建房者选的天数上限：null 要原样送达（那是「显式不限」），所以只在有值时才带这个键
           ...(opts.maxDays === undefined ? {} : { maxDays: opts.maxDays }),

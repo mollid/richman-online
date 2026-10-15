@@ -5,10 +5,12 @@ import {
   applyAction,
   availableActions,
   botDecide,
+  characterById,
   createGame,
   forceGameOver,
   nextRandom,
   removePlayer,
+  resolveCharacter,
   resolveMaxDays,
   ONLINE_DEFAULT_MAX_DAYS,
   type DateSerial,
@@ -16,8 +18,10 @@ import {
   type PlayerAction,
 } from '@richman/shared';
 
-const PLAYER_COLORS = [0xef5350, 0x42a5f5, 0x66bb6a, 0xffee58];
-const DEFAULT_NAMES = ['阿福', '小美', '大宝', '金宝'];
+/**
+ * 房间不再自带颜色表与名字表：两者都跟着角色走（`characters.ts` 是唯一出处），
+ * 否则会出现「头像说关老吉、描边是座位色、名字又是第四个默认名」这种一人三个身份。
+ */
 const OFFLINE_AUTO_ACT_DELAY_MS = 3000;
 const RECONNECT_TIMEOUT_SEC = 60;
 
@@ -97,13 +101,16 @@ export class GameRoom extends Room {
       try {
         if (this.game.phase !== 'lobby') throw new Error('对局已开始，无法添加 AI');
         if (this.game.players.length >= this.maxClients) throw new Error('房间已满');
-        const BOT_NAMES = ['阿智', '小灵', '阿巧'];
-        const idx = this.game.players.length;
-        const botId = `bot-${idx}-${this.botCounter++}`;
+        // AI 也占一个角色（先到先得那套同样适用），名字就是「AI·角色名」——
+        // 房间不再另存一份 bot 名表，否则又出现"头像一个名字、牌子上另一个"
+        const characterId = resolveCharacter(null, this.game.players.map((p) => p.characterId));
+        const ch = characterById(characterId)!;
+        const botId = `bot-${this.game.players.length}-${this.botCounter++}`;
         this.game = addPlayer(this.game, {
           id: botId,
-          name: `AI·${BOT_NAMES[(idx - 1 + BOT_NAMES.length) % BOT_NAMES.length]!}`,
-          color: PLAYER_COLORS[idx % PLAYER_COLORS.length]!,
+          name: `AI·${ch.name}`,
+          color: ch.color,
+          characterId,
         });
         this.botIds.add(botId);
         this.updateMetadata('lobby');
@@ -161,17 +168,21 @@ export class GameRoom extends Room {
     });
   }
 
-  onJoin(client: Client, options: { name?: string }, auth?: AuthResult) {
+  onJoin(client: Client, options: { name?: string; characterId?: string }, auth?: AuthResult) {
     if (this.game.phase !== 'lobby') {
       throw new Error('对局已开始，无法加入');
     }
-    const index = this.game.players.length;
     if (auth?.userId) this.userIds.set(client.sessionId, auth.userId);
+    // 角色先到先得（决策人定）：被人抢走就按表序给一个没人占的，不因此把人拒之门外
+    const characterId = resolveCharacter(options.characterId, this.game.players.map((p) => p.characterId));
+    const ch = characterById(characterId)!;
     const rawName = (auth?.username ?? options.name ?? '').trim().slice(0, 8);
     this.game = addPlayer(this.game, {
       id: client.sessionId,
-      name: rawName || DEFAULT_NAMES[index % DEFAULT_NAMES.length]!,
-      color: PLAYER_COLORS[index % PLAYER_COLORS.length]!,
+      // 没填名字就用角色名：房间不再另有一份「默认名」表，免得头像与名字对不上
+      name: rawName || ch.name,
+      color: ch.color,
+      characterId,
     });
     this.updateMetadata('lobby');
     this.broadcastState();

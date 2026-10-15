@@ -8,6 +8,7 @@ import {
   createGame,
   MAGIC_CONDITIONS,
   ReplayEngine,
+  resolveCharacter,
   type GameState,
   type PlayerDef,
 } from '../src/index.js';
@@ -123,6 +124,30 @@ describe('录像与角色（波 3 补）', () => {
       ]),
     );
     expect(engine.finalState.players.map((p) => p.characterId)).toEqual(['afu', 'xiaomei']);
+  });
+});
+
+describe('联机角色分配（决策人定：先到先得）', () => {
+  it('没人占就给请求的那个', () => {
+    expect(resolveCharacter('guanlaoji', [])).toBe('guanlaoji');
+  });
+
+  it('被抢走就给表序里第一个没人占的，而不是拒绝加入', () => {
+    // 第二个人也要 afu ⇒ 他拿 xiaomei。抢位失败不该变成进不了房
+    expect(resolveCharacter('afu', ['afu'])).toBe('xiaomei');
+  });
+
+  it('没请求、或请求了不存在的 id，同样按表序给空的', () => {
+    expect(resolveCharacter(undefined, ['afu', 'xiaomei'])).toBe('tiexiong');
+    expect(resolveCharacter('nobody', [])).toBe('afu');
+    expect(resolveCharacter(null, ['afu'])).toBe('xiaomei');
+  });
+
+  it('四个座位连开不重号（AI 补位走的是同一条规则）', () => {
+    const taken: string[] = [];
+    for (let i = 0; i < 4; i++) taken.push(resolveCharacter(i === 0 ? 'afu' : null, taken));
+    expect(new Set(taken).size).toBe(4);
+    expect(taken).toEqual(['afu', 'xiaomei', 'tiexiong', 'baixiaolu']);
   });
 });
 

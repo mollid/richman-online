@@ -53,3 +53,18 @@ export function characterById(id: string): CharacterDef | null {
 export function characterOfSeat(seat: number): CharacterDef {
   return CHARACTERS[seat % CHARACTERS.length]!;
 }
+
+/**
+ * 联机大厅的角色分配 —— 决策人定的口径是**先到先得**。
+ *
+ * 规则只有一句：请求的角色没人占就给他，被占了就给「表序里第一个没人占的」。
+ * 刻意**不**把"抢位失败"做成"进不了房"：抢角色是排队问题，不是加入房间的门槛，
+ * 为这点事把人踢出去，代价是玩家得退出来重进，而他要的角色多半又被人抢了。
+ *
+ * 放这里而不是写在 `GameRoom` 里，是因为 server 包没有测试目录 —— 规则留在 shared
+ * 才有一条用例钉着它，客户端显示"哪些角色已被占"也能复用同一份判定。
+ */
+export function resolveCharacter(requested: string | null | undefined, taken: string[]): string {
+  if (requested && !taken.includes(requested) && BY_ID.has(requested)) return requested;
+  return CHARACTERS.map((c) => c.id).find((id) => !taken.includes(id)) ?? characterOfSeat(taken.length).id;
+}
