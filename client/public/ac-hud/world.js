@@ -758,6 +758,11 @@
         /* 交付是 256 方图且主体占满高度，所以宽高同值 = 主体正好 TOKEN_H 高、脚落在格顶 */
         sp.scale.set(TOKEN_H, TOKEN_H, 1);
         sp.position.set(0, tileTop + TOKEN_H / 2, 0);
+        /* renderOrder 必须高于格子贴面（价格牌与房子图标是 2）：Sprite 不写深度，
+           同层排序下它会先被画掉，接着贴面糊在人物身上 —— 低俯角时看着就像棋子穿进格子里。
+           原来的 3D 人偶是不透明体、自己写深度，所以没这个问题；换广告牌时这层保护是丢掉的。
+           6 也高于实体标记（NPC/乞丐 5），棋子永远压过它们。 */
+        sp.renderOrder = 6;
         g.add(sp);
         g.userData.sprite = sp;   // 动画循环拿它做呼吸（人偶兜底时没有这个键）
         new THREE.TextureLoader().load(`/art/char_${p.characterId}@v6.png`, (t) => {
