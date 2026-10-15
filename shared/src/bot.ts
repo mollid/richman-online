@@ -1,4 +1,4 @@
-import { actionRefusal, availableActions, magicHits, nextBidAmount } from './engine.js';
+import { actionRefusal, autoSkipAction, availableActions, magicHits, nextBidAmount } from './engine.js';
 import { landPrice, landUpgradeCost } from './economy.js';
 import { CARDS, SHOP_CARD_IDS } from './cards.js';
 import { MAGIC_AI_SELF_GUARD_EFFECT, MAGIC_EFFECTS, MAGIC_EFFECT_ORDER } from './npc.js';
@@ -101,6 +101,11 @@ export function botDecide(state: GameState, botId: string, rng: () => number): P
   }
 
   if (state.players[state.currentPlayerIndex]?.id !== botId) return null;
+
+  // 停留锁：在押 / 住院 / 出国的 AI 这一回合无事可做，判据与服务端自动跳过同源（`autoSkipAction`）。
+  // 让它去试那些必被引擎拒绝的动作，等于把房间冻在那条 bot 定时上。
+  const stay = autoSkipAction(state);
+  if (stay) return stay;
 
   if (state.phase === 'awaiting_roll') {
     /* R4：自由操作全在这一段办完（送神 → 救急变现 → 建仓 → 掷骰）。

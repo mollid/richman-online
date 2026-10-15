@@ -6,6 +6,7 @@ import {
   actionRefusal,
   actionTargets,
   applyAction,
+  autoSkipAction,
   availableActions,
   createGame,
   landPrice,
@@ -342,5 +343,98 @@ describe('门控与引擎同源（边界局面逐条钉死）', () => {
       expect(actionRefusal(g, { type: 'BUILD_FACILITY', facility })).toBeNull();
     }
     expect(availableActions(attachGod(g, 'big-misfortune')).buildableFacilities).toEqual([]);
+  });
+});
+
+describe('停留锁：在押 / 住院期间一律无法操作，回合自动跳过', () => {
+  /** 把当前玩家判进牢里并押到监狱格（字段口径与 `imposeCustody` 一致） */
+  function jailed(state: GameState): GameState {
+    const next = structuredClone(state);
+    const p = next.players[next.currentPlayerIndex]!;
+    p.skipTurns = 3;
+    p.custody = { kind: 'jail', daysLeft: 3 };
+    p.cards = ['tax-audit'];
+    p.items = { teleporter: 1 };
+    p.position = next.board.find((c) => c.type === 'jail')!.id;
+    return next;
+  }
+
+  it('买地 / 用卡 / 用道具 / 存取款全被拒，掷骰与离窗仍然放行', () => {
+    const s = jailed(withCash(newGame(), 200_000));
+    expect(actionRefusal(s, { type: 'BUY_LAND' })).toContain('在押中无法操作');
+    expect(actionRefusal(s, { type: 'USE_CARD', cardId: 'tax-audit' })).toContain('在押中无法操作');
+    expect(actionRefusal(s, { type: 'USE_ITEM', itemId: 'teleporter' })).toContain('在押中无法操作');
+    expect(actionRefusal(s, { type: 'DEPOSIT', amount: 100 })).toContain('在押中无法操作');
+    expect(actionRefusal(s, { type: 'BUY_STOCK', stockId: 'media', quantity: 1 })).toContain('在押中无法操作');
+    // 放行清单：自动跳过要发的那一颗 + 落格窗的逃生门（这句拒绝来自相位，不来自停留锁）
+    expect(actionRefusal(s, { type: 'ROLL_DICE' })).toBeNull();
+    expect(actionRefusal(s, { type: 'FINISH_LANDING' })).toBe('当前不在落格决策中');
+  });
+
+  it('门控与锁同源：可用位一律落下来，不出现「面板说能买、引擎说不让买」', () => {
+    const acts = availableActions(jailed(withCash(newGame(), 200_000)));
+    expect(acts.canRoll).toBe(true);
+    expect(acts.canBuy).toBe(false);
+    expect(acts.canShop).toBe(false);
+    expect(acts.canTradeStock).toBe(false);
+    expect(acts.canDeposit).toBe(false);
+    expect(acts.canWithdraw).toBe(false);
+    expect(acts.canLoan).toBe(false);
+    expect(acts.usableCards).toEqual([]);
+    expect(acts.usableItems).toEqual([]);
+    expect(acts.researchableItems).toEqual([]);
+  });
+
+  it('门外代办不被锁：踩医院格的人也还能替别人办出院', () => {
+    const s = jailed(newGame());
+    const me = s.players[s.currentPlayerIndex]!;
+    const other = s.players.find((p) => p.id !== me.id)!;
+    other.custody = { kind: 'hospital', daysLeft: 3 };
+    other.skipTurns = 3;
+    other.position = s.board.find((c) => c.type === 'hospital')!.id;
+    // 自己也住院：站在医院格门外，窗里唯一能做的事就是替别人办出院
+    me.custody = { kind: 'hospital', daysLeft: 1 };
+    me.skipTurns = 1;
+    me.position = other.position;
+    me.cash = 200_000;
+    s.phase = 'awaiting_action';
+    s.landing = { cellId: me.position, venue: null, turn: s.turn };
+    expect(actionRefusal(s, { type: 'DISCHARGE_PATIENT', targetPlayerId: other.id })).toBeNull();
+    // 这一扇窗还有事可做，所以自动跳过不该把它替他关掉
+    expect(autoSkipAction(s)).toBeNull();
+  });
+
+  it('自动跳过给出的那一步：掷骰阶段发骰子、空窗就关上，正常人回合不插手', () => {
+    expect(autoSkipAction(jailed(newGame()))).toEqual({ type: 'ROLL_DICE' });
+    const window = structuredClone(jailed(newGame()));
+    window.phase = 'awaiting_action';
+    window.landing = null;
+    expect(autoSkipAction(window)).toEqual({ type: 'FINISH_LANDING' });
+    expect(autoSkipAction(newGame())).toBeNull();
+  });
+
+  it('跳过的一手不掷骰、不进落格，只留一条播报', () => {
+    const s = jailed(newGame());
+    const before = s.players[s.currentPlayerIndex]!;
+    const next = applyAction(s, autoSkipAction(s)!);
+    const after = next.players.find((p) => p.id === before.id)!;
+    expect(after.skipTurns).toBe(2);
+    expect(after.position).toBe(before.position);
+    expect(next.dice).toBeNull();
+    expect(next.turn).toBe(s.turn + 1);
+    expect(next.log.some((l) => l.text.includes('在押中，无法操作，本回合自动跳过（剩余 2 回合）'))).toBe(true);
+  });
+
+  it('牢底那一手不再自称「无法操作」：只报刑满释放', () => {
+    const s = jailed(newGame());
+    const me = s.players[s.currentPlayerIndex]!;
+    me.skipTurns = 1;
+    me.custody = { kind: 'jail', daysLeft: 1 };
+    const next = applyAction(s, { type: 'ROLL_DICE' });
+    const after = next.players.find((p) => p.id === me.id)!;
+    expect(after.custody).toBeNull();
+    expect(next.log.some((l) => l.text.includes('刑满释放'))).toBe(true);
+    // 人已经自由了，再跟一句「在押中，无法操作」就是自相矛盾
+    expect(next.log.some((l) => l.text.includes('无法操作'))).toBe(false);
   });
 });

@@ -1367,7 +1367,9 @@
   /** 逐格跳的节拍：一格 0.16 秒。骰子从出手到落定 0.62 秒，这段时间棋子原地等 —— 先看点数再走路 */
   const HOP_CELL_SEC = 0.16;
   const DICE_ROLL_SEC = 0.62;
-  let hopQ = null;   // {pid, path:[{x,z}], i, t, wait, lastCell}
+  /** 走路演完到被押走之间停多久：够读完「被押送至…」那一条，也让两段读得通 */
+  const TRANSFER_HOLD_SEC = 0.55;
+  let hopQ = null;   // {pid, path:[{x,z}], i, t, wait, lastCell, finalCell, transferTo, hold}
 
   function frame(now) {
     if (disposed) return;
@@ -1430,10 +1432,21 @@
     hooks.onFrame && hooks.onFrame();
   }
 
+  /** 押送的第二段：直接落到真值格。不做沿圈补走 —— 补走正是「绕半个棋盘」的由来 */
+  function landTransfer(g) {
+    const { pid, transferTo } = hopQ;
+    hopQ = null;
+    const { x, z } = cellPos(transferTo);
+    g.position.x = x; g.position.z = z; g.position.y = 0;
+    hooks.onLand && hooks.onLand(pid, transferTo, 'transfer');
+    hooks.onMoveSettled && hooks.onMoveSettled(pid, transferTo);
+  }
+
   function stepHop(dt) {
     if (hopQ.wait > 0) { hopQ.wait -= dt; return; }   // 骰子还没停稳，棋子原地等
     const g = tokenGroups.get(hopQ.pid);
     if (!g) { hopQ = null; return; }
+    if (hopQ.hold > 0) { hopQ.hold -= dt; if (hopQ.hold <= 0) landTransfer(g); return; }
     const from = hopQ.path[hopQ.i], to = hopQ.path[Math.min(hopQ.i + 1, hopQ.path.length - 1)];
     hopQ.t += dt / HOP_CELL_SEC;
     const k = Math.min(1, hopQ.t);
@@ -1445,8 +1458,15 @@
       if (hopQ.i >= hopQ.path.length - 1) {
         g.position.y = 0;
         const pid = hopQ.pid, cell = hopQ.lastCell;
+        /* 路走完了，但引擎这一手把人押走了（踩中机会格 → 直接进监狱那类）：
+           先按走路落定报一次，停一拍，再瞬移到真落点。 */
+        if (hopQ.transferTo != null && hopQ.transferTo !== cell) {
+          hooks.onLand && hooks.onLand(pid, cell, 'walk');
+          hopQ.hold = TRANSFER_HOLD_SEC;
+          return;
+        }
         hopQ = null;
-        hooks.onLand && hooks.onLand(pid, cell);
+        hooks.onLand && hooks.onLand(pid, cell, 'walk');
         /* 跳完了才允许交接镜头：引擎一位玩家的掷骰是一个原子动作，状态到的那一刻
            回合指针已经换人了，不排队就会看见「棋子在半空、镜头已经甩走」。 */
         hooks.onMoveSettled && hooks.onMoveSettled(pid, cell);
@@ -1504,8 +1524,9 @@
         if (!g) continue;
         if (hopQ && hopQ.pid === p.id) {
           /* 演出没跟上真状态（传送卡、交换位置那类一步跨很远）就立刻落位，
-             别把棋子留在半路某一格上 —— 玩家看到的必须是引擎的真值。 */
-          if (p.position === hopQ.lastCell) continue;
+             别把棋子留在半路某一格上 —— 玩家看到的必须是引擎的真值。
+             比对的是这一段的**终点**：押送是「先走路、再瞬移」两段，中途那一格本来就不是真值。 */
+          if (p.position === hopQ.finalCell) continue;
           hopQ = null;
         }
         const { x, z } = cellPos(p.position);
@@ -1530,16 +1551,17 @@
      * 掷骰演出：骰子按真实点数翻滚落定 → 棋子沿圈逐格跳过 `steps` 格（带小弧线）。
      *
      * 引擎一次 `ROLL_DICE` 就把整段路原子地走完了，中间那些格子从不进状态，
-     * 所以「路过哪几格」只能由宿主把前后两帧的脚下格之差交给表现层补 —— 纯表现，不落规则。
-     * @param {{pid:string, from:number, steps:number, dir?:1|-1, dice?:number[]|null}} opts
+     * 所以「路过哪几格」只能由宿主把这一手的真实路线（`state.movePath`）交给表现层 —— 纯表现，不落规则。
+     * `transfer` 是这一手的**真落点**（押送 / 传送那类）：路走完后再停一拍，直接瞬移过去，不沿圈补走。
+     * @param {{pid:string, from:number, steps:number, dir?:1|-1, dice?:number[]|null, cells?:number[]|null, transfer?:number|null}} opts
      * @returns {boolean} 真的开始演出了才返回 true（减弱动效偏好下返回 false，宿主直接落位）
      */
     playMove(opts) {
-      const { pid, from, steps, dir = 1, dice = null, cells = null } = opts || {};
+      const { pid, from, steps, dir = 1, dice = null, cells = null, transfer = null } = opts || {};
       const g = tokenGroups.get(pid);
       if (!g || REDUCED || !(steps > 0)) return false;
       /* `cells` = 引擎记下的这一手真实格子序列（`state.movePath` 的尾巴）⇒ 直接照它跳。
-         没有才按环上的 ±1 自己推 —— 那条只在自建图，或传送/神明挪位这类没有路径的位移里成立。 */
+         没有才按环上的 ±1 自己推 —— 那条只在自建图里成立。 */
       const walk = cells && cells.length ? cells : null;
       const n = state.board.length || 64;
       const path = walk ? walk.map((id) => cellPos(id)) : (() => {
@@ -1549,8 +1571,9 @@
         return out;
       })();
       const lastCell = walk ? walk[walk.length - 1] : (from + dir * steps + n) % n;
+      const finalCell = transfer != null && transfer !== lastCell ? transfer : lastCell;
       /* `dice` 为空 = 这一手不是掷骰走路（神明挪位、传送那类）：不摇骰子，直接开走 */
-      hopQ = { pid, path, i: 0, t: 0, wait: dice ? DICE_ROLL_SEC : 0, lastCell };
+      hopQ = { pid, path, i: 0, t: 0, wait: dice ? DICE_ROLL_SEC : 0, lastCell, finalCell, transferTo: finalCell, hold: 0 };
       if (dice) throwDice(dice, from);
       return true;
     },

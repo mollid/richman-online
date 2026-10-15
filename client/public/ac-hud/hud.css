@@ -20,15 +20,17 @@ body {
   padding: 10px;
   gap: 10px;
   grid-template-columns: minmax(0, 1fr) clamp(320px, 26vw, 392px);
-  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  grid-template-rows: auto auto auto minmax(0, 1fr) auto;
   grid-template-areas:
     "top    top"
     "status status"
+    "ticker ticker"
     "board  side"
     "dock   dock";
 }
 .hud-top { grid-area: top; }
 .hud-status { grid-area: status; }
+.hud-ticker { grid-area: ticker; }
 .hud-board { grid-area: board; min-height: 0; }
 .hud-side { grid-area: side; min-height: 0; }
 .hud-dock { grid-area: dock; }
@@ -38,7 +40,7 @@ body {
   .hud-shell {
     height: auto;
     grid-template-columns: minmax(0, 1fr);
-    grid-template-areas: "top" "status" "board" "side" "dock";
+    grid-template-areas: "top" "status" "ticker" "board" "side" "dock";
   }
   .hud-side .ac-panel { max-height: none; }
   /* 既有缺陷（本轮量出来的，与相机条无关）：
@@ -109,6 +111,37 @@ body {
   mask-image: linear-gradient(90deg, transparent 0, #000 10px, #000 calc(100% - 10px), transparent 100%);
 }
 .hud-status__mkt::-webkit-scrollbar { display: none; }
+
+/* ---------- 播报字幕条（棋盘上方）：只播引擎原句，滚过去就散 ---------- */
+.hud-ticker {
+  position: relative;
+  height: 26px;
+  flex: none;
+  overflow: hidden;
+  border-radius: 13px;
+  border: 2px solid var(--ac-line);
+  background: rgba(255, 251, 239, .62);
+}
+.hud-ticker::before {
+  content: '📣';
+  position: absolute; left: 7px; top: 0; bottom: 0;
+  display: flex; align-items: center;
+  font-size: 12px; z-index: 2;
+}
+/* 轨道从 📣 之后开始，字号与状态条同档（这一行是「读」的，不是「扫」的）。
+   渐隐只罩轨道：整条一起蒙版会把最左那颗 📣 也抹成半透明，看着像没加载出来。 */
+.hud-ticker__track {
+  position: absolute; left: 28px; right: 0; top: 0; bottom: 0;
+  mask-image: linear-gradient(90deg, transparent 0, #000 14px, #000 calc(100% - 14px), transparent 100%);
+}
+.hud-ticker__item {
+  position: absolute; left: 0; top: 1px; height: 20px;
+  display: inline-flex; align-items: center;
+  padding: 0 10px;
+  white-space: nowrap;
+  font-size: 11.5px; font-weight: 800; color: var(--ac-text);
+  background: var(--ac-cream2); border: 2px solid var(--ac-line); border-radius: 999px;
+}
 
 /* ---------- 通用小件 ---------- */
 .hud-chip {

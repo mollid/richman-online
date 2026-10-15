@@ -4,6 +4,7 @@ import {
   addPlayer,
   applyAction,
   availableActions,
+  autoSkipAction,
   botDecide,
   characterById,
   createGame,
@@ -26,6 +27,11 @@ import {
  * 否则会出现「头像说关老吉、描边是座位色、名字又是第四个默认名」这种一人三个身份。
  */
 const OFFLINE_AUTO_ACT_DELAY_MS = 3000;
+/**
+ * 停留态自动跳过回合的节奏（在押 / 住院 / 出国）。比掉线托管快得多 —— 这一段不是「等人拿主意」，
+ * 只要把「🚔 在押中，本回合自动跳过」那条播报留在屏幕上让人读完，顺带让移动演出走完。
+ */
+const AUTO_SKIP_DELAY_MS = 1200;
 const RECONNECT_TIMEOUT_SEC = 60;
 
 /**
@@ -71,6 +77,8 @@ export class GameRoom extends Room {
   maxClients = 4;
   private game!: GameState;
   private autoActTimer: ReturnType<typeof setTimeout> | null = null;
+  /** 停留态（在押 / 住院 / 出国）自动跳过回合的定时句柄 */
+  private autoSkipTimer: ReturnType<typeof setTimeout> | null = null;
   private seed = 0;
   private startDate!: DateSerial;
   private recordSaved = false;
@@ -296,6 +304,7 @@ export class GameRoom extends Room {
 
   onDispose() {
     if (this.autoActTimer) clearTimeout(this.autoActTimer);
+    if (this.autoSkipTimer) clearTimeout(this.autoSkipTimer);
     if (this.botTimer) clearTimeout(this.botTimer);
     if (this.idleTimer) clearInterval(this.idleTimer);
   }
@@ -386,6 +395,8 @@ export class GameRoom extends Room {
 
   /** 掉线玩家托管：拍卖里弃权退出，其余自动掷骰 + 结束回合 */
   private autoActForOffline() {
+    // 停留态（在押 / 住院 / 出国）交给 `autoSkipTurn` 统一走：两条定时各发一颗骰子会把人一次跳两回合
+    if (autoSkipAction(this.game)) return;
     if (this.game.phase === 'awaiting_auction') {
       const bidder = this.actingPlayerId();
       const p = bidder ? this.game.players.find((q) => q.id === bidder) : undefined;
@@ -438,6 +449,33 @@ export class GameRoom extends Room {
     }
     this.broadcast('state', { game: this.game, actions: availableActions(this.game) });
     this.maybeScheduleBotAct();
+    this.maybeScheduleAutoSkip();
+  }
+
+  /**
+   * 停留态（在押 / 住院 / 出国）的回合由服务端定时替他走完 —— 判据与热座共用 `autoSkipAction`。
+   * 广播排程一次：每次状态到手都重新对表，跳过一位后下一位若还在牢里就会再排一次。
+   */
+  private maybeScheduleAutoSkip() {
+    if (this.autoSkipTimer) return;
+    if (!autoSkipAction(this.game)) return;
+    this.autoSkipTimer = setTimeout(() => {
+      this.autoSkipTimer = null;
+      this.autoSkipTurn();
+    }, AUTO_SKIP_DELAY_MS);
+  }
+
+  /** 替停留中的玩家走掉这一回合（动作照常进 `actionLog`，回放逐位不变） */
+  private autoSkipTurn() {
+    const action = autoSkipAction(this.game);
+    if (!action) return;
+    try {
+      this.game = applyAction(this.game, action);
+      this.actionLog.push({ turn: this.game.turn, action });
+      this.broadcastState();
+    } catch {
+      // 判据与引擎同源，理论上不会被拒；真被拒就等下一次广播重新对表
+    }
   }
 
   /** 若当前行动者是 AI，安排其行动 */
@@ -457,6 +495,9 @@ export class GameRoom extends Room {
     if (this.game.phase === 'lobby' || this.game.phase === 'game_over') return;
     const actingId = this.actingPlayerId();
     if (!actingId || !this.botIds.has(actingId)) return;
+    // 停留态由 `autoSkipTurn` 统一走完：这一回合 AI 无事可做，让它去撞那些会被引擎拒绝的动作，
+    // 只会抛在这条定时里 —— 没有广播就没有下一次排程，房间就此冻住。
+    if (autoSkipAction(this.game)) return;
     const rng = () => {
       const draw = nextRandom(this.botRngState);
       this.botRngState = draw.nextState;

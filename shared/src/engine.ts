@@ -2137,8 +2137,9 @@ export function availableActions(state: GameState): AvailableActions {
       // 商店没有「进入商店」这个动作：这一位只表示「脚下是商店格」，
       // 具体能不能买、能不能卖由 BUY_CARD / SELL_CARD 等动作各自的校验决定。
       canShop: state.phase === 'awaiting_action' && inShop(state, p),
-      // 股市可交易性是整个市场的状态；能否买某一只、买几只由 BUY_STOCK 的校验决定（bot 与 UI 都问它）
-      canTradeStock: canTradeStockNow(state) && !p.bankrupt && isMarketOpen(state),
+      // 股市可交易性是整个市场的状态；能否买某一只、买几只由 BUY_STOCK 的校验决定（bot 与 UI 都问它）。
+      // 停留锁也要在这一位上体现：门控与引擎必须同源，否则会出现「面板说能买、引擎说不让买」。
+      canTradeStock: canTradeStockNow(state) && !p.bankrupt && isMarketOpen(state) && !isStayLocked(p),
       canPick: state.phase === 'awaiting_pick',
       canDeposit: can({ type: 'DEPOSIT', amount: 1 }),
       canWithdraw: can({ type: 'WITHDRAW', amount: 1 }),
@@ -2253,6 +2254,13 @@ function startGame(state: GameState): void {
   treasureRefreshHook(state);
 }
 
+/** 停留态怎么说：在押 / 住院按 `custody` 定性，出国另有名字，其余统一叫停留 */
+function stayLabel(p: Player): string {
+  if (p.custody) return p.custody.kind === 'jail' ? '在押' : '住院';
+  if (p.abroadTurns > 0) return '出国';
+  return '停留';
+}
+
 /**
  * 回合起点闸门（自 `rollDice` 拆出，对应 CORE-02 的 `TURN_START` 相）：
  * 倒闭者与停留中的玩家直接消费掉本回合；工程车（ITEM-12）在此递减一回合。
@@ -2266,14 +2274,24 @@ function consumeTurnDelay(state: GameState, p: Player): boolean {
 
   if (p.skipTurns > 0) {
     p.skipTurns -= 1;
+    // 定性要在清 `custody` 之前取：取晚了「刑满释放」那一手会被念成「停留中」
+    const stay = stayLabel(p);
+    let released = false;
     if (p.custody) {
       p.custody.daysLeft = Math.min(p.custody.daysLeft, p.skipTurns);
       if (p.skipTurns === 0) {
         log(state, `${p.name} ${p.custody.kind === 'jail' ? '刑满释放，重获自由' : '康复出院'}`);
         p.custody = null;
+        released = true;
       }
     }
-    log(state, `${p.name} 停留中，剩余 ${p.skipTurns} 回合`);
+    /* 最后一手不再补一句「无法操作」：人这一手确实还是跳过（没骰子可掷），但把他刚拿回的
+       自由再念成一遍禁锢，播报就自相矛盾了。没到 0 的那些回合才报剩余。 */
+    if (!released) {
+      log(state, p.skipTurns > 0
+        ? `${p.name} ${stay}中，无法操作，本回合自动跳过（剩余 ${p.skipTurns} 回合）`
+        : `${p.name} ${stay}到点，本回合仍自动跳过，下一回合起恢复行动`);
+    }
     advanceTurn(state);
     return true;
   }
@@ -2284,6 +2302,32 @@ function consumeTurnDelay(state: GameState, p: Player): boolean {
     if (p.bulldozerTurns === 0) retireBulldozer(state, p, '满 7 天');
   }
   return false;
+}
+
+/**
+ * 会话层的「这一回合该自动跳过」判据：停留中的玩家此刻无事可做（`stayRefusal` 已把操作锁死），
+ * 由热座与联机共用这一份判据定时替他走完回合。
+ *
+ * 放在 shared 而不是各写一套：两条会话路径各判各的迟早漂移，
+ * 而「按钮灰着」与「回合真的会自己走」必须是同一句话。
+ * 自动发出去的动作照常进 `actionLog`，所以录像回放逐位不变；
+ * 它也不消耗随机数（`consumeTurnDelay` 在 `drawDice` 之前就返回了）。
+ */
+export function autoSkipAction(state: GameState): PlayerAction | null {
+  if (state.phase === 'lobby' || state.phase === 'game_over') return null;
+  const p = currentPlayerOrNull(state);
+  if (!p || p.skipTurns <= 0) return null;
+  if (state.phase === 'awaiting_roll') return { type: 'ROLL_DICE' };
+  if (state.phase === 'awaiting_action') {
+    /* 停留态里还可能挂着一扇落格窗：这一手被判罪（踩危险格→违法事件→押送、踩医院格→办住院）才会有。
+       窗里若已经没有可做的动作就替他关上，别让人对着一扇空窗手动点「离开」；
+       但门外代办（保释 / 出院）是停留锁唯一放行的窗内动作 —— 踩医院格的人会先被这一格判住院，
+       把这类窗也自动关掉，等于又把 R4 打开的那条通道关回去了。 */
+    const a = availableActions(state);
+    if (a.bailableVillains.length > 0 || a.dischargeablePatients.length > 0) return null;
+    return { type: 'FINISH_LANDING' };
+  }
+  return null;
 }
 
 /**
@@ -3753,10 +3797,41 @@ function actorForAction(state: GameState, action: PlayerAction): Player | null {
   return currentPlayerOrNull(state);
 }
 
+/**
+ * 停留锁：在押 / 住院 / 出国这类「人不在场上」的期间，玩家一律无法操作，
+ * 回合改由会话层替他自动跳过（判据见 `autoSkipAction`）。
+ *
+ * 放行清单不是宽松，而是防死路 —— 这些动作的当事人可能正好是停留中的人，
+ * 锁掉就等于把某条通道彻底钉死：
+ * `ROLL_DICE` 是自动跳过要发的那一颗，`FINISH_LANDING` 是落格窗唯一出口（也是防软锁的逃生门），
+ * `DISCARD_CARD` / `MINIGAME_PICK` / 拍卖三动作分别由持牌人、小游戏主人、竞买人发起，
+ * 而他们可能是这一回合没轮到、却仍在停留中的某个人。
+ * `BAIL_PRISONER` / `DISCHARGE_PATIENT` 是「站在门外替别人办事」：踩到医院格的人会先被
+ * 这一格判住院（`onLandingHospital`），若连代办都锁掉，R4 好不容易打开的出院通道就又关死了。
+ */
+const STAY_PASS_TYPES: ReadonlySet<PlayerAction['type']> = new Set([
+  'ROLL_DICE', 'FINISH_LANDING', 'DISCARD_CARD', 'MINIGAME_PICK',
+  'AUCTION_BID', 'AUCTION_PASS', 'AUCTION_GIVE_UP',
+  'BAIL_PRISONER', 'DISCHARGE_PATIENT',
+]);
+
+/** 此人此刻是否被停留锁钉住（在押 / 住院 / 出国那类 `skipTurns > 0`） */
+function isStayLocked(p: Player | null): boolean {
+  return !!p && p.skipTurns > 0;
+}
+
+function stayRefusal(state: GameState, action: PlayerAction): ActionRefusal {
+  if (STAY_PASS_TYPES.has(action.type)) return null;
+  const p = actorForAction(state, action);
+  if (!isStayLocked(p)) return null;
+  return `${stayLabel(p!)}中无法操作（还剩 ${p!.skipTurns} 回合，本回合自动跳过）`;
+}
+
 /** 门控的唯一派生入口：返回 null 表示这个动作此刻合法可执行 */
 export function actionRefusal(state: GameState, action: PlayerAction): ActionRefusal {
   const spec = ACTION_SPECS[action.type] as ActionSpec;
-  return spec.check(state, actorForAction(state, action), action);
+  const actor = actorForAction(state, action);
+  return stayRefusal(state, action) ?? spec.check(state, actor, action);
 }
 
 /** 引擎侧拒绝：每个 apply 入口先跑自己的 check，外部无法塞进非法动作 */

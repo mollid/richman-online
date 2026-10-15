@@ -146,6 +146,78 @@
     return bar;
   }
 
+  /* ---------------- 播报字幕条：引擎新写的每一条从棋盘上方滚过去 ----------------
+   * 文案只取 `st.log`（引擎原句），表现层不另编一套，字幕与「播报」页签逐字一致。
+   * 增量不能按长度差算：`log()` 有 200 条上限，会从头部剪掉 —— 所以从尾部回扫找上一次那条。
+   * 位移用 rAF 自己推，不写 CSS 动画：`render()` 每来一份快照就把整壳重铺一遍，
+   * 节点重新入 DOM 会把 CSS 动画从头再放一次，字幕会反复弹回右边。
+   */
+  const TICKER_PX_PER_SEC = 160;
+  const TICKER_GAP = 60;
+  const REDUCED = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let tickerEl = null, tickerTrack = null;
+  let tickerSeenSig = null;    // 上一次看到的最后一条；null = 还没立基线（首帧 / 读档不刷屏）
+  let tickerItems = [];        // [{node, x, w}]
+  let tickerRaf = 0, tickerLast = 0;
+
+  function ensureTicker() {
+    if (tickerEl) return tickerEl;
+    tickerEl = el('div', 'hud-ticker');
+    tickerEl.setAttribute('role', 'status');
+    tickerEl.setAttribute('aria-live', 'polite');
+    tickerTrack = el('div', 'hud-ticker__track');
+    tickerEl.appendChild(tickerTrack);
+    return tickerEl;
+  }
+
+  function tickerTick(now) {
+    tickerRaf = 0;
+    const dt = tickerLast ? Math.min(0.25, (now - tickerLast) / 1000) : 0;
+    tickerLast = now;
+    tickerItems = tickerItems.filter((it) => {
+      it.x -= TICKER_PX_PER_SEC * dt;
+      if (it.x + it.w < -16) { it.node.remove(); return false; }
+      it.node.style.transform = `translateX(${it.x}px)`;
+      return true;
+    });
+    if (tickerItems.length) tickerRaf = requestAnimationFrame(tickerTick);
+    else tickerLast = 0;
+  }
+
+  function pushTicker(text) {
+    if (!tickerTrack) return;
+    const node = el('span', 'hud-ticker__item', esc(text));
+    if (REDUCED) {
+      // 减弱动效：不滚，只把最新那条停在原位，读完就撤
+      tickerItems.forEach((it) => it.node.remove());
+      tickerItems = [];
+      tickerTrack.replaceChildren(node);
+      setTimeout(() => { if (node.parentNode) node.remove(); }, 4200);
+      return;
+    }
+    tickerTrack.appendChild(node);
+    const width = tickerEl.clientWidth || 600;
+    const tail = tickerItems[tickerItems.length - 1];
+    const it = { node, x: Math.max(width, tail ? tail.x + tail.w + TICKER_GAP : width), w: node.offsetWidth };
+    node.style.transform = `translateX(${it.x}px)`;
+    tickerItems.push(it);
+    if (!tickerRaf) { tickerLast = 0; tickerRaf = requestAnimationFrame(tickerTick); }
+  }
+
+  function pumpTicker() {
+    const log = st.log || [];
+    const sig = (e) => `${e.turn}|${e.text}`;
+    const last = log.length ? sig(log[log.length - 1]) : '';
+    if (tickerSeenSig === null) { tickerSeenSig = last; return; }
+    if (!log.length || last === tickerSeenSig) return;
+    let i = log.length - 1;
+    while (i >= 0 && sig(log[i]) !== tickerSeenSig) i--;
+    // 一条都没找回：上一次那条已被 200 条上限剪掉，这时只补最近三条，不让整段历史滚一遍
+    const fresh = i >= 0 ? log.slice(i + 1) : log.slice(-3);
+    tickerSeenSig = last;
+    for (const e of fresh) pushTicker(e.text);
+  }
+
   /* ---------------- 棋盘：默认 2.5D（three.js 世界 + Pixi 叠加），?board=flat 回方环 ---------------- */
   const FLAT0 = /board=flat/.test(location.search) || /board=flat/.test(location.hash);
   let flatMode = FLAT0;
@@ -486,7 +558,7 @@
         if (HUD_LOCKED) return;
         if (pickPlayers.length && hostApi.onPickPlayer) hostApi.onPickPlayer(pid);
       },
-      onLand: (pid, cellId) => globalThis.D25Overlay.float(`来到「${cellName(cellId)}」`, cellId, 'gold'),
+      onLand: (pid, cellId, kind) => globalThis.D25Overlay.float(landLabel(cellId, kind), cellId, kind === 'transfer' ? 'bad' : 'gold'),
       /* 一次移动演出收尾：把攒下来的「换人聚焦」放出去（见 playMovement / syncStage） */
       onMoveSettled: () => flushPendingFocus(),
       /* 相机进场期间锁操作；视角停稳（补间跑完）才解锁 —— 这两条回调就是「屏蔽输入」的唯一开关 */
@@ -516,16 +588,24 @@
     return wrap;
   }
 
-  /* ---------------- 移动演出：快照差分 → 骰子 + 逐格跳 ----------------
+  /* ---------------- 移动演出：认引擎记下的路线 → 骰子 + 逐格跳 ----------------
    * 引擎把「掷骰 → 走 n 步 → 落格结算」压成一个原子动作，客户端每次拿到的都是走完之后的状态，
-   * 中间那些格子从不进状态。所以这里记下上一帧每个人的脚下格，两帧之差就是这一回合走了几步、
-   * 朝哪个方向 —— 把它交给 world 逐格跳，棋盘上的棋子就不再是「闪现」到终点的。
+   * 中间那些格子只记在 `state.movePath` 里。这里认它、照着逐格跳。
+   * 认不出路线的位移**一律不猜**：那是押送 / 传送 / 神明挪位，语义就是瞬移（见 `playMovement`）。
    * 纯表现：不参与任何规则判定，也不改写状态。
    */
   const HOP_MAX_CELLS = 8;    // 一次最多演 8 格（0.16 秒/格 ≈ 1.3 秒）；更长的行程只演最后 8 格
   let lastPos = null;         // Map<pid, cellId>；null = 还没基线（HUD 首帧不演）
   let spunDice = null;        // 已经摇过的那一手骰子（同一份点数不摇第二遍）
   let pendingTurnPid = null;  // 演出期间攒着的镜头交接对象（跳完才放）
+
+  /** b 是不是 a 的邻格：原版图读 `neighbors`，自建图（不写这个字段）退回环上 ±1 */
+  function isStep(a, b) {
+    const n = st.board.length || 64;
+    const c = st.board[a];
+    if (c && c.neighbors) return c.neighbors.includes(b);
+    return (b - a + n) % n === 1 || (a - b + n) % n === 1;
+  }
 
   function playMovement() {
     const now = new Map(st.players.map((p) => [p.id, p.position]));
@@ -537,36 +617,30 @@
     // 只演「一个人沿圈走了几步」。多人同帧位移 = 换位卡那类，硬演会让人绕半个棋盘飘过去
     if (moved.length !== 1) return false;
     const p = moved[0];
-    const n = st.board.length || 64;
     // heading 是邻接表下标：环上 0 = 逆时针、1 = 顺时针（引擎里 direction 的替身）
     const dir = p.heading === 0 ? -1 : 1;
     const from0 = prev.get(p.id);
-    /* 主路：引擎记下了这一手**逐格走过**的格子（`state.movePath`），照播就行。
-       地图有分支之后，两帧之差根本推不出路线 —— 同一对起止点之间可以有好几条走法。
-       下面那套环上取模因此退成兜底，只服务没有路径可依据的位移（传送、神明挪位、时光机）。 */
-    const recorded = st.movePath && st.movePath.length > 0 && st.movePath[st.movePath.length - 1] === p.position
-      ? st.movePath : null;
-    let walk;      // 演出来的那几格（recorded 的尾巴，或环上推出来的序列）
-    let from;      // 演出起点（walk 第一格的前一格）
-    let cells;     // 交给 world 的真实格子序列；null = 让 world 按 from/steps/dir 自己推
-    if (recorded) {
-      const start = Math.max(0, recorded.length - HOP_MAX_CELLS);
-      cells = recorded.slice(start);
-      from = start > 0 ? recorded[start - 1] : from0;
-      walk = cells.length;
-    } else {
-      const steps = dir === 1 ? (p.position - from0 + n) % n : (from0 - p.position + n) % n;
-      if (steps < 1) return false;
-      walk = Math.min(steps, HOP_MAX_CELLS);
-      from = walk === steps ? from0 : (p.position - dir * walk + n) % n;
-    }
+    /* 认路线要过三道脸：① 有路线；② 尾巴不是这个人上一帧的脚下格（那说明这一段上一帧就演完了，
+       这次位移是传送 / 押走，不是走路）；③ 第一格确实从他上一帧那一格出发 —— ②③ 也是「这条路线
+       归不归他」的证据，`movePath` 是全队共用的一格，别人走过的路不能安到他头上。
+       认不过就直接落位：押送进监狱 / 住院、传送机、神明挪位那类位移引擎从不写路线，
+       旧写法按环上取模补走，看着就是「从反方向绕半个棋盘走过去」，距离越远越假。 */
+    const rec = st.movePath;
+    if (!rec || !rec.length || rec[rec.length - 1] === from0 || !isStep(from0, rec[0])) return false;
+    const start = Math.max(0, rec.length - HOP_MAX_CELLS);
+    const cells = rec.slice(start);
+    const from = start > 0 ? rec[start - 1] : from0;
+    const walk = cells.length;
+    /* 走完这条路人却不在尾巴上 = 这一手还被押走 / 传送了一次：把真落点交出去，
+       由 world 演第二段（停一拍让人读完播报，再瞬移到那一格）。 */
+    const transfer = rec[rec.length - 1] !== p.position ? p.position : null;
     /* 骰子只在「这一手第一次出现」时摇：`state.dice` 如今留到下一手才被覆盖（回合推进不清），
        不认脸的话传送、神明挪位那些也会把上一手的点数又摇一遍。 */
     const dice = st.dice || [];
     const key = `${st.turn}:${dice.join('+')}`;
     const spin = dice.length > 0 && walk <= dice.reduce((a, b) => a + b, 0) && key !== spunDice;
     if (spin) spunDice = key;
-    return globalThis.D25World.playMove({ pid: p.id, from, steps: walk, dir, cells, dice: spin ? dice : null });
+    return globalThis.D25World.playMove({ pid: p.id, from, steps: walk, dir, cells, transfer, dice: spin ? dice : null });
   }
 
   /** 演出结束（或被取消）后把攒下的换人聚焦放出去 —— 「跳完才交接镜头」的那一刀 */
@@ -1040,6 +1114,15 @@
   }
 
   function cellName(id) { return st.board[id]?.name ?? `格 ${id}`; }
+  /** 落点浮字：走路到站 / 被押走（监狱与医院分开说）/ 其余瞬移（传送机那类） */
+  function landLabel(id, kind) {
+    const name = cellName(id);
+    if (kind !== 'transfer') return `来到「${name}」`;
+    const type = st.board[id]?.type;
+    if (type === 'jail') return `🚔 被押送至「${name}」`;
+    if (type === 'hospital') return `🏥 被送往「${name}」`;
+    return `✨ 瞬移到「${name}」`;
+  }
   const priceAt = (id) => Math.round((st.board[id]?.price ?? 0) * view.priceIndex);
 
   function logTone(text) {
@@ -1187,14 +1270,27 @@
     return cam;
   }
 
+  /**
+   * 停留态（在押 / 住院 / 出国 / 其他停留）给 dock 换上的那句话：不给按钮，只说清「回合会自己走」。
+   * 引擎那一侧同一条判据是 `stayRefusal`，这里只是把它翻成玩家看得见的一句话。
+   */
+  function stayChip() {
+    if (!cur || cur.skipTurns <= 0) return null;
+    const where = cur.custody
+      ? (cur.custody.kind === 'jail' ? '🚔 在押' : '🏥 住院')
+      : cur.abroadTurns > 0 ? '✈️ 出国' : '⏸️ 停留';
+    return `${where}中 · 无法操作，回合自动跳过（剩 ${cur.skipTurns} 回合）`;
+  }
+
   function renderDock() {
     const bar = el('footer', 'hud-dock');
     bar.appendChild(renderCamBar());
     bar.append(tileBlock(), renderBag());
 
     const spec = actionSpec();
+    const stay = stayChip();
     const first = (re) => spec.find((row) => row[1] && re.test(row[0]));
-    const primary = first(/掷骰/) || first(/买下/) || first(/加盖一层/) || null;
+    const primary = stay ? null : (first(/掷骰/) || first(/买下/) || first(/加盖一层/) || null);
     const exit = landingExit();
     const acts = el('div', 'hud-act');
 
@@ -1218,7 +1314,11 @@
       more.append(btn, pop);
     }
 
-    if (primary) {
+    if (stay) {
+      // 联机时这条不是「你的」状态，点名才看得出是谁在牢里替谁跳过这一手
+      const who = hostApi.interactive === false ? `${esc(cur.name)} ` : '';
+      acts.append(more, el('span', 'hud-chip hud-chip--warn', `${who}${stay}`));
+    } else if (primary) {
       const b = el('button', `ac-btn ${primary[2]} ac-btn--lg`, primary[0]);
       b.dataset.primary = '1';
       b.title = '回车键 = ' + primary[0];
@@ -1355,6 +1455,7 @@
     const shell = el('div', 'hud-shell');
     shell.appendChild(renderTop());
     shell.appendChild(renderStatus());
+    shell.appendChild(ensureTicker());   // 字幕条节点常驻，重铺整壳时只是换个爹
     shell.appendChild(renderBoard());
 
     const side = el('aside', 'hud-side');
@@ -1385,6 +1486,8 @@
 
     shell.appendChild(renderDock());
     root.replaceChildren(shell);
+    // 字幕增量排在换爹之后取：`clientWidth` 要量的是这一份快照里的真实宽度
+    pumpTicker();
 
     /* 输入闸门：捕获阶段拦掉整壳的点击。放在捕获阶段是为了连「键盘回车 → primary.click()」
      * 与 ac-btn 自己的 onclick 都拦得住 —— 只靠 cosmetic() 里判断会漏掉 tab / 挂出 / 商店这些旁路。

@@ -1,5 +1,5 @@
 import type { ChatMessage } from './remote.js';
-import { applyAction, characterById, characterOfSeat, createGame, normalizeGameState, type DateSerial, type GameState, type PlayerAction } from '@richman/shared';
+import { applyAction, autoSkipAction, characterById, characterOfSeat, createGame, normalizeGameState, type DateSerial, type GameState, type PlayerAction } from '@richman/shared';
 import { getSettings } from '../game/settings.js';
 
 /** 会话抽象：本地热座与联机共用同一套 UI */
@@ -78,6 +78,8 @@ export function clearHotseatGame(slot = 'auto'): void {
 export class LocalHotseatSession implements GameSession {
   private game: GameState;
   private listeners = new Set<(g: GameState) => void>();
+  /** 停留态（在押 / 住院 / 出国）自动跳过回合的定时；与联机 GameRoom 用同一份判据 */
+  private autoSkipTimer: ReturnType<typeof setTimeout> | null = null;
   readonly myPlayerId = null;
 
   constructor(
@@ -114,16 +116,37 @@ export class LocalHotseatSession implements GameSession {
     // UI-12 自动存档：每回合（turn 变化）记录一次快照
     if (getSettings().autoSave) saveHotseatGame(this.game);
     for (const fn of this.listeners) fn(this.game);
+    this.scheduleAutoSkip();
   }
 
   subscribe(fn: (g: GameState) => void): () => void {
     this.listeners.add(fn);
     fn(this.game);
+    // 读档进来的那一局可能正停在牢里：一挂上就把自动跳过排上
+    this.scheduleAutoSkip();
     return () => this.listeners.delete(fn);
   }
 
   destroy(): void {
+    if (this.autoSkipTimer) clearTimeout(this.autoSkipTimer);
+    this.autoSkipTimer = null;
     this.listeners.clear();
+  }
+
+  /**
+   * 停留态（在押 / 住院 / 出国）的回合由会话层替他走完。判据与联机那侧同源（`autoSkipAction`），
+   * 两边各写一套迟早漂移。1.2 秒只够读完「🚔 在押中，本回合自动跳过」那条播报 ——
+   * 再长就开始让人觉得卡住了。
+   */
+  private scheduleAutoSkip(): void {
+    if (this.autoSkipTimer) clearTimeout(this.autoSkipTimer);
+    if (!autoSkipAction(this.game)) return;
+    this.autoSkipTimer = setTimeout(() => {
+      this.autoSkipTimer = null;
+      // 到点再对一次表：这一瞬间玩家可能已经自己把窗关掉了，照旧发就会吃一句「当前不在落格决策中」
+      const action = autoSkipAction(this.game);
+      if (action) this.dispatch(action);
+    }, 1200);
   }
 }
 

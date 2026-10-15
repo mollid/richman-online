@@ -521,14 +521,19 @@ describe('M2 股票系统', () => {
       else break;
     }
     // 关键：不可交易的阶段只可能是小游戏 / 拍卖 / 强制舍弃手牌这三种**流程中**的阶段，
-    // 一旦流程结束回到 awaiting_roll 就能立刻交易 → 说明「每回合都能自由买卖」
+    // 或是「这个人正在坐牢住院」—— 一旦回到能行动的回合就立刻可以交易 → 说明「每回合都能自由买卖」
     let blockedByFlow = 0;
+    let blockedByStay = 0;
     for (let i = 0; i < 24; i++) {
       if (!availableActions(s).canTradeStock) {
-        // 非交易阶段必须是小游戏/拍卖/舍弃流程之一（game_over 说明对局已结束），不能是普通回合
-        expect(['awaiting_pick', 'awaiting_auction', 'awaiting_discard', 'game_over']).toContain(s.phase);
+        // 停留中的回合整回合锁死（在押 / 住院 / 出国）：这是规则，不是格型限制
+        if ((s.players[s.currentPlayerIndex]?.skipTurns ?? 0) > 0) blockedByStay += 1;
+        else {
+          // 非交易阶段必须是小游戏/拍卖/舍弃流程之一（game_over 说明对局已结束），不能是普通回合
+          expect(['awaiting_pick', 'awaiting_auction', 'awaiting_discard', 'game_over']).toContain(s.phase);
+          blockedByFlow += 1;
+        }
         if (s.phase === 'game_over') break;
-        blockedByFlow += 1;
       }
       if (s.phase === 'awaiting_roll') s = applyAction(s, { type: 'ROLL_DICE' });
       else if (s.phase === 'awaiting_action') s = applyAction(s, { type: 'FINISH_LANDING' });
