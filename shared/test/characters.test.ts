@@ -7,6 +7,7 @@ import {
   characterOfSeat,
   createGame,
   MAGIC_CONDITIONS,
+  ReplayEngine,
   type GameState,
   type PlayerDef,
 } from '../src/index.js';
@@ -89,6 +90,39 @@ describe('角色表（波 3）', () => {
     const g = applyAction(createGame(bogus, 9, { startDate: { year: 2026, month: 1, day: 5 } }), { type: 'START_GAME' });
     expect(g.players[0]!.characterId).toBe(characterOfSeat(0).id);
     expect(g.players[0]!.gender).toBe('male');
+  });
+});
+
+describe('录像与角色（波 3 补）', () => {
+  const makeRecord = (players: Array<{ player_name: string; color: number; character_id?: string | null }>) => ({
+    seed: 4242,
+    startDate: { year: 2026, month: 1, day: 5 },
+    players,
+    actions: [],
+  });
+
+  it('录像带 character_id 就按它复现，不再靠座位回落', () => {
+    const engine = new ReplayEngine(
+      makeRecord([
+        { player_name: '甲', color: 1, character_id: 'lengqiuping' },
+        { player_name: '乙', color: 2, character_id: 'jiabanxian' },
+      ]),
+    );
+    // 钉的是"角色 → 性别"这条链在重放里仍然成立：魔法屋的性别条件全靠它
+    expect(engine.finalState.players.map((p) => [p.characterId, p.gender])).toEqual([
+      ['lengqiuping', 'female'],
+      ['jiabanxian', 'male'],
+    ]);
+  });
+
+  it('老录像没这一列时按座位回落（开发阶段不为它做保底）', () => {
+    const engine = new ReplayEngine(
+      makeRecord([
+        { player_name: '甲', color: 1 },
+        { player_name: '乙', color: 2 },
+      ]),
+    );
+    expect(engine.finalState.players.map((p) => p.characterId)).toEqual(['afu', 'xiaomei']);
   });
 });
 

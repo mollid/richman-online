@@ -62,6 +62,10 @@ export async function initStorage(): Promise<void> {
         ALTER TABLE game_records ADD COLUMN IF NOT EXISTS map_id INT;
         ALTER TABLE game_record_players ADD COLUMN IF NOT EXISTS seat INT NOT NULL DEFAULT 0;
         ALTER TABLE game_record_players ADD COLUMN IF NOT EXISTS player_key VARCHAR(64);
+        --   character_id 角色 id（波 3）：回放建局时 PlayerDef 只有 id/name/color 的话，
+        --     角色只能按座位回落 —— 于是改一次 characters.ts 就会让老录像复现出不同性别与头像，
+        --     魔法屋「所有男生 / 所有女生」那两条条件在老录像里会打在不同人身上。
+        ALTER TABLE game_record_players ADD COLUMN IF NOT EXISTS character_id VARCHAR(32);
         CREATE INDEX IF NOT EXISTS idx_records_finished ON game_records(finished_at DESC);
         CREATE INDEX IF NOT EXISTS idx_record_players_user ON game_record_players(user_id);
       `);
@@ -154,7 +158,7 @@ export interface GameRecordInput {
   /** 本局地图（null = 自建 64 格环）：不存就复现成另一张棋盘 */
   mapId: number | null;
   /** 按座位序传入（数组下标即 `seat`），`id` 是局内玩家 id */
-  players: Array<{ id: string; userId: string | null; playerName: string; color: number; cash: number; bankrupt: boolean }>;
+  players: Array<{ id: string; userId: string | null; playerName: string; color: number; cash: number; bankrupt: boolean; characterId?: string | null }>;
 }
 
 export async function saveGameRecord(input: GameRecordInput): Promise<void> {
@@ -181,9 +185,9 @@ export async function saveGameRecord(input: GameRecordInput): Promise<void> {
     const recordId = recordRes.rows[0]!.id;
     for (const [seat, p] of input.players.entries()) {
       await client.query(
-        `INSERT INTO game_record_players (record_id, user_id, player_name, color, cash, bankrupt, seat, player_key)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-        [recordId, p.userId, p.playerName, p.color, p.cash, p.bankrupt, seat, p.id],
+        `INSERT INTO game_record_players (record_id, user_id, player_name, color, cash, bankrupt, seat, player_key, character_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+        [recordId, p.userId, p.playerName, p.color, p.cash, p.bankrupt, seat, p.id, p.characterId ?? null],
       );
     }
     await client.query('COMMIT');
@@ -204,7 +208,7 @@ export interface ReplayRecordSummary {
   rounds: number;
   finished_at: Date;
   /** 座位序（`seat`）排列；`player_key` 是局内玩家 id，回放建局要用它当 id */
-  players: Array<{ player_name: string; color: number; cash: number; bankrupt: boolean; player_key?: string | null }>;
+  players: Array<{ player_name: string; color: number; cash: number; bankrupt: boolean; player_key?: string | null; character_id?: string | null }>;
 }
 
 export interface ReplayRecord extends ReplayRecordSummary {
@@ -223,7 +227,7 @@ export async function listRecentRecords(limit = 20): Promise<ReplayRecordSummary
   const res = await pool.query(
     `SELECT gr.id, gr.room_id, gr.winner_name, gr.player_count, gr.turns, gr.rounds, gr.finished_at,
             COALESCE(
-              json_agg(json_build_object('player_name', rp.player_name, 'color', rp.color, 'cash', rp.cash, 'bankrupt', rp.bankrupt, 'player_key', rp.player_key)
+              json_agg(json_build_object('player_name', rp.player_name, 'color', rp.color, 'cash', rp.cash, 'bankrupt', rp.bankrupt, 'player_key', rp.player_key, 'character_id', rp.character_id)
                        ORDER BY rp.seat)
               FILTER (WHERE rp.player_name IS NOT NULL), '[]'::json
             ) AS players
@@ -243,7 +247,7 @@ export async function getRecord(id: string): Promise<ReplayRecord | null> {
   const res = await pool.query<ReplayRecord>(
     `SELECT gr.id, gr.room_id, gr.seed, gr.start_date, gr.max_days, gr.map_id, gr.winner_name, gr.player_count, gr.turns, gr.rounds, gr.actions, gr.finished_at,
             COALESCE(
-              json_agg(json_build_object('player_name', rp.player_name, 'color', rp.color, 'cash', rp.cash, 'bankrupt', rp.bankrupt, 'player_key', rp.player_key)
+              json_agg(json_build_object('player_name', rp.player_name, 'color', rp.color, 'cash', rp.cash, 'bankrupt', rp.bankrupt, 'player_key', rp.player_key, 'character_id', rp.character_id)
                        ORDER BY rp.seat)
               FILTER (WHERE rp.player_name IS NOT NULL), '[]'::json
             ) AS players

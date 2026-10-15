@@ -372,6 +372,9 @@ export class GameRoom extends Room {
           color: p.color,
           cash: p.cash,
           bankrupt: p.bankrupt,
+          // 角色也要入库：光靠座位回落的话，改一次 `characters.ts` 就会让老录像
+          // 复现出不同性别与头像 —— 魔法屋那两条性别条件会打在人身上
+          characterId: p.characterId,
         })),
       }),
     );

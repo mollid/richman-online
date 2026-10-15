@@ -22,7 +22,7 @@ export interface ReplayRecordData {
    * `player_key` 是局内玩家 id（联机是 sessionId，热座是 local-N）：
    * `SURRENDER` 的复仇者、挂牌的卖家等动作引用的是它，回放必须同名。
    */
-  players: Array<{ player_name: string; color: number; player_key?: string | null }>;
+  players: Array<{ player_name: string; color: number; player_key?: string | null; character_id?: string | null }>;
   actions: Array<{ turn: number; action: PlayerAction }>;
 }
 
@@ -42,6 +42,10 @@ export class ReplayEngine {
       id: p.player_key || `replay-${i}`,
       name: p.player_name,
       color: p.color,
+      // 角色一并带回来：不存的话只能按座位回落，改一次 `characters.ts` 就会让老录像
+      // 复现出不同性别与头像 —— 魔法屋「所有男生 / 所有女生」会打在不同人身上。
+      // 老录像没这一列时仍走座位回落（开发阶段不为它做保底）。
+      characterId: p.character_id ?? undefined,
     }));
     // 外部传入的录像记录可能缺字段：先补默认值再逐帧复现
     let state = normalizeGameState(
