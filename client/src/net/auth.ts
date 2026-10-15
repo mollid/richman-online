@@ -40,9 +40,26 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   });
   const data = (await res.json().catch(() => null)) as (T & { error?: string }) | null;
   if (!res.ok) {
-    throw new Error(data?.error ?? `请求失败 (${res.status})`);
+    // 带上状态码：调用方要区分「票作废了，清掉」和「服务连不上，留着下次再试」
+    const err = new Error(data?.error ?? `请求失败 (${res.status})`) as Error & { status: number };
+    err.status = res.status;
+    throw err;
   }
   return data as T;
+}
+
+/**
+ * 刷新后凭 localStorage 里的 token 换回登录态。
+ * 没登录、票过期、服务没起，一律安静返回 null —— 这条路径上没有该报错给用户的东西。
+ */
+export async function fetchMe(): Promise<AuthUser | null> {
+  if (!getToken()) return null;
+  try {
+    return (await request<{ user: AuthUser }>('/auth/me')).user;
+  } catch (e) {
+    if (e instanceof Error && (e as Error & { status?: number }).status === 401) setToken(null);
+    return null;
+  }
 }
 
 export async function register(username: string, password: string): Promise<AuthUser> {

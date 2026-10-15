@@ -10,6 +10,7 @@ import {
 import { ColyseusSession, hasSavedSession, type RoomSummary } from './net/remote.js';
 import {
   fetchLeaderboard,
+  fetchMe,
   fetchRecentRecords,
   fetchRecord,
   login as apiLogin,
@@ -350,6 +351,16 @@ function SetupScreen({
   const [authBusy, setAuthBusy] = useState(false);
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
   const [records, setRecords] = useState<ReplayRecordSummary[]>([]);
+
+  /* 票本来就一直存在 localStorage 里（联机握手与 /api 都带着它），丢的只是这份 React state。
+     挂载时拿票换回登录态，否则每次刷新都要重新登录。 */
+  useEffect(() => {
+    void fetchMe().then((u) => {
+      if (!u) return;
+      setUser(u);
+      setPlayerName((prev) => prev || u.username);
+    });
+  }, []);
 
   const refreshRooms = async () => {
     try {
