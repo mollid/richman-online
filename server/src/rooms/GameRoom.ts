@@ -9,6 +9,7 @@ import {
   createGame,
   forceGameOver,
   nextRandom,
+  pushLog,
   removePlayer,
   resolveCharacter,
   resolveMaxDays,
@@ -200,16 +201,22 @@ export class GameRoom extends Room {
     }
     if (auth?.userId) this.userIds.set(client.sessionId, auth.userId);
     // 角色先到先得（决策人定）：被人抢走就按表序给一个没人占的，不因此把人拒之门外
-    const characterId = resolveCharacter(options.characterId, this.game.players.map((p) => p.characterId));
+    const requested = options.characterId;
+    const characterId = resolveCharacter(requested, this.game.players.map((p) => p.characterId));
     const ch = characterById(characterId)!;
     const rawName = (auth?.username ?? options.name ?? '').trim().slice(0, 8);
+    const name = rawName || ch.name;
     this.game = addPlayer(this.game, {
       id: client.sessionId,
       // 没填名字就用角色名：房间不再另有一份「默认名」表，免得头像与名字对不上
-      name: rawName || ch.name,
+      name,
       color: ch.color,
       characterId,
     });
+    // 换角必须出声：不然被抢的人只看见自己莫名奇妙换了个角色
+    if (requested && requested !== characterId) {
+      pushLog(this.game, `${name} 想选 ${characterById(requested)?.name ?? requested}，已被占，改用 ${ch.name}`);
+    }
     this.touch();
     this.updateMetadata('lobby');
     this.broadcastState();

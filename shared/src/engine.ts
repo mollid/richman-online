@@ -437,6 +437,11 @@ function log(state: GameState, text: string): void {
   if (state.log.length > 200) state.log.splice(0, state.log.length - 200);
 }
 
+/** 服务端在大厅里也要能播报（抢角裁决），走同一个截断规则，别另起一份。 */
+export function pushLog(state: GameState, text: string): void {
+  log(state, text);
+}
+
 function isGameOver(s: GameState): boolean {
   return s.phase === 'game_over';
 }
