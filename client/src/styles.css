@@ -51,12 +51,23 @@ button.small {
 /* ---------- 开始界面 ---------- */
 .setup-screen {
   height: 100%;
+  overflow: auto;
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
   gap: 12px;
+  padding: 24px 16px;
   background: radial-gradient(ellipse at center, #1b3527 0%, #0d1512 70%);
+}
+
+/* 内容矮于视口时上下留白相等（居中）；高于视口时 flex 会把 auto 边距归零，
+   退化成顶部对齐，避免 justify-content: center 那样把开头推出滚动区。 */
+.setup-screen > :first-child {
+  margin-top: auto;
+}
+
+.setup-screen > :last-child {
+  margin-bottom: auto;
 }
 
 .setup-screen h1 {
@@ -72,6 +83,7 @@ button.small {
 
 .setup-card {
   margin-top: 24px;
+  max-width: 100%;
   background: #16211b;
   border: 1px solid #2e4034;
   border-radius: 16px;
