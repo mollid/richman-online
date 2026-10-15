@@ -41,3 +41,4 @@ __pycache__/
 # playwright 无障碍树 dump（根目录散落的 entry.yaml / s1.yaml）
 /entry.yaml
 /s1.yaml
+design/
