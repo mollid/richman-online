@@ -101,6 +101,12 @@ export function useBoardStage(opts: BoardStageOptions) {
   const camFocusedRef = useRef(false);
   const lockedRef = useRef(false);
   const lastMiniRef = useRef(-1);
+  /** 入场那次延时聚焦的定时器句柄：卸载必须清，否则回调会对着已 dispose 的 world 再跑一次 */
+  const introTimerRef = useRef(0);
+  /** 上一次发出去的跟随对象（id 而不是名字）：查名字要遍历 players，不能每帧查 */
+  const camPidRef = useRef<string | null>(null);
+  /** 上一次的相机视野宽度：滚轮推拉只改它，不改 iso / pid / follow */
+  const camViewRef = useRef<number | null>(null);
 
   const W = () => globalThis.D25World;
   const OV = () => globalThis.D25Overlay;
@@ -109,8 +115,9 @@ export function useBoardStage(opts: BoardStageOptions) {
   const scheduleFocus = useCallback((pid: string) => {
     activePidRef.current = pid;
     W()?.focusPlayer(pid);
-    publishCam({ ...camRef.current, target: pid });
-  }, [publishCam]);
+    /* 这里**不**往 camRef 里写 target：那个字段是「名字」，而手上只有 id。
+       读数由 onFrame 从快照里查名字后统一发，两处各写一个口径就会有一帧把 `local-0` 画到界面上。 */
+  }, []);
 
   /** 演出结束（或被取消）后把攒下的换人聚焦放出去 —— 「跳完才交接镜头」的那一刀 */
   const flushPendingFocus = useCallback(() => {
@@ -203,7 +210,8 @@ export function useBoardStage(opts: BoardStageOptions) {
     if (!camFocusedRef.current) {
       camFocusedRef.current = true;
       if (!activePidRef.current) activePidRef.current = S.state.players[S.state.currentPlayerIndex]?.id ?? null;
-      window.setTimeout(() => {
+      window.clearTimeout(introTimerRef.current);
+      introTimerRef.current = window.setTimeout(() => {
         if (lockedRef.current) return;
         if (activePidRef.current) scheduleFocus(activePidRef.current);
         OV()?.rebuild();
@@ -256,15 +264,32 @@ export function useBoardStage(opts: BoardStageOptions) {
            整块界面就会永久假死。每帧跟 world 的真实状态对一次，代价只是一次布尔比较。 */
         if (lockedRef.current !== w.isCameraLocked()) setLocked(w.isCameraLocked());
         const S = o.current.snapshot;
-        const who = c.pid ? S.state.players.find((p) => p.id === c.pid)?.name ?? '' : '';
         const iso = c.mode === 'iso';
-        publishCam({
-          iso,
-          follow: c.state === 'intro' ? 'intro' : c.state === 'follow' ? 'follow' : 'idle',
-          target: who,
-          visible: iso ? w.visibleCells().count : 0,
-          locked: lockedRef.current,
-        });
+        /* 先比四把便宜的钥匙，全等就整段跳过 —— 名字要从 players 里 find、格数要调
+           visibleCells()（它把所有棋子投影一遍），这两样都不该白付 60 次每秒。
+           文件头第 3 条说的是「不许每帧 setState」，但真正的代价在这里：不进调和不等于不干活。 */
+        const prev = camRef.current;
+        /* `visible` 也是载荷的一部分，所以它必须进钥匙：近景下滚轮推拉会改 world 的视野宽度，
+           而 iso / locked / follow / pid 四个都不动 —— 少这一把的话「周围 N 格」会冻在第一次
+           进近景时的数字，而它明明是 world 现算出来的。 */
+        if (
+          prev.iso !== iso ||
+          prev.locked !== lockedRef.current ||
+          prev.follow !== c.state ||
+          camPidRef.current !== c.pid ||
+          camViewRef.current !== c.view
+        ) {
+          camPidRef.current = c.pid;
+          camViewRef.current = c.view;
+          const who = c.pid ? S.state.players.find((p) => p.id === c.pid)?.name ?? '' : '';
+          publishCam({
+            iso,
+            follow: c.state === 'intro' ? 'intro' : c.state === 'follow' ? 'follow' : 'idle',
+            target: who,
+            visible: iso ? w.visibleCells().count : 0,
+            locked: lockedRef.current,
+          });
+        }
         const cv = miniRef.current;
         if (cv && !cv.hidden) {
           const tick = Math.floor(performance.now() / MINI_TICK_MS);
@@ -286,17 +311,17 @@ export function useBoardStage(opts: BoardStageOptions) {
         }
       },
       /* 切模式后下一次 onFrame 会重报读数，这里不需要也不应该自己拼 */
-      onCameraMode: () => {},
       onHover: (id: number | null) => o.current.onHover(id),
       onSelect: (id: number | null) => {
         if (lockedRef.current || id == null) return;
-        const p = o.current.pick;
-        /* 选格态：把这一格原样交回宿主去判合法性并派单 —— 表现层不复制一套「能不能选」 */
-        if (p?.cells.length) o.current.onPickCell(id);
+        /* 只要处在选目标态，点棋盘就交回宿主 —— 判据是「有没有 pick」，不是「cells 非空」。
+           选人态下 cells 是空数组，早先写成 `p?.cells.length` 会让点格子落回「钉住卡片」，
+           于是宿主那条「玩家瞄的是人，不该因为指针偏两像素就失败」的兜底再也进不去。 */
+        if (o.current.pick) o.current.onPickCell(id);
         else o.current.onSelectCell(id);
       },
       onPickPlayer: (pid: string) => {
-        if (lockedRef.current) return;
+        if (lockedRef.current || !o.current.pick?.players.length) return;
         o.current.onPickPlayer(pid);
       },
       onLand: (_pid: string, cellId: number, kind: string) => {
@@ -326,6 +351,7 @@ export function useBoardStage(opts: BoardStageOptions) {
     window.addEventListener('resize', onResize);
     return () => {
       window.removeEventListener('resize', onResize);
+      window.clearTimeout(introTimerRef.current);
       overlay.dispose();
       world.dispose();
       stage.remove();
@@ -337,8 +363,14 @@ export function useBoardStage(opts: BoardStageOptions) {
       pendingTurnPidRef.current = null;
       activePidRef.current = null;
       lastTurnPidRef.current = null;
-      setLocked(false);
+      camPidRef.current = null;
+      camViewRef.current = null;
+      /* 刻意不再调 setLocked(false)：lockedRef 上面已经归零，再发一次只会把 setState 推到
+         正在卸载的组件上（React 18 不报错，但那是一次没有接收方的渲染）。 */
     };
+    /* 依赖表里这四个回调都是 useCallback 出来的稳定引用，所以本effect实际只跟 `mountable` 走。
+       列全它们是为了不骗 eslint —— 任何一个变成不稳定，代价就是整个 WebGL 世界被拆了重建，
+       而那正是文件头第 1 条约束要防的事。改这里之前先确认依赖仍然稳定。 */
   }, [mountable, flushPendingFocus, publishCam, setLocked, syncStage]);
 
   /* 快照推进：只喂数据，不重挂舞台 */
@@ -353,9 +385,13 @@ export function useBoardStage(opts: BoardStageOptions) {
   useEffect(() => {
     const w = globalThis.D25World;
     if (!w || !stageRef.current) return;
-    w.setPickHighlight?.(opts.pick?.cells ?? []);
-    w.setPickPlayers?.(opts.pick?.players ?? []);
-    stageRef.current.classList.toggle('mp-stage--pick', !!opts.pick);
+    const cells = opts.pick?.cells ?? [];
+    const players = opts.pick?.players ?? [];
+    w.setPickHighlight?.(cells);
+    w.setPickPlayers?.(players);
+    /* 手型光标要的是「真的有待选对象」，不是「宿主传了个 pick 对象」——
+       空集合也会把光标变成十字，玩家会去点棋盘却什么都点不到。与 hud.js 的 picking() 同判据。 */
+    stageRef.current.classList.toggle('mp-stage--pick', cells.length > 0 || players.length > 0);
   }, [opts.pick]);
 
   /* 热座下视角跟着回合走；联机锁在自己身上（不抢用户手选的视角） */

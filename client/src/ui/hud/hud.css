@@ -486,6 +486,19 @@
   filter: saturate(0.45) brightness(1.02);
 }
 
+/* 这两块必须**占位恒定**，否则每次按掷骰都会闪一下屏。
+   实测：按下骰子那一刻，脚下格从「有售价有租金」变成「什么都没有」，
+   `.mp-tile__rows` 少一行 → dock 187.2→166.2px → 舞台 506→512.8px →
+   world 挂在舞台上的 ResizeObserver 触发 `renderer.setSize()`，WebGL 画布被清空重绘 ——
+   玩家看到的就是整块棋盘白闪一下。回合换了、落格换了、换人换了都会再来一次。
+   所以这里按各自的最大态预留，而不是让内容去推高度。 */
+.mp-tile__rows {
+  /* 3 行 × 1.5 行高 + 2 条 3px 行间距（字号 12px ⇒ 60px）。
+     公司格那种 4 行的少见态仍会长高一点，但总比每一手都闪一次好。 */
+  min-height: calc(3 * 1.5em + 6px);
+  align-content: start;
+}
+
 /* --- 1. 当前格卡片：做成一张地契（虚线装订 + 骑缝章），不是一张表 --- */
 .mp-tile {
   display: flex;
@@ -673,7 +686,7 @@
   -webkit-box-orient: vertical;
 }
 
-/* --- 3. 主操作：骰子那颗视觉权重最大 --- */
+/* --- 3. 主操作：骰子那颗视觉权重最大，独占一行高 --- */
 .mp-act {
   display: flex;
   align-items: center;
@@ -681,9 +694,43 @@
   gap: 10px;
   flex-wrap: wrap;
   min-width: 0;
+  /* 骰子在的时候 72px；飞行途中什么都不剩 —— 不预留就会缩，缩了就轮到棋盘闪。
+     次操作与出口已经搬去 `.mp-sub` 常驻第二行，这里只剩一颗主按钮，不会再折行。 */
+  min-height: 72px;
+}
+/* 常驻第二行：次操作 + 落格出口 + 相机读数。
+   min-height 让它**空着也占位** —— 这是 dock 高度恒定的关键，见 Dock.tsx 的注释。 */
+.mp-sub {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  min-height: 40px;
+  position: relative;
 }
 .mp-morewrap {
   position: relative;
+}
+
+/* 相机只报两句：跟着谁、是不是还在飞。操作手法那句属于教学，教完就淡出 */
+.mp-camnote {
+  margin-left: auto;
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  position: relative;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--mp-ink-2);
+}
+.mp-camnote em {
+  font-style: normal;
+  opacity: 0.7;
+  margin-left: 6px;
+}
+.mp-camnote--lock {
+  color: var(--mp-straw-d);
 }
 .mp-panel.mp-morepop {
   position: absolute;
@@ -807,28 +854,6 @@
   font-size: 12.5px;
   font-weight: 800;
   text-align: center;
-}
-
-/* 相机读数走在操作台里（自己一行），不悬挂在 dock 之外 ——
-   绝对定位 + translateY(100%) 实测会把整壳顶出视口 213px，页面开始滚。 */
-.mp-camnote {
-  grid-column: 1 / -1;
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  justify-content: flex-end;
-  margin-top: 2px;
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--mp-ink-2);
-}
-.mp-camnote em {
-  font-style: normal;
-  opacity: 0.7;
-  margin-left: 6px;
-}
-.mp-camnote--lock {
-  color: var(--mp-straw-d);
 }
 
 /* ============================ 抽屉内容 ============================ */

@@ -118,16 +118,27 @@ export function MpHud({
      旧壳在棋盘上方铺一条横滚字幕带，密度没降还和 dock 抢注意力。掷骰 / 买地 / 收租那些
      结果仍要说句话（核心路径的第二步就是「看结果」），但只说最近那一条、4 秒后淡掉。 */
   const sayTimer = useRef(0);
-  const logCountRef = useRef(-1);
+  const saySigRef = useRef<string | null>(null);
   useEffect(() => {
     const log = st.log ?? [];
-    const prev = logCountRef.current;
-    logCountRef.current = log.length;
-    /* 首帧不播（那是历史最后一条，不是刚发生的事）；被 200 条上限剪头时长度会变小，也不播 */
-    if (prev < 0 || log.length <= prev + 1) return;
-    const last = log[log.length - 1]?.text;
-    if (!last) return;
-    setSay(last);
+    const sig = (e: { turn: number; text: string }) => `${e.turn}|${e.text}`;
+    const last = log.length ? sig(log[log.length - 1]!) : '';
+    /* 基线：首帧不播（那是历史最后一条，不是刚发生的事），读档进来也不把整段重播一遍 */
+    if (saySigRef.current === null) {
+      saySigRef.current = last;
+      return;
+    }
+    if (!log.length || last === saySigRef.current) return;
+    /* 增量**不能按长度差算**：`log()` 有 200 条上限并从头部剪，长度钉在 200 之后差值恒为 0
+       —— 早先用 `log.length <= prev + 1` 判新增，等于整局打满 200 条之后这条播报永久哑掉，
+       连最普通的「只新增一条」都会被误判成没新增。改为从尾部回扫找上次看过的那条。 */
+    let i = log.length - 1;
+    while (i >= 0 && sig(log[i]!) !== saySigRef.current) i--;
+    saySigRef.current = last;
+    const fresh = i >= 0 ? log.slice(i + 1) : log.slice(-1);
+    const text = fresh[fresh.length - 1]?.text;
+    if (!text) return;
+    setSay(text);
     window.clearTimeout(sayTimer.current);
     sayTimer.current = window.setTimeout(() => setSay(''), 4000);
   }, [st.log]);
@@ -149,12 +160,17 @@ export function MpHud({
   }, []);
   const unread = useMemo(() => {
     const log = st.log ?? [];
-    if (!seenSig || !log.length) return 0;
+    if (!log.length) return 0;
+    /* seenSig 为空有两种来路：还没立基线（首帧 log 就是空的），或基线那条已被 200 条上限剪掉。
+       前者该报「全是新的」—— 不报的话，空开局进来的人永远看不见未读角标，
+       这条正是顶栏那颗消息钮唯一的反馈。 */
+    if (!seenSig) return Math.min(3, log.length);
     let i = log.length - 1;
     while (i >= 0 && `${log[i]?.turn}|${log[i]?.text}` !== seenSig) i--;
     // 一条都没找回 = 上次那条已被上限剪掉，这时只报最近三条，不拿整段历史吓人
     return Math.max(0, i >= 0 ? log.length - 1 - i : Math.min(3, log.length));
-  }, [st.log, seenSig, sigOf]);
+    // 不列 sigOf：它是每次渲染新建的闭包，列进来会让这个 memo 永远不命中，而它的函数体根本没用它
+  }, [st.log, seenSig]);
 
   const openDrawer = useCallback(
     (tab: DrawerTab | null) => {
@@ -188,6 +204,27 @@ export function MpHud({
       window.removeEventListener('keydown', onKey);
     };
   }, [drawer]);
+
+  /* 「更多」菜单同样要能点外面关掉 —— 它是 fixed 悬浮件，没有遮罩兜底。
+     触发那颗钮本身要排除，否则 mousedown 先关、click 再开，永远关不上。 */
+  const menuRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!moreOpen) return;
+    const onDown = (e: PointerEvent) => {
+      const t = e.target as Element | null;
+      if (!t || menuRef.current?.contains(t) || t.closest('.mp-top__acts')) return;
+      setMoreOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setMoreOpen(false);
+    };
+    document.addEventListener('pointerdown', onDown);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('pointerdown', onDown);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [moreOpen]);
 
   /* ---------------- 舞台（棋盘 + 相机 + 小地图） ---------------- */
   const onHover = useCallback(
@@ -370,7 +407,7 @@ export function MpHud({
       />
 
       {moreOpen && (
-        <div className="mp-menu mp-panel" role="menu">
+        <div ref={menuRef} className="mp-panel mp-menu" role="menu">
           <div className="mp-menu__t">全部功能入口</div>
           {MENU.map((m) => (
             <button

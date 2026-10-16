@@ -1,0 +1,352 @@
+/* ============================================================================
+   面板正文桥接层（legacy 深色皮 → 马卡龙）
+   ----------------------------------------------------------------------------
+   九个局内面板（银行 / 商店 / 股市 / 乐透 / 公布栏 / 魔法屋 / 公司 / 拍卖 / 控制）
+   与手牌动作条的 JSX 用的是 `styles.css` 那套**深色主题**类名：#eceff1 浅字、
+   #263238 按钮、rgba(38,50,56,.5) 卡片。它们被塞进奶油底（#fffdf6）的 mp 弹层里，
+   实测正文对比度 1.14:1 —— 等于看不见。
+
+   这一层只换**颜色那一层**：字体、底色、描边、圆角、阴影、语义色。
+   一条 `display` / `flex` / `gap` / `width` 都不覆盖 —— 那 1500 行 JSX 里全是
+   金额输入、目标挑选、引擎门控，为了换皮去动布局不值得冒回归风险。
+   面板正文自己写成 mp 组件（用 .mp-btn / .mp-item 那套）是后续的事，届时删掉这个文件。
+
+   作用域写成两级 `:is(.mp-panel .mp-panel__bd, .ac-quick-anchor .ac-quick)`，
+   是为了特异性稳定压过 `styles.css` 里那 33 条 `button.mini`、`.card-row button` 之类的
+   (0,1,1) 规则。单类前缀与它们打平，胜负就落到打包顺序上 —— 实测 `styles.css` 排在后面，
+   于是按钮圆角仍是 4px。两级都是**真实祖先**（正文确实在面板里、条确实在锚点里），
+   不是为凑特异性硬造的。
+   - `.mp-panel__bd`：mp 弹层的正文；
+   - `.ac-quick`：手牌/道具的内联动作条。它不在弹层里，是棋盘上方的浮条，
+     但用的是同一批遗留类名 —— 漏掉它就会看到一条深色的东西浮在糖果色界面上。
+   ============================================================================ */
+
+:is(.mp-panel .mp-panel__bd, .ac-quick-anchor .ac-quick) {
+  font-family: var(--mp-font);
+  color: var(--mp-ink);
+  line-height: 1.55;
+}
+
+/* ---------- 按钮：墨紫描边 + 街沿硬阴影 ---------- */
+:is(.mp-panel .mp-panel__bd, .ac-quick-anchor .ac-quick) button {
+  background: var(--mp-paper);
+  color: var(--mp-ink);
+  border: 2px solid var(--mp-ink);
+  border-radius: 999px;
+  box-shadow: 0 3px 0 var(--mp-ink-soft);
+  font-weight: 700;
+  transition: transform 0.08s, box-shadow 0.08s, filter 0.08s;
+}
+:is(.mp-panel .mp-panel__bd, .ac-quick-anchor .ac-quick) button:hover:not(:disabled) {
+  filter: brightness(1.05);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 0 var(--mp-ink-soft);
+}
+:is(.mp-panel .mp-panel__bd, .ac-quick-anchor .ac-quick) button:active:not(:disabled) {
+  transform: translateY(3px);
+  box-shadow: 0 0 0 var(--mp-ink-soft);
+}
+:is(.mp-panel .mp-panel__bd, .ac-quick-anchor .ac-quick) button:disabled {
+  opacity: 0.45;
+  filter: saturate(0.5);
+}
+/* 确认类动作走薄荷（与 dock 那颗主操作同语义），不再是原来的玫红 */
+:is(.mp-panel .mp-panel__bd, .ac-quick-anchor .ac-quick) button.primary {
+  background: var(--mp-mint);
+  border-color: var(--mp-ink);
+  color: #1f6b53;
+  box-shadow: 0 3px 0 var(--mp-mint-d);
+}
+:is(.mp-panel .mp-panel__bd, .ac-quick-anchor .ac-quick) button.ghost {
+  background: var(--mp-paper-2);
+  border-color: var(--mp-ink);
+  color: var(--mp-ink-2);
+  box-shadow: 0 3px 0 var(--mp-ink-soft);
+}
+:is(.mp-panel .mp-panel__bd, .ac-quick-anchor .ac-quick) button.danger {
+  background: var(--mp-straw);
+  border-color: var(--mp-ink);
+  color: #fff;
+  box-shadow: 0 3px 0 var(--mp-straw-d);
+}
+
+/* ---------- 表单控件：原来是浏览器默认白框，一点边都没有 ---------- */
+:is(.mp-panel .mp-panel__bd, .ac-quick-anchor .ac-quick) input,
+:is(.mp-panel .mp-panel__bd, .ac-quick-anchor .ac-quick) select,
+:is(.mp-panel .mp-panel__bd, .ac-quick-anchor .ac-quick) textarea {
+  padding: 7px 10px;
+  border: 2px solid var(--mp-ink);
+  border-radius: var(--mp-r-s);
+  background: #fff;
+  color: var(--mp-ink);
+  font-family: var(--mp-font);
+  font-size: 13px;
+  box-shadow: inset 0 2px 0 rgba(74, 54, 82, 0.08);
+}
+:is(.mp-panel .mp-panel__bd, .ac-quick-anchor .ac-quick) input:focus,
+:is(.mp-panel .mp-panel__bd, .ac-quick-anchor .ac-quick) select:focus,
+:is(.mp-panel .mp-panel__bd, .ac-quick-anchor .ac-quick) textarea:focus {
+  outline: none;
+  border-color: var(--mp-sky-d);
+  box-shadow: 0 0 0 3px rgba(111, 186, 234, 0.35);
+}
+
+/* ---------- 表格：表头吃纸色底，分隔线改墨紫虚线 ---------- */
+:is(.mp-panel .mp-panel__bd, .ac-quick-anchor .ac-quick) table {
+  border-collapse: collapse;
+  color: var(--mp-ink);
+}
+:is(.mp-panel .mp-panel__bd, .ac-quick-anchor .ac-quick) th {
+  background: var(--mp-paper-2);
+  color: var(--mp-ink-2);
+  font-weight: 800;
+  border-bottom: 2px solid var(--mp-ink);
+}
+:is(.mp-panel .mp-panel__bd, .ac-quick-anchor .ac-quick) td {
+  border-bottom: 2px dashed rgba(160, 143, 174, 0.45);
+}
+
+/* ---------- 嵌套卡片与小面 ---------- */
+:is(.mp-panel .mp-panel__bd, .ac-quick-anchor .ac-quick) .panel {
+  background: var(--mp-paper);
+  border: 2px solid var(--mp-ink);
+  border-radius: var(--mp-r);
+  box-shadow: 0 3px 0 var(--mp-ink-soft);
+}
+:is(.mp-panel .mp-panel__bd, .ac-quick-anchor .ac-quick) .panel-title {
+  font-family: var(--mp-display);
+  /* 站酷是单字重：display 一律 400，写 700 会被合成假粗糊成一团 */
+  font-weight: 400;
+  font-size: 15px;
+  letter-spacing: 0.03em;
+  color: var(--mp-ink);
+}
+:is(.mp-panel .mp-panel__bd, .ac-quick-anchor .ac-quick) .card-row,
+:is(.mp-panel .mp-panel__bd, .ac-quick-anchor .ac-quick) .stock-summary,
+:is(.mp-panel .mp-panel__bd, .ac-quick-anchor .ac-quick) .trade-list,
+:is(.mp-panel .mp-panel__bd, .ac-quick-anchor .ac-quick) .memory-grid,
+:is(.mp-panel .mp-panel__bd, .ac-quick-anchor .ac-quick) .auction-panel,
+:is(.mp-panel .mp-panel__bd, .ac-quick-anchor .ac-quick) .discard-modal,
+:is(.mp-panel .mp-panel__bd, .ac-quick-anchor .ac-quick) .minigame-box {
+  background: var(--mp-paper-2);
+  border: 2px solid var(--mp-ink);
+  border-radius: var(--mp-r-s);
+}
+:is(.mp-panel .mp-panel__bd, .ac-quick-anchor .ac-quick) .winner-banner,
+:is(.mp-panel .mp-panel__bd, .ac-quick-anchor .ac-quick) .phase-badge {
+  background: var(--mp-butter);
+  border: 2px solid var(--mp-ink);
+  color: #7a4e00;
+  box-shadow: 0 3px 0 var(--mp-butter-d);
+}
+
+/* ---------- 角标 ---------- */
+:is(.mp-panel .mp-panel__bd, .ac-quick-anchor .ac-quick) .badge {
+  border: 2px solid var(--mp-ink);
+  border-radius: 999px;
+  background: var(--mp-paper);
+  color: var(--mp-ink-2);
+  font-weight: 800;
+}
+:is(.mp-panel .mp-panel__bd, .ac-quick-anchor .ac-quick) .badge.god,
+:is(.mp-panel .mp-panel__bd, .ac-quick-anchor .ac-quick) .badge.dividend,
+:is(.mp-panel .mp-panel__bd, .ac-quick-anchor .ac-quick) .badge.research {
+  background: rgba(180, 142, 232, 0.28);
+  color: var(--mp-lav-d);
+}
+:is(.mp-panel .mp-panel__bd, .ac-quick-anchor .ac-quick) .badge.off,
+:is(.mp-panel .mp-panel__bd, .ac-quick-anchor .ac-quick) .badge.skip,
+:is(.mp-panel .mp-panel__bd, .ac-quick-anchor .ac-quick) .badge.bankrupt,
+:is(.mp-panel .mp-panel__bd, .ac-quick-anchor .ac-quick) .badge.loan {
+  background: rgba(255, 143, 174, 0.32);
+  color: var(--mp-straw-d);
+}
+:is(.mp-panel .mp-panel__bd, .ac-quick-anchor .ac-quick) .badge.interest,
+:is(.mp-panel .mp-panel__bd, .ac-quick-anchor .ac-quick) .badge.weekday,
+:is(.mp-panel .mp-panel__bd, .ac-quick-anchor .ac-quick) .badge.holiday {
+  background: rgba(79, 201, 164, 0.26);
+  color: #1f6b53;
+}
+:is(.mp-panel .mp-panel__bd, .ac-quick-anchor .ac-quick) .badge.bot {
+  background: var(--mp-paper-2);
+  color: var(--mp-ink-2);
+}
+
+/* ---------- 文字语义色 ----------
+   原来那批浅色（#eceff1 / #cfd8dc / #e0f7fa）是给近黑底写的正文色，在这里一律收成墨紫；
+   灰一档的（#90a4ae / #b0bec5 / #78909c / #607d8b）收进 --mp-ink-2。 */
+:is(.mp-panel .mp-panel__bd, .ac-quick-anchor .ac-quick) .settlement-name,
+:is(.mp-panel .mp-panel__bd, .ac-quick-anchor .ac-quick) .trade-label,
+:is(.mp-panel .mp-panel__bd, .ac-quick-anchor .ac-quick) .trade-form-label,
+:is(.mp-panel .mp-panel__bd, .ac-quick-anchor .ac-quick) .company-row {
+  color: var(--mp-ink);
+}
+:is(.mp-panel .mp-panel__bd, .ac-quick-anchor .ac-quick) .auction-turn,
+:is(.mp-panel .mp-panel__bd, .ac-quick-anchor .ac-quick) .bank-loan-due,
+:is(.mp-panel .mp-panel__bd, .ac-quick-anchor .ac-quick) .build-label,
+:is(.mp-panel .mp-panel__bd, .ac-quick-anchor .ac-quick) .card-desc,
+:is(.mp-panel .mp-panel__bd, .ac-quick-anchor .ac-quick) .company-hint,
+:is(.mp-panel .mp-panel__bd, .ac-quick-anchor .ac-quick) .company-locked,
+:is(.mp-panel .mp-panel__bd, .ac-quick-anchor .ac-quick) .control-meta,
+:is(.mp-panel .mp-panel__bd, .ac-quick-anchor .ac-quick) .lottery-mine,
+:is(.mp-panel .mp-panel__bd, .ac-quick-anchor .ac-quick) .npc-bail-hint,
+:is(.mp-panel .mp-panel__bd, .ac-quick-anchor .ac-quick) .param-row,
+:is(.mp-panel .mp-panel__bd, .ac-quick-anchor .ac-quick) .phase-row,
+:is(.mp-panel .mp-panel__bd, .ac-quick-anchor .ac-quick) .revenge-hint,
+:is(.mp-panel .mp-panel__bd, .ac-quick-anchor .ac-quick) .stock-closed,
+:is(.mp-panel .mp-panel__bd, .ac-quick-anchor .ac-quick) .stock-pl,
+:is(.mp-panel .mp-panel__bd, .ac-quick-anchor .ac-quick) .stock-qty-row,
+:is(.mp-panel .mp-panel__bd, .ac-quick-anchor .ac-quick) .stock-section-title,
+:is(.mp-panel .mp-panel__bd, .ac-quick-anchor .ac-quick) .stock-section-note,
+:is(.mp-panel .mp-panel__bd, .ac-quick-anchor .ac-quick) .stock-summary-row,
+:is(.mp-panel .mp-panel__bd, .ac-quick-anchor .ac-quick) .trade-history-row,
+:is(.mp-panel .mp-panel__bd, .ac-quick-anchor .ac-quick) .trade-kind,
+:is(.mp-panel .mp-panel__bd, .ac-quick-anchor .ac-quick) .trade-seller,
+:is(.mp-panel .mp-panel__bd, .ac-quick-anchor .ac-quick) .bank-hint,
+:is(.mp-panel .mp-panel__bd, .ac-quick-anchor .ac-quick) .company-meta {
+  color: var(--mp-ink-2);
+}
+/* 金额与「可办」：薄荷绿 */
+:is(.mp-panel .mp-panel__bd, .ac-quick-anchor .ac-quick) .bank-balance,
+:is(.mp-panel .mp-panel__bd, .ac-quick-anchor .ac-quick) .card-name .price,
+:is(.mp-panel .mp-panel__bd, .ac-quick-anchor .ac-quick) .cell-hint,
+:is(.mp-panel .mp-panel__bd, .ac-quick-anchor .ac-quick) .company-label,
+:is(.mp-panel .mp-panel__bd, .ac-quick-anchor .ac-quick) .shop-sell-title,
+:is(.mp-panel .mp-panel__bd, .ac-quick-anchor .ac-quick) .stock-open,
+:is(.mp-panel .mp-panel__bd, .ac-quick-anchor .ac-quick) .trade-price,
+:is(.mp-panel .mp-panel__bd, .ac-quick-anchor .ac-quick) .settlement-total {
+  color: var(--mp-money-d);
+}
+/* 标题与强调：深琥珀（不是 --mp-butter-d —— 那个在奶油底上只有 2.1:1，小字读不了） */
+:is(.mp-panel .mp-panel__bd, .ac-quick-anchor .ac-quick) .card-name,
+:is(.mp-panel .mp-panel__bd, .ac-quick-anchor .ac-quick) .card-name .owned,
+:is(.mp-panel .mp-panel__bd, .ac-quick-anchor .ac-quick) .current-name,
+:is(.mp-panel .mp-panel__bd, .ac-quick-anchor .ac-quick) .minigame-hint,
+:is(.mp-panel .mp-panel__bd, .ac-quick-anchor .ac-quick) .settlement-rank,
+:is(.mp-panel .mp-panel__bd, .ac-quick-anchor .ac-quick) .stock-lock,
+:is(.mp-panel .mp-panel__bd, .ac-quick-anchor .ac-quick) .trade-section-title,
+:is(.mp-panel .mp-panel__bd, .ac-quick-anchor .ac-quick) .auction-turn b,
+:is(.mp-panel .mp-panel__bd, .ac-quick-anchor .ac-quick) .lottery-pool b,
+:is(.mp-panel .mp-panel__bd, .ac-quick-anchor .ac-quick) .stock-summary-row b {
+  color: #7a4e00;
+}
+/* 警示与拒绝：草莓 */
+:is(.mp-panel .mp-panel__bd, .ac-quick-anchor .ac-quick) .error-text,
+:is(.mp-panel .mp-panel__bd, .ac-quick-anchor .ac-quick) .holiday-hint,
+:is(.mp-panel .mp-panel__bd, .ac-quick-anchor .ac-quick) .stock-flag,
+:is(.mp-panel .mp-panel__bd, .ac-quick-anchor .ac-quick) .discard-title,
+:is(.mp-panel .mp-panel__bd, .ac-quick-anchor .ac-quick) .revenge-title,
+:is(.mp-panel .mp-panel__bd, .ac-quick-anchor .ac-quick) .magic-wheel__cond {
+  color: var(--mp-straw-d);
+}
+
+/* ---------- 涨跌：红涨绿跌，与 styles.css 同一条约定 ----------
+   项目沿用中式行情色（.up 红 / .down 绿）。桥接时**不许**顺手改成「涨=绿=好」，
+   那会和股市面板、K 线、播报里的箭头全部对不上。 */
+:is(.mp-panel .mp-panel__bd, .ac-quick-anchor .ac-quick) .up,
+:is(.mp-panel .mp-panel__bd, .ac-quick-anchor .ac-quick) .stock-table .up,
+:is(.mp-panel .mp-panel__bd, .ac-quick-anchor .ac-quick) .stock-summary-row b.up {
+  color: var(--mp-straw-d);
+}
+:is(.mp-panel .mp-panel__bd, .ac-quick-anchor .ac-quick) .down,
+:is(.mp-panel .mp-panel__bd, .ac-quick-anchor .ac-quick) .stock-table .down,
+:is(.mp-panel .mp-panel__bd, .ac-quick-anchor .ac-quick) .stock-summary-row b.down {
+  color: var(--mp-mint-d);
+}
+
+/* ---------- K 线图（StockChart.tsx）----------
+   这张图是**第十个组件**：它渲染在 StockPanel 里面，所以最初按九个面板文件求交集时漏了它。
+   它自带一整套深色底：容器 rgba(13,22,28,.6)、svg #10191f、meta/foot 用 #78909c 灰蓝。
+   塞进奶油弹层就是截图那样一块黑石板，上面的小字是灰的 —— 读不了。
+
+   svg 里的 stroke/fill 是**表现属性**，优先级低于任何 CSS 规则，所以网格线与量柱可以在这里改色，
+   不必去动 StockChart.tsx 里那几个常量。选 `svg > line` 是因为三条价格网格是 svg 的直接子节点，
+   而蜡烛的上下影线包在 `<g>` 里 —— 用 `svg line` 会把影线的红绿一起杀掉。
+   蜡烛本体与玩家成交柱（红涨绿跌 + 琥珀）在浅底上对比足够，保留原色。 */
+:is(.mp-panel .mp-panel__bd, .ac-quick-anchor .ac-quick) .stock-chart {
+  background: var(--mp-paper-2);
+  border: 2px solid var(--mp-ink);
+  border-radius: var(--mp-r-s);
+}
+:is(.mp-panel .mp-panel__bd, .ac-quick-anchor .ac-quick) .stock-chart svg {
+  background: #fff;
+  border: 2px solid var(--mp-ink);
+  border-radius: 6px;
+}
+:is(.mp-panel .mp-panel__bd, .ac-quick-anchor .ac-quick) .stock-chart svg > line {
+  stroke: rgba(74, 54, 82, 0.16);
+}
+:is(.mp-panel .mp-panel__bd, .ac-quick-anchor .ac-quick) .stock-chart .stock-chart-meta,
+:is(.mp-panel .mp-panel__bd, .ac-quick-anchor .ac-quick) .stock-chart .stock-chart-foot,
+:is(.mp-panel .mp-panel__bd, .ac-quick-anchor .ac-quick) .stock-chart.empty {
+  color: var(--mp-ink-2);
+}
+:is(.mp-panel .mp-panel__bd, .ac-quick-anchor .ac-quick) .stock-chart .stock-chart-head {
+  color: var(--mp-ink);
+  font-weight: 700;
+}
+/* 红涨绿跌，沿用项目约定，与上面的 .up/.down 一节同一套色 */
+:is(.mp-panel .mp-panel__bd, .ac-quick-anchor .ac-quick) .stock-chart .stock-chart-head .up {
+  color: var(--mp-straw-d);
+}
+:is(.mp-panel .mp-panel__bd, .ac-quick-anchor .ac-quick) .stock-chart .stock-chart-head .down {
+  color: var(--mp-mint-d);
+}
+
+/* ---------- 魔法屋轮盘三态 ---------- */
+:is(.mp-panel .mp-panel__bd, .ac-quick-anchor .ac-quick) .magic-wheel button.pol-good {
+  background: rgba(79, 201, 164, 0.3);
+  border: 2px solid var(--mp-mint-d);
+  color: #1f6b53;
+}
+:is(.mp-panel .mp-panel__bd, .ac-quick-anchor .ac-quick) .magic-wheel button.pol-bad {
+  background: rgba(255, 143, 174, 0.32);
+  border: 2px solid var(--mp-straw-d);
+  color: #a02545;
+}
+
+/* ---------- 手牌动作条那几个 ac 件 ----------
+   HandQuickBar 与面板里的提示条沿用了 `.ac-btn` / `.ac-note`（定义在 acHudClient.css，
+   那份表在两种壳下都常驻）。桥接层给它们补上 mp 的描边与色，免得糖果界面里嵌一条棕色。 */
+
+/* 容器这一条不能复用上面的共享前缀：`.ac-quick` 本身就是那个容器，
+   写成 `.ac-quick-anchor .ac-quick .ac-quick` 会永远匹配不到。实测它原本是
+   3px 棕描边 + 奶油底 —— 底色不伤可读性（正文 10.46:1），但那圈棕线在糖果界面里是外来的。 */
+.ac-quick-anchor .ac-quick {
+  border: var(--mp-w) solid var(--mp-ink);
+  border-radius: var(--mp-r);
+  background: var(--mp-paper);
+  box-shadow: 0 var(--mp-sh) 0 var(--mp-ink);
+  color: var(--mp-ink);
+}
+:is(.mp-panel .mp-panel__bd, .ac-quick-anchor .ac-quick) .ac-quick__badge,
+:is(.mp-panel .mp-panel__bd, .ac-quick-anchor .ac-quick) .ac-quick__chip {
+  border: 2px solid var(--mp-ink);
+  border-radius: 999px;
+  background: var(--mp-paper-2);
+  color: var(--mp-ink-2);
+}
+:is(.mp-panel .mp-panel__bd, .ac-quick-anchor .ac-quick) .ac-quick__chip--board {
+  background: rgba(111, 186, 234, 0.3);
+  color: var(--mp-sky-d);
+}
+:is(.mp-panel .mp-panel__bd, .ac-quick-anchor .ac-quick) .ac-quick__chip--off {
+  opacity: 0.55;
+}
+:is(.mp-panel .mp-panel__bd, .ac-quick-anchor .ac-quick) .ac-note {
+  border: 2px solid var(--mp-ink);
+  border-radius: var(--mp-r-s);
+  background: var(--mp-paper-2);
+  color: var(--mp-ink-2);
+}
+:is(.mp-panel .mp-panel__bd, .ac-quick-anchor .ac-quick) .ac-note--warn {
+  background: rgba(255, 196, 77, 0.3);
+  border-color: var(--mp-butter-d);
+  color: #7a4e00;
+}
+:is(.mp-panel .mp-panel__bd, .ac-quick-anchor .ac-quick) .ac-sheet__esc {
+  border: 2px solid var(--mp-ink);
+  border-radius: 6px;
+  background: var(--mp-paper);
+  color: var(--mp-ink-2);
+}

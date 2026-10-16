@@ -29,6 +29,7 @@ import { Icon } from './mp/Icon.js';
 import { MpHud } from './hud/MpHud.js';
 import type { StageApi } from './hud/useBoardStage.js';
 import './acHudClient.css';
+import './hud/panel-bridge.css';
 
 type AcHostTool = { label: string; title?: string; onClick?: () => void };
 type AcHostApi = {
@@ -469,6 +470,22 @@ export function AcHudLayer({
     [openPanel, onAction],
   );
 
+  /* 传给 mp 壳的选目标集：必须是稳定引用。写成 JSX 里的对象字面量会让每次渲染都是新对象，
+     而 useBoardStage 里那个画绿环/压暗的 effect 以它为依赖 —— 于是每次渲染都要把 64~144 个
+     格子 mesh 的材质全量重设一遍（`world.js:setPickHighlight` 就是这么写的）。 */
+  const stagePick = useMemo(
+    () =>
+      pick
+        ? {
+            cells: pick.cells,
+            rejected: pick.rejected,
+            players: pick.players ?? [],
+            playerRejected: pick.playerRejected ?? [],
+          }
+        : null,
+    [pick],
+  );
+
   const tools = useMemo<AcHostTool[]>(() => {
     const next = () => setFontMode((m) => FONT_MODES[(FONT_MODES.indexOf(m) + 1) % FONT_MODES.length]!);
     const list: AcHostTool[] = [
@@ -722,16 +739,7 @@ export function AcHudLayer({
             muted={muted}
             connection={connection}
             netError={netError}
-            pick={
-              pick
-                ? {
-                    cells: pick.cells,
-                    rejected: pick.rejected,
-                    players: pick.players ?? [],
-                    playerRejected: pick.playerRejected ?? [],
-                  }
-                : null
-            }
+            pick={stagePick}
             bagFocusKey={handSel ? entryKey(handSel) : null}
             stageApiRef={stageApiRef}
             pickLabel={pick?.label ?? ''}

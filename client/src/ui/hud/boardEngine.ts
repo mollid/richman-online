@@ -51,12 +51,14 @@ export interface WorldApi {
 
 export interface WorldHooks {
   onFrame(): void;
-  onCameraMode(): void;
+  /** world 会把切换后的模式当参数传进来；本壳不接这个回调（下一次 onFrame 自然重报读数） */
+  onCameraMode?(mode: 'top' | 'iso'): void;
   onHover(id: number | null): void;
   onSelect(id: number | null): void;
   onPickPlayer(pid: string): void;
-  onLand(pid: string, cellId: number, kind: string): void;
-  onMoveSettled(pid?: string, cellId?: number): void;
+  /** `kind` 只有 'walk'（沿圈走到）与 'transfer'（押送 / 传送落位）两种 */
+  onLand(pid: string, cellId: number, kind: 'walk' | 'transfer'): void;
+  onMoveSettled?(pid?: string, cellId?: number): void;
   onCameraLock(v: boolean): void;
   onCameraSettled(): void;
 }

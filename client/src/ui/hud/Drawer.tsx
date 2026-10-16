@@ -351,18 +351,23 @@ function Books({ snap, viewportPid }: { snap: AcSnapshot; viewportPid: string })
 
 function Log({ snap }: { snap: AcSnapshot }) {
   const log = snap.state.log ?? [];
-  /* 引擎的 log 有 200 条上限并从头部剪，所以这里倒着铺：最新那条永远在最上面，
-     被剪掉的历史不会因为「按正序取后 N 条」而错位。 */
+  /* 引擎的 log 有 200 条上限并从头部剪，所以倒着铺：最新那条永远在最上面。 */
   const recent = log.slice(-80).reverse();
   return (
     <ul className="mp-log">
-      {recent.map((e, i) => (
-        <li key={`${e.turn}-${i}-${e.text.slice(0, 12)}`}>
-          <Icon id={logIcon(e.text)} size="s" />
-          <b className="mp-log__turn">{e.turn}</b>
-          <span>{e.text}</span>
-        </li>
-      ))}
+      {recent.map((e, i) => {
+        /* key 用**正序**下标（slice 之后它在数组里的真实位置），不能用这个倒序下标：
+           倒序下标每来一条新播报就全体 +1，80 行会一起换 key、整列重挂载 ——
+           滚动位置和入场动画都会被重置，看起来就像列表自己跳了一下。 */
+        const forward = log.length - 1 - i;
+        return (
+          <li key={`${forward}-${e.turn}-${e.text}`}>
+            <Icon id={logIcon(e.text)} size="s" />
+            <b className="mp-log__turn">{e.turn}</b>
+            <span>{e.text}</span>
+          </li>
+        );
+      })}
       {!recent.length && <li className="mp-empty">还没有播报</li>}
     </ul>
   );

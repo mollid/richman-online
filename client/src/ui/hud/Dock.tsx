@@ -220,6 +220,15 @@ export function Dock({
   /* 骰子只在真掷的那一手转一下：按下就起动画，快照回来（点数到了）自然停 */
   useEffect(() => () => window.clearTimeout(spinTimer.current), []);
 
+  /* 镜头一起飞就把弹层收掉。旧 hud.js 的 `camLock()` 锁上那一刻会摘掉所有 `.hud-pop--open`，
+     理由写得很直白：弹层浮在已经置灰的 dock 上会「看着还能点」，而底下按钮其实全 disabled。
+     mp 壳里弹层是 React 状态不是 class，所以这一半职责落在组件这边，钩子管不着。 */
+  useEffect(() => {
+    if (!camLocked) return;
+    setMoreOpen(false);
+    setBagOpen(false);
+  }, [camLocked]);
+
   if (!cur || !me) return null;
 
   const rows = buildActions(snap).filter((r) => r.enabled);
@@ -372,39 +381,8 @@ export function Dock({
         )}
       </div>
 
-      {/* --- 3. 主操作：骰子那颗视觉权重最大 --- */}
+      {/* --- 3. 主操作：骰子那颗视觉权重最大，独占一行高 --- */}
       <div className="mp-act">
-        {secondary.length > 0 && (
-          <div className="mp-morewrap">
-            <button
-              className="mp-btn mp-btn--ghost"
-              type="button"
-              aria-expanded={moreOpen}
-              onClick={() => {
-                setMoreOpen((v) => !v);
-                setBagOpen(false);
-              }}
-            >
-              <Icon id="i-more" size="s" />
-              更多动作 {secondary.length}
-            </button>
-            {moreOpen && (
-              <div className="mp-morepop mp-panel" role="group" aria-label="此刻可做的次操作">
-                <div className="mp-morepop__t">此刻可做的次操作（共 {secondary.length}）</div>
-                <div className="mp-morepop__grid">
-                  {secondary.map((r) => (
-                    <button key={r.key} className={`mp-btn mp-btn--${r.variant}`} type="button" title={r.why} onClick={() => fire(r)}>
-                      <Icon id={r.icon} size="s" />
-                      {r.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-            {guidance.more && <span className="mp-bubble mp-bubble--up">其余动作都收在这里，一个没少</span>}
-          </div>
-        )}
-
         {stay ? (
           <span className="mp-stay">{stay}</span>
         ) : primary ? (
@@ -426,33 +404,85 @@ export function Dock({
           </button>
         ) : !interactive ? (
           <span className="mp-stay">等待对方操作</span>
-        ) : secondary.length === 0 ? (
+        ) : secondary.length === 0 && !exit ? (
           /* 只有「真的什么都没有」才说这句：会话窗（银行 / 商店）没有主 CTA，但次操作与出口都在 */
           <span className="mp-stay">此刻没有可执行的操作</span>
         ) : null}
+      </div>
 
+      {/* --- 次操作、落格出口、相机读数固定占第二行 ---
+          它们原先和骰子挤在同一列里：三件一出现就折行，`.mp-act` 从 72px 涨到 190px，
+          整块 dock 高 40px。而 `.mp-shell` 是 `overflow:hidden` 的一屏 —— 多出来的 40px
+          不会把棋盘顶小，而是**直接被裁到屏幕外**（实测相机读数那行被切掉）。
+          做成常驻第二行、有没有内容都占这个高：dock 恒定，棋盘再也不会因为 HUD 改文案而 resize。 */}
+      <div className="mp-sub">
+        {secondary.length > 0 && (
+          <div className="mp-morewrap">
+            <button
+              className="mp-btn mp-btn--ghost"
+              type="button"
+              aria-expanded={moreOpen}
+              disabled={camLocked || !interactive}
+              onClick={() => {
+                setMoreOpen((v) => !v);
+                setBagOpen(false);
+              }}
+            >
+              <Icon id="i-more" size="s" />
+              更多动作 {secondary.length}
+            </button>
+            {moreOpen && (
+              <div className="mp-morepop mp-panel" role="group" aria-label="此刻可做的次操作">
+                <div className="mp-morepop__t">此刻可做的次操作（共 {secondary.length}）</div>
+                <div className="mp-morepop__grid">
+                  {secondary.map((r) => (
+                    <button
+                      key={r.key}
+                      className={`mp-btn mp-btn--${r.variant}`}
+                      type="button"
+                      title={r.why}
+                      /* 这一排以前漏了门控：旧 hud.js 的 applyCamLockUI() 是把
+                         `.hud-dock .ac-btn` 整批 disabled 的，而 `fire()` 里还有一道
+                         「镜头在飞 / 还没轮到你」的直接拒发。声明式改写时只给骰子和出口加了
+                         disabled，等于给「加盖 / 保释 / 认购原始股」开了一条绕过锁的侧门 ——
+                         镜头补间中途或别人的回合里真能把动作派出去。 */
+                      disabled={camLocked || !interactive}
+                      onClick={() => fire(r)}
+                    >
+                      <Icon id={r.icon} size="s" />
+                      {r.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+            {guidance.more && <span className="mp-bubble mp-bubble--up">其余动作都收在这里，一个没少</span>}
+          </div>
+        )}
+
+        {/* 落格窗的那个出口：不是主操作（它是「不做」），所以排在骰子之外、用奶油色 */}
         {exit && (
           <button className="mp-btn mp-btn--ghost" type="button" title={exit.why} disabled={camLocked || !interactive} onClick={() => onFire({ type: 'FINISH_LANDING' }, exit.label)}>
             <Icon id="i-arrow-right" size="s" />
             {exit.label}
           </button>
         )}
-      </div>
 
-      {/* 相机只报两句：跟着谁、是不是还在飞。操作手法那句属于教学，教完就淡出 */}
-      <div className="mp-camnote" role="status" aria-live="polite">
-        {camLocked ? (
-          <span className="mp-camnote--lock">
-            <Icon id="i-lock" size="s" /> 镜头聚焦中 · 操作已屏蔽
-          </span>
-        ) : (
-          <span>
-            <Icon id="i-cam" size="s" /> 镜头跟随 <b>{camTarget || '—'}</b>
-            {camIso ? <> · 近景 {camVisible} 格</> : null}
-            <em>轮到谁操作，镜头就交给谁</em>
-          </span>
-        )}
-        {guidance.cam && <span className="mp-bubble mp-bubble--up">拖拽转视角 · 滚轮推拉 · 悬停看格子 · 点击钉到这张卡片</span>}
+        {/* 相机只报两句：跟着谁、是不是还在飞。操作手法那句属于教学，教完就淡出 */}
+        <span className="mp-camnote" role="status" aria-live="polite">
+          {camLocked ? (
+            <span className="mp-camnote--lock">
+              <Icon id="i-lock" size="s" /> 镜头聚焦中 · 操作已屏蔽
+            </span>
+          ) : (
+            <span>
+              <Icon id="i-cam" size="s" /> 镜头跟随 <b>{camTarget || '—'}</b>
+              {camIso ? <> · 近景 {camVisible} 格</> : null}
+              <em>轮到谁操作，镜头就交给谁</em>
+            </span>
+          )}
+          {guidance.cam && <span className="mp-bubble mp-bubble--up">拖拽转视角 · 滚轮推拉 · 悬停看格子 · 点击钉到这张卡片</span>}
+        </span>
       </div>
     </footer>
   );

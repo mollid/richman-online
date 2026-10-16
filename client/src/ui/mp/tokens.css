@@ -161,6 +161,11 @@
    这个坑已经踩过四次（行囊弹层、更多弹层、图例、抽屉），每次都表现为"布局莫名撑开一块"。 */
 .mp-panel {
   position: relative;
+  /* 必须自己声明 color。mp 的弹层/抽屉是渲染在 `.mp-shell` **之外**的兄弟节点
+     （遮罩要盖住整屏，不能当壳的子女），所以它拿不到 `.mp-shell{color:var(--mp-ink)}`，
+     会一路继承到 `styles.css` 里 `html,body,#root{color:#eceff1}` —— 那套是给近黑底写的。
+     实测：奶油底 #fffdf6 配 #eceff1 文字，对比度 1.14:1，等于看不见。 */
+  color: var(--mp-ink);
   border: var(--mp-w) solid var(--mp-ink);
   border-radius: var(--mp-r-lg);
   background: var(--mp-paper);
