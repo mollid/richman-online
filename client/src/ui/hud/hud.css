@@ -1,0 +1,1257 @@
+/* ============================================================================
+   马卡龙派对 · 对局 HUD 版面（mp-）
+   ----------------------------------------------------------------------------
+   令牌与基础件在 `../mp/tokens.css`（那边写死了三条规矩：墨紫描边、街沿硬阴影
+   blur 必须是 0、高光是硬切不是柔渐变）。这个文件只管版面与 HUD 特有的件。
+
+   三条不许破坏的前提：
+   1. `.mp-stagebox` 是 React 的，`.mp-stage` 由 useBoardStage 命令式创建塞进去。
+      舞台里的一切都会被 `world.dispose()`（innerHTML=''）与 `overlay.dispose()`
+      （删掉舞台内所有 canvas）扫掉 —— 所以读数、小地图、图例全部做成**兄弟节点**。
+   2. 棋盘要能拿到全部剩余高度，所以整壳用 grid 三行（顶栏 / 主体 / 操作台），
+      主体内部再切「棋盘 | 导轨」两列。任何一块用 position:fixed 都会把棋盘压没。
+   3. 近景的小地图是方位感的唯一来源（近景只露周围几格），不是装饰件：
+      它跟着 `cam.iso` 显隐，隐藏时用 `hidden` 而不是 display:none —— 钩子里读
+      `canvas.hidden` 决定要不要画，省掉每帧无用的绘制。
+   ============================================================================ */
+
+.mp-shell {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: 10px;
+  /* 整壳就是一屏：用 height + overflow:hidden，不是 min-height。
+     实测 min-height 时顶栏折行、操作台在窄屏堆成三行，总高 986 > 视口 785，
+     页面开始出现滚动条 —— 而棋盘是 flex 出来的那一块，它跟着被顶下去半屏。
+     让主体那一行吃掉全部富余，任何一块折行都只挤棋盘，不会漏出第二条滚动。 */
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+  padding: 10px 12px 12px;
+  background: radial-gradient(120% 90% at 50% 0%, #fff6e6 0 55%, #ffe9cf 55% 100%);
+  color: var(--mp-ink);
+  font-family: var(--mp-font);
+  box-sizing: border-box;
+}
+
+.mp-shell *,
+.mp-shell *::before,
+.mp-shell *::after {
+  box-sizing: border-box;
+}
+
+/* ============================ 顶栏 ============================ */
+.mp-top {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  border-radius: var(--mp-r);
+  /* 允许折行，但三段都先各自收缩：实测 nowrap 会挤爆，而折成三行时顶栏高达 122px，
+     等于把棋盘压掉一整条。收缩优先、折行兜底。 */
+  flex-wrap: wrap;
+}
+
+.mp-res {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  flex: 0 1 auto;
+}
+
+.mp-res__me {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 3px 10px 3px 3px;
+  border: 2px solid var(--mp-ink);
+  border-radius: 999px;
+  background: var(--mp-paper-2);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.mp-res__me img {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 2px solid var(--mp-ink);
+  background: #fff;
+  object-fit: cover;
+  object-position: top;
+}
+.mp-res__who {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.15;
+  text-align: left;
+}
+.mp-res__who b {
+  font-size: 14px;
+  font-weight: 800;
+}
+.mp-res__who small {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--mp-ink-2);
+}
+
+/* 三枚计数器：同一颗币的底形 + 数字，读起来像投币计数而不是表格 */
+.mp-cur {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 11px 4px 6px;
+  border: 2px solid var(--mp-ink);
+  border-radius: 999px;
+  background: #fff;
+  box-shadow: 0 2px 0 var(--mp-ink-soft);
+  font-family: var(--mp-num);
+  font-size: 14px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+.mp-cur--low {
+  color: var(--mp-straw-d);
+  background: #ffeef3;
+  animation: mp-breathe 1.6s ease-in-out infinite;
+}
+
+.mp-capsule {
+  flex: 1 1 210px;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 5px 14px;
+  border: 2.5px solid var(--mp-ink);
+  border-radius: 999px;
+  /* 硬切高光：上半奶油、下半纸色，两个停止点同位 —— 不做柔渐变 */
+  background: linear-gradient(#fffdf6 0 52%, var(--mp-paper-2) 52% 100%);
+  box-shadow: 0 4px 0 var(--mp-ink-soft);
+}
+
+/* 玩家头像组：行动者金圈 + 放大，其余缩小置灰（原则：状态只说一次，靠视觉而不是靠文字重复） */
+.mp-avatars {
+  display: flex;
+  align-items: center;
+}
+.mp-ava {
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  border-radius: 50%;
+  margin-left: -7px;
+  transition: transform 0.14s, filter 0.14s;
+}
+.mp-ava:first-child {
+  margin-left: 0;
+}
+.mp-ava img {
+  display: block;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 2.5px solid var(--mp-ink);
+  background: #fff;
+  object-fit: cover;
+  object-position: top;
+}
+/* 金色轮廓光只给行动中的那一位 */
+.mp-ava--on {
+  transform: scale(1.18) translateY(-1px);
+  z-index: 2;
+}
+.mp-ava--on img {
+  border-color: var(--mp-butter-d);
+  box-shadow: 0 0 0 3px rgba(255, 196, 77, 0.75), 0 0 10px 2px rgba(255, 196, 77, 0.6);
+}
+.mp-ava--off {
+  transform: scale(0.82);
+  filter: grayscale(0.72) opacity(0.72);
+}
+.mp-ava--off:hover {
+  transform: scale(0.94);
+  filter: grayscale(0.2);
+}
+.mp-ava--dead img {
+  filter: grayscale(1) opacity(0.4);
+}
+
+.mp-capsule__txt {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+  /* 胶囊要能收缩：不允许折行时给它省略号，别让顶栏整体拱成两行 */
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mp-capsule__txt b {
+  font-weight: 900;
+}
+.mp-capsule__bar {
+  width: 2px;
+  height: 14px;
+  background: var(--mp-ink-soft);
+  border-radius: 2px;
+}
+.mp-capsule__flag {
+  padding: 2px 9px;
+  border: 2px solid var(--mp-ink);
+  border-radius: 999px;
+  background: var(--mp-butter);
+  color: #7a4e00;
+  font-size: 11.5px;
+  font-weight: 800;
+}
+/* 物价指数常驻但平时不说话；真的动了才亮一下（原则 3 + 护栏「用微动效而非新增常驻条」） */
+.mp-price {
+  opacity: 0.62;
+  padding: 2px 8px;
+  border-radius: 999px;
+  transition: opacity 0.2s, background 0.2s;
+}
+.mp-price--hot {
+  opacity: 1;
+  background: var(--mp-butter);
+  animation: mp-breathe 0.9s ease-in-out 2;
+}
+
+.mp-top__acts {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ============================ 主体 ============================ */
+.mp-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  min-height: 0;
+}
+
+.mp-board {
+  position: relative;
+  min-height: 0;
+  display: flex;
+}
+
+.mp-stagebox {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+}
+
+/* 世界层挂载的节点：圆角 + overflow 裁掉贴出界的名牌（与 overlay 的贴边内收配合） */
+.mp-stage {
+  position: absolute;
+  inset: 0;
+  border: var(--mp-w) solid var(--mp-ink);
+  border-radius: var(--mp-r-lg);
+  overflow: hidden;
+  background: linear-gradient(#cdeafc 0 46%, #e8f7dd 46% 100%);
+  box-shadow: 0 var(--mp-sh) 0 var(--mp-ink);
+  outline: none;
+  touch-action: none;
+}
+.mp-stage--pick {
+  cursor: crosshair;
+}
+
+/* 覆盖层：舞台的兄弟，所以 dispose 扫不到 */
+.mp-stagebar {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  pointer-events: none;
+}
+.mp-stagebar > * {
+  pointer-events: auto;
+}
+.mp-camread {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border: 2px solid var(--mp-ink);
+  border-radius: 999px;
+  background: rgba(255, 253, 246, 0.92);
+  box-shadow: 0 3px 0 var(--mp-ink-soft);
+  font-size: 12.5px;
+  font-weight: 800;
+}
+
+/* 一句最新播报：读完自己走，不横滚、不常驻 */
+.mp-say {
+  position: absolute;
+  top: 52px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 4;
+  max-width: min(560px, 88%);
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 15px;
+  border: 2px solid var(--mp-ink);
+  border-radius: 999px;
+  background: var(--mp-paper);
+  box-shadow: 0 3px 0 var(--mp-ink-soft);
+  font-size: 13px;
+  font-weight: 700;
+  text-align: center;
+  animation: mp-say 4s ease-out forwards;
+  pointer-events: none;
+}
+
+.mp-mini {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  z-index: 3;
+  border: 2px solid var(--mp-ink);
+  border-radius: 10px;
+  box-shadow: 0 3px 0 var(--mp-ink);
+  background: rgba(255, 253, 246, 0.9);
+}
+.mp-mini[hidden] {
+  display: none;
+}
+
+.mp-panel.mp-legend {
+  position: absolute;
+  top: 48px;
+  left: 10px;
+  z-index: 4;
+  max-width: min(520px, 92%);
+  padding: 9px 12px;
+  border-radius: var(--mp-r);
+}
+.mp-legend__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  font-size: 11.5px;
+  font-weight: 700;
+}
+.mp-legend__row + .mp-legend__row {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 2px dashed var(--mp-ink-soft);
+}
+.mp-legend__row span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.mp-legend__row i {
+  width: 13px;
+  height: 13px;
+  border: 2px solid var(--mp-ink);
+  border-radius: 4px;
+}
+.mp-legend__ring {
+  background: transparent !important;
+  border-color: var(--mp-straw-d) !important;
+}
+.mp-legend__row--meta {
+  color: var(--mp-ink-2);
+}
+
+/* ---------------- 右导轨：老玩家找旧入口的那 10 秒 ---------------- */
+.mp-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 66px;
+  padding: 8px 6px;
+  border: var(--mp-w) solid var(--mp-ink);
+  border-radius: var(--mp-r);
+  background: var(--mp-paper);
+  box-shadow: 0 var(--mp-sh) 0 var(--mp-ink);
+}
+.mp-rail__btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 2px 5px;
+  border: 2px solid transparent;
+  border-radius: 12px;
+  background: none;
+  color: var(--mp-ink);
+  font: inherit;
+  font-size: 10.5px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: background 0.12s, transform 0.12s;
+}
+.mp-rail__btn:hover {
+  background: var(--mp-paper-2);
+  transform: translateY(-1px);
+}
+/* 选中态做成「这一格被翻开」的糖果块，而不是加粗描边 —— 与页签本身同色才不抢注意力 */
+.mp-rail__btn--on {
+  background: var(--mp-butter);
+  border-color: var(--mp-butter-d);
+  color: #7a4e00;
+  box-shadow: 0 3px 0 var(--mp-butter-d);
+}
+.mp-rail__btn--quit {
+  margin-top: auto;
+  color: var(--mp-straw-d);
+}
+.mp-rail__sep {
+  height: 2px;
+  margin: 2px 4px;
+  border-radius: 2px;
+  background: var(--mp-ink-soft);
+  opacity: 0.5;
+}
+
+/* ---------------- 抽屉：点导轨才浮出来 ----------------
+   刻意做成**浮层**而不是 grid 里的一列：`.mp-main` 只有两列（棋盘 | 导轨），
+   抽屉作为第 3 个子节点会被自动排到第 2 行第 1 列 —— 实测落在 x=12/y=600 的左下角，
+   把棋盘往下挤；窗口再窄一点就被 `.mp-shell` 的 overflow:hidden 剪成 4px 高。
+   出流之后棋盘拿回整幅宽度，读数时也不会看不见正在发生什么。
+   不带遮罩：这是只读面板，压一层 scrim 会把棋盘的点击吃掉，也挡住「边看边查」。 */
+.mp-panel.mp-drawer {
+  position: fixed;
+  top: 78px;
+  right: 88px;
+  z-index: 30;
+  width: min(392px, calc(100vw - 120px));
+  max-height: calc(100dvh - 230px);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-radius: var(--mp-r);
+  box-shadow: 0 var(--mp-sh) 0 var(--mp-ink), 0 14px 30px rgba(74, 54, 82, 0.22);
+  animation: mp-pop-in 0.16s ease-out;
+}
+/* 指向导轨那颗页签的小尖角：说明这块是从那一列里请出来的，不是凭空浮在那 */
+.mp-drawer::after {
+  content: "";
+  position: absolute;
+  right: -9px;
+  top: 18px;
+  width: 16px;
+  height: 16px;
+  transform: rotate(45deg);
+  background: var(--mp-paper);
+  border-top: var(--mp-w) solid var(--mp-ink);
+  border-right: var(--mp-w) solid var(--mp-ink);
+}
+.mp-drawer__bd {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 12px 13px 16px;
+}
+.mp-drawer .mp-panel__hd {
+  border-radius: calc(var(--mp-r) - 3px) calc(var(--mp-r) - 3px) 0 0;
+  font-size: 15px;
+  padding: 9px 12px;
+}
+.mp-drawer .mp-panel__hd .mp-dialog__x {
+  background: rgba(255, 253, 246, 0.55);
+}
+
+/* ============================ 底部操作台 ============================ */
+.mp-dock {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(230px, 1.1fr) auto minmax(280px, 1.3fr);
+  align-items: center;
+  gap: 14px;
+  padding: 10px 14px;
+  border-radius: var(--mp-r);
+}
+.mp-dock--locked .mp-dice,
+.mp-dock--locked .mp-btn,
+.mp-dock--locked .mp-bag {
+  filter: saturate(0.45) brightness(1.02);
+}
+
+/* --- 1. 当前格卡片：做成一张地契（虚线装订 + 骑缝章），不是一张表 --- */
+.mp-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 9px 12px;
+  border: 2px dashed var(--mp-ink-soft);
+  border-radius: var(--mp-r-s);
+  background: #fff;
+  position: relative;
+  min-width: 0;
+}
+.mp-tile__hd {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+.mp-tile__name {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.15;
+  min-width: 0;
+  flex: 1;
+}
+.mp-tile__name b {
+  font-family: var(--mp-display);
+  font-weight: 400;
+  font-size: 17px;
+  letter-spacing: 0.02em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mp-tile__name small {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--mp-ink-2);
+}
+.mp-tile__rows {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--mp-ink-2);
+}
+.mp-tile__rows b {
+  color: var(--mp-ink);
+}
+.mp-tile__phase {
+  align-self: flex-start;
+  margin-top: 1px;
+  padding: 2px 9px;
+  border: 2px solid var(--mp-ink);
+  border-radius: 999px;
+  background: var(--mp-butter);
+  color: #7a4e00;
+  font-size: 11.5px;
+  font-weight: 800;
+}
+
+/* --- 2. 行囊入口 --- */
+.mp-bagwrap {
+  position: relative;
+}
+.mp-bag {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 16px 8px 10px;
+  border: 2.5px solid var(--mp-ink);
+  border-radius: var(--mp-r);
+  background: linear-gradient(#fffdf6 0 52%, var(--mp-lav) 52% 100%);
+  color: var(--mp-ink);
+  font: inherit;
+  cursor: pointer;
+  box-shadow: 0 4px 0 var(--mp-lav-d);
+  transition: transform 0.08s, box-shadow 0.08s;
+}
+.mp-bag:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 5px 0 var(--mp-lav-d);
+}
+.mp-bag:active,
+.mp-bag--on {
+  transform: translateY(4px);
+  box-shadow: 0 0 0 var(--mp-lav-d);
+}
+.mp-bag__txt {
+  display: flex;
+  flex-direction: column;
+  text-align: left;
+  font-family: var(--mp-display);
+  font-weight: 400;
+  font-size: 16px;
+}
+.mp-bag__txt small {
+  font-family: var(--mp-font);
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--mp-ink-2);
+}
+.mp-bag .mp-n {
+  top: -9px;
+  right: -7px;
+}
+
+/* 浮层三件（行囊弹层 / 更多弹层 / 图例 / 更多菜单）都同时挂着 `mp-panel`，
+   而 tokens.css 里 `.mp-panel { position: relative }`。两条规则同特异性，谁赢由打包顺序决定 ——
+   实测 tokens 赢，于是行囊弹层变成 in-flow：它把 .mp-bagwrap 撑到 420×206，
+   操作台跟着涨到 264px，棋盘被压掉半屏。全部写成复合选择器，把特异性钉死在 0,2,0。 */
+.mp-panel.mp-bagpop {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 12px);
+  transform: translateX(-50%);
+  z-index: 20;
+  width: min(420px, 78vw);
+  padding: 11px 12px 13px;
+  border-radius: var(--mp-r);
+}
+.mp-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
+  gap: 8px;
+}
+.mp-slot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 7px 4px 6px;
+  border: 2px solid var(--mp-ink);
+  border-radius: 11px;
+  background: var(--mp-paper-2);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  box-shadow: 0 3px 0 var(--mp-ink-soft);
+  transition: transform 0.08s, box-shadow 0.08s, filter 0.08s;
+}
+.mp-slot:hover {
+  transform: translateY(-1px);
+}
+.mp-slot--ok {
+  background: rgba(79, 201, 164, 0.28);
+  box-shadow: 0 3px 0 var(--mp-mint-d);
+}
+.mp-slot--off {
+  filter: grayscale(0.6);
+  opacity: 0.7;
+}
+.mp-slot--on {
+  border-color: var(--mp-mint-d);
+  transform: translateY(3px);
+  box-shadow: none;
+}
+.mp-slot__face {
+  position: relative;
+}
+.mp-slot__qty {
+  position: absolute;
+  right: -8px;
+  bottom: -6px;
+  min-width: 16px;
+  padding: 0 3px;
+  border: 2px solid var(--mp-ink);
+  border-radius: 999px;
+  background: #fff;
+  font-family: var(--mp-num);
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 12px;
+}
+.mp-slot__cap {
+  font-size: 10.5px;
+  font-weight: 800;
+  line-height: 1.25;
+  text-align: center;
+  max-width: 100%;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+/* --- 3. 主操作：骰子那颗视觉权重最大 --- */
+.mp-act {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.mp-morewrap {
+  position: relative;
+}
+.mp-panel.mp-morepop {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 12px);
+  z-index: 20;
+  width: min(430px, 84vw);
+  padding: 11px 12px 13px;
+  border-radius: var(--mp-r);
+}
+.mp-morepop__t {
+  font-family: var(--mp-display);
+  font-weight: 400;
+  font-size: 14px;
+  margin-bottom: 8px;
+}
+.mp-morepop__grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+.mp-morepop__grid .mp-btn {
+  font-size: 12.5px;
+  padding: 7px 13px 8px;
+}
+
+.mp-dice {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 7px 20px 7px 8px;
+  border: var(--mp-w) solid var(--mp-ink);
+  border-radius: var(--mp-r);
+  /* 硬切：上半高光下半本体，两个停止点同位 */
+  background: linear-gradient(#7ad6b4 0 48%, var(--mp-mint) 48% 100%);
+  color: #14503c;
+  font: inherit;
+  cursor: pointer;
+  box-shadow: 0 5px 0 var(--mp-mint-d);
+  transition: transform 0.08s, box-shadow 0.08s;
+}
+.mp-dice:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 0 var(--mp-mint-d);
+}
+.mp-dice:active:not(:disabled) {
+  transform: translateY(5px);
+  box-shadow: 0 0 0 var(--mp-mint-d);
+}
+.mp-dice:disabled {
+  cursor: not-allowed;
+  filter: saturate(0.4) opacity(0.7);
+}
+/* 非掷骰的主操作（买下 / 加盖）换强调黄，语义上仍是那一颗最大的钮 */
+.mp-dice--go {
+  background: linear-gradient(#ffd775 0 48%, var(--mp-butter) 48% 100%);
+  color: #6d4200;
+  box-shadow: 0 5px 0 var(--mp-butter-d);
+}
+.mp-dice--go:active:not(:disabled) {
+  box-shadow: 0 0 0 var(--mp-butter-d);
+}
+
+/* 实体骰子：白瓷立方 + 墨紫描边，按下沿 X/Y 各滚一圈 */
+.mp-dice__cube {
+  display: grid;
+  place-items: center;
+  width: 54px;
+  height: 54px;
+  border: 2.5px solid var(--mp-ink);
+  border-radius: 13px;
+  background: linear-gradient(#ffffff 0 46%, #f3ead9 46% 100%);
+  box-shadow: inset 0 -4px 0 rgba(74, 54, 82, 0.12), 0 3px 0 var(--mp-ink-soft);
+}
+.mp-dice__cube--spin {
+  animation: mp-roll 0.62s cubic-bezier(0.22, 0.9, 0.3, 1);
+}
+.mp-dice__pips {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 3px;
+  width: 34px;
+  height: 34px;
+}
+.mp-dice__pips i {
+  border-radius: 50%;
+  background: transparent;
+}
+.mp-dice__pips i.on {
+  background: var(--mp-straw-d);
+  box-shadow: inset 0 -1px 0 rgba(0, 0, 0, 0.18);
+}
+.mp-dice__num {
+  font-family: var(--mp-num);
+  font-size: 26px;
+  font-weight: 900;
+}
+.mp-dice__label {
+  display: flex;
+  flex-direction: column;
+  text-align: left;
+  line-height: 1.2;
+}
+.mp-dice__label b {
+  font-family: var(--mp-display);
+  font-weight: 400;
+  font-size: 19px;
+  letter-spacing: 0.02em;
+}
+.mp-dice__label small {
+  font-size: 10.5px;
+  font-weight: 800;
+  opacity: 0.75;
+}
+
+.mp-stay {
+  padding: 8px 14px;
+  border: 2px solid var(--mp-ink);
+  border-radius: 999px;
+  background: var(--mp-paper-2);
+  font-size: 12.5px;
+  font-weight: 800;
+  text-align: center;
+}
+
+/* 相机读数走在操作台里（自己一行），不悬挂在 dock 之外 ——
+   绝对定位 + translateY(100%) 实测会把整壳顶出视口 213px，页面开始滚。 */
+.mp-camnote {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: flex-end;
+  margin-top: 2px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--mp-ink-2);
+}
+.mp-camnote em {
+  font-style: normal;
+  opacity: 0.7;
+  margin-left: 6px;
+}
+.mp-camnote--lock {
+  color: var(--mp-straw-d);
+}
+
+/* ============================ 抽屉内容 ============================ */
+.mp-sect {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.mp-sect__t {
+  margin: 6px 0 0;
+  font-family: var(--mp-display);
+  font-weight: 400;
+  font-size: 15px;
+  letter-spacing: 0.03em;
+}
+.mp-sect__s {
+  margin: 2px 0 0;
+  font-size: 11.5px;
+  font-weight: 800;
+  color: var(--mp-ink-2);
+}
+
+.mp-person {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 8px 10px;
+  border: 2px solid var(--mp-ink);
+  border-radius: var(--mp-r-s);
+  background: var(--mp-paper);
+  box-shadow: 0 3px 0 var(--mp-ink-soft);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.mp-person--me {
+  background: rgba(111, 186, 234, 0.22);
+  border-color: var(--mp-sky-d);
+}
+.mp-person__hd {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+.mp-person__hd img {
+  width: 34px;
+  height: 34px;
+  border: 2px solid var(--mp-ink);
+  border-radius: 50%;
+  background: #fff;
+  object-fit: cover;
+  object-position: top;
+  flex: none;
+}
+.mp-person__who {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.mp-person__who b {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13.5px;
+  font-weight: 900;
+}
+.mp-person__who small {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--mp-ink-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mp-person__val {
+  font-family: var(--mp-num);
+  font-size: 15px;
+  font-weight: 900;
+  color: var(--mp-money-d);
+  white-space: nowrap;
+}
+.mp-person__foot {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--mp-ink-2);
+}
+/* 地契式进度：一格一格数，而不是连续长条 —— 隐喻是「岛上的地块」 */
+.mp-rank {
+  display: block;
+  height: 9px;
+  border: 2px solid var(--mp-ink);
+  border-radius: 5px;
+  background: repeating-linear-gradient(90deg, #fff 0 9px, var(--mp-paper-2) 9px 11px);
+  overflow: hidden;
+}
+.mp-rank i {
+  display: block;
+  height: 100%;
+  background: var(--mp-mint);
+}
+
+.mp-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.mp-bg {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 8px 2px;
+  border: 2px solid var(--mp-ink);
+  border-radius: 999px;
+  background: var(--mp-paper-2);
+  font-size: 10.5px;
+  font-weight: 800;
+}
+.mp-bg--good { background: rgba(79, 201, 164, 0.3); }
+.mp-bg--bad { background: rgba(255, 143, 174, 0.32); }
+.mp-bg--flat { opacity: 0.62; }
+
+.mp-gods {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
+  gap: 8px;
+}
+.mp-god {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 8px 5px 7px;
+  border: 2px solid var(--mp-ink);
+  border-radius: var(--mp-r-s);
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  box-shadow: 0 3px 0 var(--mp-ink-soft);
+}
+.mp-god b {
+  font-family: var(--mp-display);
+  font-weight: 400;
+  font-size: 13px;
+}
+.mp-god small {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--mp-ink-2);
+}
+.mp-god--good { background: #fff7dd; }
+.mp-god--bad { background: #ffeaf0; }
+
+.mp-tablewrap {
+  overflow: auto;
+  border: 2px solid var(--mp-ink);
+  border-radius: var(--mp-r-s);
+  background: #fff;
+}
+.mp-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11.5px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.mp-table th,
+.mp-table td {
+  padding: 5px 8px;
+  border-bottom: 2px solid var(--mp-paper-2);
+  text-align: right;
+}
+.mp-table th:first-child,
+.mp-table td:first-child {
+  text-align: left;
+}
+.mp-table thead th {
+  background: var(--mp-paper-2);
+  position: sticky;
+  top: 0;
+}
+.mp-table__b b,
+.mp-table td:last-child {
+  font-weight: 900;
+}
+.mp-ava--inline {
+  border: 2px solid var(--mp-ink);
+  border-radius: 50%;
+  vertical-align: middle;
+  background: #fff;
+}
+
+.mp-log {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.mp-log li {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  padding: 6px 9px;
+  border: 2px solid var(--mp-ink);
+  border-radius: var(--mp-r-s);
+  background: var(--mp-paper);
+  font-size: 11.5px;
+  font-weight: 700;
+  line-height: 1.5;
+}
+.mp-log__turn {
+  flex: none;
+  min-width: 20px;
+  padding: 0 4px;
+  border-radius: 6px;
+  background: var(--mp-butter);
+  color: #7a4e00;
+  font-family: var(--mp-num);
+  font-size: 10.5px;
+  font-weight: 900;
+  text-align: center;
+}
+
+/* ============================ 浮层件 ============================ */
+.mp-panel.mp-menu {
+  position: fixed;
+  top: 62px;
+  right: 14px;
+  z-index: 40;
+  width: 262px;
+  padding: 10px;
+  border-radius: var(--mp-r);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.mp-menu__t {
+  font-family: var(--mp-display);
+  font-weight: 400;
+  font-size: 14px;
+  padding: 0 4px 6px;
+}
+.mp-menu__item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 9px;
+  border: 2px solid transparent;
+  border-radius: 10px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+}
+.mp-menu__item:hover {
+  background: var(--mp-paper-2);
+  border-color: var(--mp-ink-soft);
+}
+
+.mp-tip {
+  position: fixed;
+  z-index: 50;
+  max-width: 268px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 11px;
+  border: 2px solid var(--mp-ink);
+  border-radius: var(--mp-r-s);
+  background: var(--mp-paper);
+  box-shadow: 0 4px 0 var(--mp-ink);
+  font-size: 11.5px;
+  font-weight: 700;
+  line-height: 1.55;
+  pointer-events: none;
+  transform: translateY(-50%);
+}
+.mp-tip__t {
+  font-family: var(--mp-display);
+  font-weight: 400;
+  font-size: 14px;
+}
+
+/* 一次性气泡：黄底骑缝，指向被收起来的那颗钮 */
+.mp-bubble {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 10px);
+  transform: translateX(-50%);
+  z-index: 30;
+  padding: 6px 12px;
+  border: 2px solid var(--mp-ink);
+  border-radius: 999px;
+  background: var(--mp-butter);
+  color: #7a4e00;
+  font-size: 11.5px;
+  font-weight: 800;
+  white-space: nowrap;
+  box-shadow: 0 3px 0 var(--mp-butter-d);
+  animation: mp-in 0.28s ease-out;
+  pointer-events: none;
+}
+.mp-bag .mp-bubble {
+  left: auto;
+  right: 0;
+  transform: none;
+}
+.mp-bubble--up {
+  bottom: calc(100% + 9px);
+}
+.mp-bubble--stage {
+  position: absolute;
+  left: 50%;
+  bottom: 18px;
+  transform: translateX(-50%);
+  white-space: normal;
+  max-width: min(440px, 80%);
+  text-align: center;
+}
+
+/* 整壳挂在宿主给的 #ac-hud-root 里。那一层自带 min-height:100dvh（见 acHudClient.css），
+   整壳自己也占满一屏，不对冲掉就会量出两屏高、页面开始滚。
+   写成两个类的复合选择器，是为了压过那条同名规则 —— CSS 的注入顺序由打包决定，不该指望它。 */
+.ac-hud-root.ac-hud-root--mp {
+  min-height: 0;
+}
+
+/* ---------------- 横幅：连接 / 等待 / 选格 ---------------- */
+.mp-banners {
+  position: fixed;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 55;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  pointer-events: none;
+}
+.mp-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 16px;
+  border: 2.5px solid var(--mp-ink);
+  border-radius: 999px;
+  background: var(--mp-paper);
+  box-shadow: 0 4px 0 var(--mp-ink);
+  font-size: 13px;
+  font-weight: 800;
+  max-width: min(720px, 92vw);
+  pointer-events: auto;
+}
+.mp-banner--warn {
+  background: var(--mp-butter);
+  border-color: var(--mp-butter-d);
+  color: #7a4e00;
+  box-shadow: 0 4px 0 var(--mp-butter-d);
+}
+.mp-banner--danger {
+  background: #ffeaf0;
+  border-color: var(--mp-straw-d);
+  color: #a02545;
+  box-shadow: 0 4px 0 var(--mp-straw-d);
+}
+
+/* ============================ 动效 ============================ */
+@keyframes mp-roll {
+  0% { transform: rotateX(0) rotateY(0) scale(1); }
+  45% { transform: rotateX(240deg) rotateY(160deg) scale(1.12); }
+  100% { transform: rotateX(360deg) rotateY(360deg) scale(1); }
+}
+@keyframes mp-breathe {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.06); }
+}
+@keyframes mp-in {
+  from { opacity: 0; transform: translate(-50%, 6px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
+@keyframes mp-pop-in {
+  from { opacity: 0; transform: translate(8px, -4px) scale(0.97); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes mp-say {
+  0% { opacity: 0; transform: translate(-50%, -6px); }
+  12%, 78% { opacity: 1; transform: translate(-50%, 0); }
+  100% { opacity: 0; transform: translate(-50%, -4px); }
+}
+
+/* 减弱动效：这套皮肤里所有会动的东西都停掉，只留颜色与描边 */
+@media (prefers-reduced-motion: reduce) {
+  .mp-dice__cube--spin,
+  .mp-say,
+  .mp-bubble,
+  .mp-price--hot,
+  .mp-cur--low {
+    animation: none !important;
+  }
+}
+
+/* ============================ 窄屏 ============================ */
+/* 三列在 760px 以上还摆得下（230 + 行囊 + 280 + 间距 ≈ 746），所以断点从 900 降到 760：
+   实测 831px 宽的窗口原本命中 900 那条，操作台堆成三行 316px，棋盘只剩 506px。 */
+@media (max-width: 760px) {
+  .mp-dock {
+    grid-template-columns: 1fr auto;
+    grid-auto-rows: auto;
+  }
+  .mp-act {
+    grid-column: 1 / -1;
+    justify-content: center;
+  }
+  .mp-capsule {
+    order: 3;
+    flex-basis: 100%;
+  }
+}

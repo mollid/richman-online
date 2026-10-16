@@ -155,6 +155,10 @@
 }
 
 /* ---------- 面板 / 弹层 ---------- */
+/* 注意：这条带 `position: relative`（为了四角装饰与内部绝对定位的锚点）。
+   所以任何要浮起来的件只要挂着 mp-panel，就**必须**用复合选择器写自己的 position ——
+   `.mp-panel.mp-bagpop`、`.mp-panel.mp-menu` 这样，写成单类名会被这条按打包顺序顶掉。
+   这个坑已经踩过四次（行囊弹层、更多弹层、图例、抽屉），每次都表现为"布局莫名撑开一块"。 */
 .mp-panel {
   position: relative;
   border: var(--mp-w) solid var(--mp-ink);

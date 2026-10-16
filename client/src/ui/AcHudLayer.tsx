@@ -25,6 +25,9 @@ import { AuctionPanel } from './AuctionPanel.js';
 import { NpcPanel } from './NpcPanel.js';
 import { CompanyPanel } from './CompanyPanel.js';
 import { entryKey, HandQuickBar, type HandEntry, type PickRequest } from './HandQuickBar.js';
+import { Icon } from './mp/Icon.js';
+import { MpHud } from './hud/MpHud.js';
+import type { StageApi } from './hud/useBoardStage.js';
 import './acHudClient.css';
 
 type AcHostTool = { label: string; title?: string; onClick?: () => void };
@@ -74,6 +77,20 @@ declare global {
 const HUD_BASE = '/ac-hud';
 const FONT_BASE = '/fonts';
 const STYLE_IDS = ['ac-hud-fonts', 'ac-hud-font-pixel', 'ac-hud-skin', 'ac-hud-pixel-skin', 'ac-hud-shell'];
+
+/**
+ * 两套 HUD 皮肤：默认上马卡龙派对整壳（React），`?hud=ac` 退回动物森林整壳（vanilla）做对照。
+ * 两者吃同一份 `buildAcSnapshot()`，走同一套面板 / 选格 / 落格窗流程，
+ * 所以对照时唯一的变量就是壳本身。
+ *
+ * 判据写成「显式要 ac 才走 ac」而不是「显式要 mp 才走 mp」：新皮是现在的默认外观，
+ * 旧壳只是回归对照的出口，不该让人每次都得记一个参数才看得到当期设计。
+ */
+const AC_MODE = /hud=ac/.test(window.location.search) || /hud=ac/.test(window.location.hash);
+const MP_MODE = !AC_MODE;
+/* 皮肤口味那套（圆体 / 缝合像素 / 秋叶像素）是 ac 轨道的东西，靠 <html> 上的 class 生效。
+   顺手把当期壳型也标上去：hud.css 要用它把 ac.css 里那三条全局规则隔离掉。 */
+document.documentElement.dataset.hud = MP_MODE ? 'mp' : 'ac';
 
 /**
  * 字体口味。`round` = 设计稿的圆体（默认），另两种把整套 HUD 换成像素中文。
@@ -126,13 +143,23 @@ function readFontMode(): FontMode {
  * 那一族字才会下载，所以关着口味时零成本。
  */
 function ensureHudStyles(): void {
-  const sheets: Array<[string, string]> = [
-    ['ac-hud-fonts', `${FONT_BASE}/fonts.css`],
-    ['ac-hud-font-pixel', `${FONT_BASE}/pixel/fonts.css`],
-    ['ac-hud-skin', `${HUD_BASE}/ac.css`],
-    ['ac-hud-pixel-skin', `${HUD_BASE}/ac-pixel.css`],
-    ['ac-hud-shell', `${HUD_BASE}/hud.css`],
-  ];
+  const sheets: Array<[string, string]> = MP_MODE
+    ? /* 马卡龙整壳自己的样式（`ui/mp/tokens.css` + `ui/hud/hud.css`）随模块 import 进来，
+         这里只补字体：站酷快乐体 + 狮尾圆体 + M+ + Nunito。
+
+         ac 那三张表一份都不挂。原先以为银行 / 股市这些面板的正文靠 `ac.css` 才有样式，
+         实测是错的：九个面板文件里没有一个用 `ac-` 类，它们的按钮与表格来自
+         `client/src/styles.css`（main.tsx 常驻引入）。而 ac.css 顶部三条是全局规则
+         （body 绿草地渐变、body::before 那层 z-index:0 的圆点纹理、body 底部 90px 内边距），
+         挂上只会直接盖到整壳身上 —— 零收益、纯风险。 */
+      [['ac-hud-fonts', `${FONT_BASE}/fonts.css`]]
+    : [
+        ['ac-hud-fonts', `${FONT_BASE}/fonts.css`],
+        ['ac-hud-font-pixel', `${FONT_BASE}/pixel/fonts.css`],
+        ['ac-hud-skin', `${HUD_BASE}/ac.css`],
+        ['ac-hud-pixel-skin', `${HUD_BASE}/ac-pixel.css`],
+        ['ac-hud-shell', `${HUD_BASE}/hud.css`],
+      ];
   for (const [id, href] of sheets) {
     if (document.getElementById(id)) continue;
     const l = document.createElement('link');
@@ -172,26 +199,36 @@ function loadAcHud(): Promise<void> {
       await loadScript(`${HUD_BASE}/vendor/pixi.min.js`);
       await loadScript(`${HUD_BASE}/world.js`);
       await loadScript(`${HUD_BASE}/overlay.js`);
-      await loadScript(`${HUD_BASE}/hud.js`);
+      /* 马卡龙整壳只要 3D 世界与名牌两层，DOM 那套由 React 画。
+         hud.js 在 IIFE 里就会自己铺一整壳 DOM 并抢走 #ac-hud-root，所以这一支必须不加载它。 */
+      if (!MP_MODE) await loadScript(`${HUD_BASE}/hud.js`);
     })();
   }
   return loadPromise;
 }
 
-const PANEL_TITLE: Record<string, string> = {
-  bank: '🏦 银行 · 存款 / 取款 / 贷款',
-  shop: '🛍️ 商店',
-  stock: '📈 股市 · 行情与原始股权益',
-  lottery: '🎰 乐透行',
-  trade: '🤝 公布栏 · 挂牌与买入',
-  // 标题不再写「监狱保释」：这个面板只有水晶球会打开（保释与出院是 dock 上的直接动作，
-  // 不走面板），留着那半截只会让人以为面板缺一块
-  magic: '🔮 魔法屋 · 女巫的水晶球',
-  company: '🏢 公司企业',
-  auction: '🔨 拍卖会',
-  surrender: '🚩 认输投降',
-  control: '⏳ 请处理当前流程',
+/**
+ * 面板的标题与图标。一份数据，两种皮肤各取所需：
+ * ac 整壳沿用「emoji + 标题」，mp 整壳用 `<use href="#i-x">` —— 上屏的 emoji 已经全部清掉。
+ *
+ * 控制面板的标题不再写「监狱保释」：它只有水晶球会打开（保释与出院是 dock 上的直接动作，
+ * 不走面板），留着那半截只会让人以为面板缺一块。
+ */
+const PANEL_META: Record<string, { title: string; icon: string; emoji: string }> = {
+  bank: { title: '银行 · 存款 / 取款 / 贷款', icon: 'i-bank', emoji: '🏦' },
+  shop: { title: '商店', icon: 'i-cart', emoji: '🛍️' },
+  stock: { title: '股市 · 行情与原始股权益', icon: 'i-chart', emoji: '📈' },
+  lottery: { title: '乐透行', icon: 'i-slot', emoji: '🎰' },
+  trade: { title: '公布栏 · 挂牌与买入', icon: 'i-board', emoji: '🤝' },
+  magic: { title: '魔法屋 · 女巫的水晶球', icon: 'i-crystal', emoji: '🔮' },
+  company: { title: '公司企业', icon: 'i-office', emoji: '🏢' },
+  auction: { title: '拍卖会', icon: 'i-gavel', emoji: '🔨' },
+  surrender: { title: '认输投降', icon: 'i-exit', emoji: '🚩' },
+  control: { title: '请处理当前流程', icon: 'i-clock', emoji: '⏳' },
 };
+const PANEL_TITLE: Record<string, string> = Object.fromEntries(
+  Object.entries(PANEL_META).map(([k, v]) => [k, `${v.emoji} ${v.title}`]),
+);
 
 /**
  * 每个面板要多宽，由它自己的内容决定（见 acHudClient.css 的 --sm/--md/--wide）。
@@ -264,6 +301,10 @@ export function AcHudLayer({
   /** 动作条的定位盒：跟着 HUD 的行囊格重量出来，HUD 整壳重建也不会错位 */
   const [quickBox, setQuickBox] = useState<{ left: number; bottom: number; width: number } | null>(null);
   const [fontMode, setFontMode] = useState<FontMode>(readFontMode);
+  /** mp 整壳把「演出落定了吗」通过这个 ref 交上来（旧壳走 window.AC_HUD.isSettled） */
+  const stageApiRef = useRef<StageApi | null>(null);
+  /** 移动演出落定了没有：没挂载 3D（方环示意 / 脚本没到位）时按「已落定」处理 */
+  const isSettled = () => stageApiRef.current?.isSettled() ?? window.AC_HUD?.isSettled?.() ?? true;
 
   /* ---------------- 选目标模式（W2）----------------
    * 状态机只有三个结：面板发起 → HUD 报回一格 → 填满派单或退回继续选。
@@ -412,6 +453,22 @@ export function AcHudLayer({
     setPanel(kind);
   }, []);
 
+  /**
+   * 底部操作台按下去的那一颗。与旧壳 `hud.js:fire()` 同一条分流：
+   * 带 `__open` 的要填金额 / 挑物件 → 交给面板；其余直接派给引擎。
+   * 镜头还在飞、还没轮到本方时一律不派 —— 门控位是引擎给的，这里只挡时机。
+   */
+  const fireAction = useCallback(
+    (act: (PlayerAction & { __open?: string; entry?: HandEntry }) | { __open: string; entry?: HandEntry }) => {
+      if ('__open' in act && act.__open) {
+        openPanel(act.__open, act);
+        return;
+      }
+      onAction(act as PlayerAction);
+    },
+    [openPanel, onAction],
+  );
+
   const tools = useMemo<AcHostTool[]>(() => {
     const next = () => setFontMode((m) => FONT_MODES[(FONT_MODES.indexOf(m) + 1) % FONT_MODES.length]!);
     const list: AcHostTool[] = [
@@ -491,7 +548,8 @@ export function AcHudLayer({
   useEffect(() => {
     if (!ready || !handSel) return;
     const measure = () => {
-      const bag = document.querySelector('.hud-bag');
+      /* 两套壳的行囊入口是不同节点：旧壳整排格子（量第一格），mp 壳收成一颗钮 */
+      const bag = document.querySelector(MP_MODE ? '.mp-bag' : '.hud-bag');
       if (!bag) return;
       const r = bag.getBoundingClientRect();
       const width = Math.min(560, window.innerWidth - 24);
@@ -563,7 +621,7 @@ export function AcHudLayer({
     let timer = 0;
     const wait = () => {
       if (cancelled) return;
-      if (window.AC_HUD?.isSettled?.() === false) {
+      if (!isSettled()) {
         timer = window.setTimeout(wait, 80);
         return;
       }
@@ -652,7 +710,46 @@ export function AcHudLayer({
 
   return (
     <>
-      <div id="ac-hud-root" className="ac-hud-root" />
+      <div id="ac-hud-root" className={MP_MODE ? 'ac-hud-root ac-hud-root--mp' : 'ac-hud-root'}>
+        {MP_MODE && ready && (
+          <MpHud
+            snap={snapshot}
+            ready={ready}
+            interactive={interactive}
+            isRemote={isRemote}
+            followCurrent={!isRemote}
+            myPlayerId={myPlayerId}
+            muted={muted}
+            connection={connection}
+            netError={netError}
+            pick={
+              pick
+                ? {
+                    cells: pick.cells,
+                    rejected: pick.rejected,
+                    players: pick.players ?? [],
+                    playerRejected: pick.playerRejected ?? [],
+                  }
+                : null
+            }
+            bagFocusKey={handSel ? entryKey(handSel) : null}
+            stageApiRef={stageApiRef}
+            pickLabel={pick?.label ?? ''}
+            pickHint={pickHint}
+            onCancelPick={cancelPick}
+            onFire={(act) => fireAction(act)}
+            onOpenPanel={openPanel}
+            onPickCell={onPickCell}
+            onPickPlayer={onPickPlayer}
+            onToggleMute={onToggleMute}
+            onOpenHelp={onOpenHelp}
+            onOpenSettings={onOpenSettings}
+            onSaveGame={onSaveGame}
+            onLoadGame={onLoadGame}
+            onExit={onExit}
+          />
+        )}
+      </div>
 
       {loadError && <div className="ac-scrim"><div className="ac-note ac-note--danger">HUD 加载失败：{loadError}</div></div>}
 
@@ -751,7 +848,9 @@ export function AcHudLayer({
         </div>
       )}
 
-      {/* 连接 / 等待提示：贴顶居中，不挡操作 */}
+      {/* 连接 / 等待提示：贴顶居中，不挡操作。mp 整壳有自己的同内容版本（见 MpHud 的 mp-banners），
+          两边不能同时挂 —— 那会在画面顶上叠出两条一样的横幅。 */}
+      {!MP_MODE && (
       <div className="ac-banners">
         {connection === 'reconnecting' && <div className="ac-banner ac-banner--warn">⚡ 连接已断开，正在尝试重新连接…</div>}
         {/* 收房 / 服务端重启都会走到这里：不出一条死信，画面就只剩一个再也点不动的大厅 */}
@@ -775,6 +874,7 @@ export function AcHudLayer({
           </div>
         )}
       </div>
+      )}
 
       {/* 手牌 / 道具的内联动作条：没有遮罩，棋盘始终看得见点得到，选格时绿环与这条同时在场 */}
       {handSel && ready && (
@@ -794,29 +894,56 @@ export function AcHudLayer({
         </div>
       )}
 
-      {active && (
-        <div className="ac-sheet-scrim" onClick={forced ? undefined : () => setPanel(null)}>
-          <div
-            ref={modalRef}
-            className={`ac-sheet ac-sheet--${PANEL_SIZE[active] ?? 'md'}`}
-            role="dialog"
-            aria-modal="true"
-            aria-label={PANEL_TITLE[active] ?? active}
-            tabIndex={-1}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="ac-sheet__hd">
-              <span>{PANEL_TITLE[active] ?? active}</span>
-              {!forced && (
-                <button className="ac-btn ac-btn--cream ac-btn--sm" onClick={() => setPanel(null)}>
-                  关闭 <span className="ac-sheet__esc">Esc</span>
-                </button>
-              )}
+      {active &&
+        (MP_MODE ? (
+          /* mp 弹层：遮罩用 `overflow:auto + margin:auto`（居中容器一旦内容超高，place-items
+             会把顶部推出滚动区），面板本体沿用 tokens.css 那套描边与街沿阴影。
+             标题不再写 emoji —— 上屏的 emoji 已统一换成 sprite 里的 SVG。 */
+          <div className="mp-scrim" onClick={forced ? undefined : () => setPanel(null)}>
+            <div
+              ref={modalRef}
+              className={`mp-panel mp-dialog${PANEL_SIZE[active] === 'wide' ? ' mp-dialog--wide' : ''}`}
+              role="dialog"
+              aria-modal="true"
+              aria-label={PANEL_META[active]?.title ?? active}
+              tabIndex={-1}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="mp-panel__hd">
+                <Icon id={PANEL_META[active]?.icon ?? 'i-book'} size="s" />
+                <span>{PANEL_META[active]?.title ?? active}</span>
+                {!forced && (
+                  <button className="mp-dialog__x" type="button" aria-label="关闭" onClick={() => setPanel(null)}>
+                    <Icon id="i-x" size="s" />
+                  </button>
+                )}
+              </div>
+              <div className="mp-panel__bd">{panelBody}</div>
             </div>
-            <div className="ac-sheet__bd">{panelBody}</div>
           </div>
-        </div>
-      )}
+        ) : (
+          <div className="ac-sheet-scrim" onClick={forced ? undefined : () => setPanel(null)}>
+            <div
+              ref={modalRef}
+              className={`ac-sheet ac-sheet--${PANEL_SIZE[active] ?? 'md'}`}
+              role="dialog"
+              aria-modal="true"
+              aria-label={PANEL_TITLE[active] ?? active}
+              tabIndex={-1}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="ac-sheet__hd">
+                <span>{PANEL_TITLE[active] ?? active}</span>
+                {!forced && (
+                  <button className="ac-btn ac-btn--cream ac-btn--sm" onClick={() => setPanel(null)}>
+                    关闭 <span className="ac-sheet__esc">Esc</span>
+                  </button>
+                )}
+              </div>
+              <div className="ac-sheet__bd">{panelBody}</div>
+            </div>
+          </div>
+        ))}
     </>
   );
 }
