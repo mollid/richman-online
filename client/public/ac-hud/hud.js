@@ -400,8 +400,8 @@
     }
     /* TILE-31 宝箱（驻留实体）：按月换一格、走到才结算 ⇒ 小地图上必须有它，否则玩家只在日志里
        见过「冒出一只宝箱」，却看不出它压在哪。画在格子下半部，避开玩家棋子那圈圆心。 */
-    if (st.treasureCellId !== null && st.treasureCellId !== undefined) {
-      const [cx, cy] = g.at(st.treasureCellId);
+    if (view.treasureCellId !== null && view.treasureCellId !== undefined) {
+      const [cx, cy] = g.at(view.treasureCellId);
       ctx.fillStyle = '#d9a227';
       ctx.fillRect(cx - 2.2, cy + 0.8, 4.4, 3.2);
       ctx.strokeStyle = '#7a5410';
@@ -726,7 +726,7 @@
     const grade = st.players.flatMap((p) => p.properties).find((q) => q.cellId === id);
     if (grade) bits.push(`${grade.grade} 级${grade.facility ? ` · ${view.names.facilities[grade.facility]?.name ?? grade.facility}` : ''}`);
     if (god) bits.push(`神明驻留：${god.name}（剩 ${god.ttlDays} 天）· ${god.summary}`);
-    if (st.treasureCellId === id) bits.push(`宝箱驻留：踩到这一格领 ${view.treasurePoints} 点券（路过不算，本月只此一只）`);
+    if (view.treasureCellId === id) bits.push(`宝箱驻留：踩到这一格领 ${view.treasurePoints} 点券（路过不算，本月只此一只）`);
     return bits;
   }
 
@@ -836,9 +836,12 @@
     if (d.isHoliday) chips.appendChild(el('span', 'hud-chip hud-chip--warn', '🏖️ 例假日：股市休市、银行不放款'));
     if (st.stockHaltAllDays > 0) chips.appendChild(el('span', 'hud-chip hud-chip--warn', `🚧 全市场停牌 ${st.stockHaltAllDays} 天`));
     if (st.loanBanDays > 0) chips.appendChild(el('span', 'hud-chip hud-chip--warn', `🏦 银行停止放款 ${st.loanBanDays} 天`));
-    if (st.roadblocks.length) chips.appendChild(el('span', 'hud-chip', `🚧 路障 ${st.roadblocks.length} 个`));
-    if (st.mines.length) chips.appendChild(el('span', 'hud-chip hud-chip--warn', `💥 地雷 ${st.mines.length} 个`));
-    for (const b of st.bombs) chips.appendChild(el('span', 'hud-chip hud-chip--warn', `💣 ${esc(st.players.find((p) => p.id === b.playerId)?.name ?? b.playerId)} 身上剩 ${b.stepsLeft} 步`));
+    const obs = view.entities.obstacles;
+    const nRoad = obs.filter((o) => o.kind === 'roadblock').length;
+    const nMine = obs.filter((o) => o.kind === 'mine').length;
+    if (nRoad) chips.appendChild(el('span', 'hud-chip', `🚧 路障 ${nRoad} 个`));
+    if (nMine) chips.appendChild(el('span', 'hud-chip hud-chip--warn', `💥 地雷 ${nMine} 个`));
+    for (const b of view.entities.bombs) chips.appendChild(el('span', 'hud-chip hud-chip--warn', `💣 ${esc(b.name)} 身上剩 ${b.stepsLeft} 步`));
     for (const p of st.players) {
       if (p.skipTurns > 0) chips.appendChild(el('span', 'hud-chip', `⏸️ ${esc(p.name)} 停 ${p.skipTurns} 回合`));
       if (p.god) {
@@ -871,7 +874,7 @@
       bd.appendChild(row);
     }
 
-    const jailed = st.npcs.filter((n) => n.jailed);
+    const jailed = view.entities.npcs.filter((n) => n.jailed);
     if (jailed.length) {
       bd.appendChild(el('div', 'ac-divider', '<span class="ac-divider__mark">🚔 狱中恶人</span>'));
       const row = el('div', 'hud-chips');
@@ -930,7 +933,7 @@
     if (p.loan) out.push(badge(`🏦贷款 🔔${money(p.loan.principal)}（剩 ${Math.max(0, p.loan.dueDayIndex - day)} 天）`, 'bad', '到期强制全额归还，无利息'));
     const chair = st.companies.filter((c) => c.chairmanId === p.id).length;
     if (chair) out.push(badge(`👑董事长×${chair}`, 'money', '握有经营权，停靠自家免付费'));
-    const bomb = st.bombs.find((b) => b.playerId === p.id);
+    const bomb = view.entities.bombs.find((b) => b.playerId === p.id);
     if (bomb) out.push(badge(`💣剩 ${bomb.stepsLeft} 步`, 'bad', '定时炸弹：走满步数爆炸'));
     if (p.cards.length) out.push(badge(`🃏手牌 ${p.cards.length}/${15}`, '', '手牌额满须舍弃'));
     if (!p.online) out.push(badge('📴离线', 'bad', '掉线中，由托管代打'));

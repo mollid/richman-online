@@ -244,6 +244,35 @@ export function boardLayout(board: BoardCell[], spacing = 2): BoardLayout | null
   return { cells, radius: Math.max(...cells.map((p) => Math.hypot(p.x, p.z))) };
 }
 
+/** `ringCells` 的一项：格子在方环示意上的落位。 */
+export interface RingCell {
+  cellId: number;
+  /** 1 基，与 CSS `grid-column` / `grid-row` 直接对齐 */
+  col: number;
+  row: number;
+  edge: 'top' | 'right' | 'bottom' | 'left';
+}
+
+/**
+ * 把棋盘摊成「正方形外圈」：上边 → 右边 → 下边 → 左边，顺时针。
+ *
+ * 别因为「产品里不要方环兜底棋盘了」就删掉它 —— 它是 `boardLayout` 返回 `null`
+ * （这张图没带坐标，或坐标混用/退化）时**小地图唯一的几何兜底**。删了它，
+ * 自建图与任何缺坐标的原版图右下小地图会一起空白。
+ *
+ * 边长按格数现算而不是写死 17：64 格正好是 17×17 外圈，但原版图有 100+ 格，
+ * 沿用 17 会让多出来的格子从负坐标开始往外排。
+ */
+export function ringCells(board: readonly BoardCell[]): RingCell[] {
+  const L = Math.ceil(board.length / 4) + 1;
+  return board.map((cell, i): RingCell => {
+    if (i < L - 1) return { cellId: cell.id, col: i + 1, row: 1, edge: 'top' };
+    if (i < 2 * (L - 1)) return { cellId: cell.id, col: L, row: i - (L - 2), edge: 'right' };
+    if (i < 3 * (L - 1)) return { cellId: cell.id, col: L - (i - 2 * (L - 1)), row: L, edge: 'bottom' };
+    return { cellId: cell.id, col: 1, row: L - (i - 3 * (L - 1)), edge: 'left' };
+  });
+}
+
 /** 图上最短步数（环上的 `min(d, size - d)` 是它的特例） */
 export function graphDistance(board: BoardCell[], a: number, b: number): number {
   if (a === b) return 0;

@@ -5,6 +5,7 @@ import {
   createGame,
   graphDistance,
   pathAhead,
+  ringCells,
   rollDie,
   stepAlong,
   type GameState,
@@ -164,5 +165,51 @@ describe('空白格（原版地图的无信息节点）', () => {
     expect(rolled.phase).toBe('awaiting_roll');
     expect(rolled.currentPlayerIndex).toBe(1);
     expect(rolled.log.some((l) => l.text.includes('这一格什么都没有'))).toBe(true);
+  });
+});
+
+/**
+ * 方环几何兜底。它只在 `boardLayout` 返回 null 时上屏，所以正常路径的测试永远碰不到它 ——
+ * 而它偏偏是自建图小地图的唯一几何来源。这类「只有出事时才跑的代码」必须单独钉。
+ */
+describe('ringCells 方环兜底几何', () => {
+  /** 造一张 N 格的环（坐标全缺 ⇒ boardLayout 会退回 null，正是兜底要接手的场景） */
+  const ringOf = (n: number) => ringCells(Array.from({ length: n }, (_, id) => ({ id, type: 'blank', name: `${id}` }) as never));
+
+  it('64 格正好是 17×17 的外圈，四角落位如设计', () => {
+    const r = ringOf(64);
+    expect(r).toHaveLength(64);
+    expect(r[0]).toMatchObject({ cellId: 0, col: 1, row: 1, edge: 'top' });
+    expect(r[15]).toMatchObject({ cellId: 15, col: 16, row: 1, edge: 'top' });
+    expect(r[16]).toMatchObject({ cellId: 16, col: 17, row: 1, edge: 'right' });   // 右上角
+    expect(r[32]).toMatchObject({ cellId: 32, col: 17, row: 17, edge: 'bottom' }); // 右下角
+    expect(r[48]).toMatchObject({ cellId: 48, col: 1, row: 17, edge: 'left' });    // 左下角
+    expect(r[63]).toMatchObject({ cellId: 63, col: 1, row: 2, edge: 'left' });     // 回到左上角前一格
+  });
+
+  it('格数一多边长就跟着涨 —— 写死 17 会让 100+ 格往负坐标里排', () => {
+    for (const n of [64, 103, 110, 118, 144]) {
+      const r = ringOf(n);
+      const L = Math.ceil(n / 4) + 1;
+      const cols = r.map((x) => x.col);
+      const rows = r.map((x) => x.row);
+      expect(Math.max(...cols, ...rows)).toBe(L);
+      // 关键断言：一个都不许排到 0 或负数
+      expect(Math.min(...cols, ...rows)).toBe(1);
+    }
+  });
+
+  it('一圈走下来每格占一个互不重叠的位，且顺时针连续', () => {
+    for (const n of [40, 64, 144]) {
+      const r = ringOf(n);
+      expect(new Set(r.map((x) => `${x.col}:${x.row}`)).size).toBe(n);
+      for (const [i, x] of r.entries()) {
+        if (i === 0) continue;
+        const prev = r[i - 1]!;
+        // 相邻两项在环上必须紧邻（同边步进 1，或正好跨过一个角）
+        const dist = Math.abs(x.col - prev.col) + Math.abs(x.row - prev.row);
+        expect(dist).toBe(1);
+      }
+    }
   });
 });
