@@ -24,7 +24,11 @@ export const MAX_ITEM_COUNT = 9;
  * 产出只有四个渠道：宝箱驻留实体、点券格、小游戏、商店变卖卡片/道具。
  */
 export const POINTS_START = 0;
-/** 单笔贷款上限 */
+/**
+ * 单笔贷款上限的**默认值** —— 开局面板可以把起始资金改成别的档位，那一局的实际上限
+ * 跟着 `state.initialCashPerPlayer` 走（见 `maxLoanOf`）。留这个常量是因为
+ * 「不设初始金额时就是它」，测试与缺省路径都取这一档。
+ */
 export const MAX_LOAN = STARTING_CASH;
 /** 贷款期限（月）：到期强制全额归还 */
 export const LOAN_TERM_MONTHS = 3;

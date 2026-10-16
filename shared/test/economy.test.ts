@@ -14,8 +14,10 @@ import {
   POINTS_START,
   priceIndex,
   ReplayEngine,
+  resolveInitialCash,
   rollDie,
   scaled,
+  START_CASH_CHOICES,
   STARTING_CASH,
   toSerial,
   totalAssets,
@@ -114,6 +116,50 @@ describe('ECON-01 三货币初始值与冻结分母', () => {
     const started = applyAction(lobby, { type: 'START_GAME' });
     expect(started.players[1]).toMatchObject({ cash: STARTING_CASH, deposit: 0, points: POINTS_START, loan: null });
     expect(started.initialPlayerCount).toBe(2);
+  });
+});
+
+/**
+ * 开局面板的「初始金额」档位。做成真规则而不只是面板上的一排按钮：
+ * 现金、物价指数分母、贷款上限三处都得跟着走，否则选了等于没选。
+ */
+describe('开局可选初始金额（大厅开局面板）', () => {
+  it('每一档同时改到每人现金与指数分母', () => {
+    for (const cash of START_CASH_CHOICES) {
+      const g = applyAction(createGame(PLAYERS, 42, { startDate: { ...MONDAY }, initialCash: cash }), { type: 'START_GAME' });
+      expect(g.players.map((p) => p.cash)).toEqual([cash, cash]);
+      expect(g.initialCashPerPlayer).toBe(cash);
+      // 分母跟着现金一起走，所以开局指数仍然恒为 1
+      expect(priceIndex(g)).toBe(1);
+    }
+  });
+
+  it('贷款上限跟着这一档走，不再钉死在默认值', () => {
+    const rich = structuredClone(landOnBank(MONDAY));
+    rich.initialCashPerPlayer = 40000;
+    expect(() => applyAction(rich, { type: 'TAKE_LOAN', amount: 40001 })).toThrow('单笔贷款上限 ¥40000');
+    expect(applyAction(rich, { type: 'TAKE_LOAN', amount: 40000 }).players[0]!.loan!.principal).toBe(40000);
+  });
+
+  it('陌生档位退回默认，而不是夹到最近的一档', () => {
+    expect(resolveInitialCash(999_999)).toBe(STARTING_CASH);
+    expect(resolveInitialCash(undefined)).toBe(STARTING_CASH);
+    expect(resolveInitialCash('40000')).toBe(40000);
+    for (const cash of START_CASH_CHOICES) expect(resolveInitialCash(cash)).toBe(cash);
+  });
+
+  it('房主选了档位之后中途进房的玩家拿同一份', () => {
+    let lobby = createGame([], 7, { startDate: { ...MONDAY }, initialCash: 40000 });
+    lobby = addPlayer(lobby, PLAYERS[0]!);
+    lobby = addPlayer(lobby, PLAYERS[1]!);
+    expect(lobby.players.map((p) => p.cash)).toEqual([40000, 40000]);
+  });
+
+  it('回放不带这一档就复现不出那一局：现金从开局第一步就分岔', () => {
+    const players = PLAYERS.map((p) => ({ player_name: p.name, color: p.color, player_key: p.id }));
+    const base = { seed: 42, startDate: MONDAY, players, actions: [] };
+    expect(new ReplayEngine({ ...base, initialCash: 40000 }).stateAt(0).players[0]!.cash).toBe(40000);
+    expect(new ReplayEngine(base).stateAt(0).players[0]!.cash).toBe(STARTING_CASH);
   });
 });
 

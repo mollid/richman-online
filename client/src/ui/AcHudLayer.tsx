@@ -14,6 +14,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { actionRefusal, CHARACTERS, characterById } from '@richman/shared';
 import type { GameState, PlayerAction } from '@richman/shared';
 import { buildAcSnapshot } from '../game/acSnapshot.js';
+import { characterPortrait } from '../game/portrait.js';
 import { ControlPanel } from './ControlPanel.js';
 import { BankPanel } from './BankPanel.js';
 import { ShopPanel } from './ShopPanel.js';
@@ -674,7 +675,7 @@ export function AcHudLayer({
             <div className="ac-lobby__list">
               {game.players.map((p) => (
                 <div key={p.id} className={`ac-lobby__row${p.ready ? ' ac-lobby__row--ready' : ''}`}>
-                  <span className="ac-lobby__ava">{p.avatar}</span>
+                  <img className="ac-lobby__ava" src={characterPortrait(p.characterId)} alt="" width={30} height={30} draggable={false} />
                   <span className="ac-lobby__name">{p.name}</span>
                   <span className="ac-lobby__char">{characterById(p.characterId)?.name ?? p.characterId}</span>
                   {p.id === game.hostId && <span className="ac-lobby__tag">房主</span>}
@@ -709,7 +710,7 @@ export function AcHudLayer({
                     disabled={!!holder && !mine}
                     onClick={() => onSetCharacter?.(c.id)}
                   >
-                    <span className="char-card__face">{c.avatar}</span>
+                    <img className="char-card__pic" src={characterPortrait(c.id)} alt={c.name} width={56} height={56} draggable={false} />
                     <span className="char-card__name">{c.name}</span>
                     <span className="char-card__meta">{holder && !mine ? holder.name : `${c.gender === 'male' ? '男' : '女'} · ${c.age} 岁`}</span>
                   </button>

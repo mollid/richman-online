@@ -67,6 +67,8 @@ export class ColyseusSession implements GameSession {
     mapId?: number | null;
     /** 私密房：不进大厅列表，只能凭房间码加入。只对建房有效 */
     isPrivate?: boolean;
+    /** 起始资金档位：只对建房有效，房主说了算 */
+    initialCash?: number | null;
   }): Promise<ColyseusSession> {
     const client = new Client(serverUrl());
     const token = localStorage.getItem('richman.token') ?? undefined;
@@ -83,6 +85,7 @@ export class ColyseusSession implements GameSession {
           ...(opts.maxDays === undefined ? {} : { maxDays: opts.maxDays }),
           // 地图同理：0 号是合法地图，不能用「有值才带」以外的真值判断
           ...(opts.mapId === undefined ? {} : { mapId: opts.mapId }),
+          ...(opts.initialCash === undefined ? {} : { initialCash: opts.initialCash }),
         });
     return new ColyseusSession(room, opts.playerName, emptyState());
   }

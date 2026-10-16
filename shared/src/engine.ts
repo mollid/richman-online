@@ -5,7 +5,6 @@ import {
   LOAN_TERM_MONTHS,
   MAX_HAND_CARDS,
   MAX_ITEM_COUNT,
-  MAX_LOAN,
   MINIGAME_POINTS_PER_HIT,
   PASS_START_SALARY,
   boardNeighbors,
@@ -155,6 +154,27 @@ export const MAX_DAY_CHOICES: ReadonlyArray<number | null> = [null, 40, ONLINE_D
 /** 上限的合法区间：越界值由 `resolveMaxDays` 夹回来，不为建房参数报错 */
 export const MAX_DAYS_LIMITS = { min: 10, max: 360 };
 
+/** 开局可选的起始资金档位（热座与联机开局面板都取这一排） */
+export const START_CASH_CHOICES: ReadonlyArray<number> = [10000, STARTING_CASH, 25000, 40000];
+
+/**
+ * 起始资金：不在 `START_CASH_CHOICES` 里的值一律退回默认档，而不是夹到最近的一档。
+ * 建房参数是面板给的，收到陌生值说明有人绕过 UI —— 那种情况下按缺省打比"猜一个"诚实。
+ */
+export function resolveInitialCash(value: unknown): number {
+  return START_CASH_CHOICES.includes(Number(value)) ? Number(value) : STARTING_CASH;
+}
+
+/**
+ * 本局的单笔贷款上限。
+ *
+ * 跟着起始资金走而不是留一个全局常量：初始 40000 的局还按 15000 封顶，等于把
+ * 「多带本钱」这条选项变成「多带本钱但不能多借」，玩家感觉到的只是面板上有个没用的开关。
+ */
+export function maxLoanOf(state: GameState): number {
+  return state.initialCashPerPlayer;
+}
+
 /**
  * 把客户端上报的天数上限夹到合法区间；`null` / 0 / 非法值 = 不限天数。
  * 「没传参数」不在这里判断 —— 房主显式选「不限」和客户端漏传字段是两回事，
@@ -187,6 +207,11 @@ export interface CreateGameOptions {
    * 联机房由 `GameRoom` 填 `ONLINE_DEFAULT_MAX_DAYS`，热座由开局面板选。
    */
   maxDays?: number | null;
+  /**
+   * 起始资金（每人）：影响开局现金、贷款上限与物价指数分母。
+   * 不填 = `STARTING_CASH`。档位见 `START_CASH_CHOICES`，非法值由 `resolveInitialCash` 退回默认。
+   */
+  initialCash?: number | null;
 }
 
 /**
@@ -234,7 +259,7 @@ export function spawnCells(seed: number, count: number, board: BoardCell[]): num
 }
 
 /** 新玩家的初始字段（createGame 与 addPlayer 共用） */
-function basePlayer(def: PlayerDef, spawnAt: number, seat: number): Player {
+function basePlayer(def: PlayerDef, spawnAt: number, seat: number, initialCash: number): Player {
   // 角色：显式选的就用选的，否则按座位取（`CHARACTERS` 排成男女交替，
   // 于是 2~4 人局天然各有一男一女，魔法屋那两条性别条件不会退化成"全体"或"无人"）
   const ch = (def.characterId ? characterById(def.characterId) : null) ?? characterOfSeat(seat);
@@ -244,7 +269,7 @@ function basePlayer(def: PlayerDef, spawnAt: number, seat: number): Player {
     gender: ch.gender,
     avatar: ch.avatar,
     ready: def.ready ?? true,
-    cash: STARTING_CASH,
+    cash: initialCash,
     deposit: 0,
     points: POINTS_START,
     loan: null,
@@ -300,8 +325,9 @@ export function createGame(players: PlayerDef[], seed = Date.now() % 2147483647,
   // 本地股的锚挂这张图的地价水平（原版 `股票表+0x04` 只有本地 / 非本地，没有城市号）。
   // 开局基准就在这一块算，日切那头走 `economy.mapLandPriceLevel` —— 同一段代码，两个入口。
   const landPriceBase = landPriceLevel(board);
+  const initialCash = resolveInitialCash(options.initialCash);
   return {
-    players: players.map((p, i) => basePlayer(p, spawns[i] ?? 0, i)),
+    players: players.map((p, i) => basePlayer(p, spawns[i] ?? 0, i, initialCash)),
     hostId: players[0]?.id ?? null,
     board,
     currentPlayerIndex: 0,
@@ -346,7 +372,7 @@ export function createGame(players: PlayerDef[], seed = Date.now() % 2147483647,
     lastRoundSnapshot: null,
     minigame: null,
     calendar: { start: options.startDate ?? DEFAULT_START_DATE, elapsedDays: 0 },
-    initialCashPerPlayer: STARTING_CASH,
+    initialCashPerPlayer: initialCash,
     initialPlayerCount: players.length,
     bankAccess: null,
     lotteryPool: 0,
@@ -409,7 +435,7 @@ export function addPlayer(state: GameState, def: PlayerDef): GameState {
   const next = clone(state);
   const seat = next.players.length;
   const spawns = spawnCells(state.seed, seat + 1, state.board);
-  next.players.push(basePlayer(def, spawns[seat] ?? 0, seat));
+  next.players.push(basePlayer(def, spawns[seat] ?? 0, seat, state.initialCashPerPlayer));
   // 房主就地选举：第一个进房的拿槌子，不需要谁显式任命
   if (next.hostId === null) next.hostId = def.id;
   log(next, `${def.name} 加入了房间`);
@@ -2239,8 +2265,9 @@ function startGame(state: GameState): void {
   assertLegal(state, { type: 'START_GAME' });
   state.phase = 'awaiting_roll';
   state.turn = 1;
-  // 冻结物价指数分母（此后不再随加入/破产变化）
-  state.initialCashPerPlayer = STARTING_CASH;
+  // 冻结物价指数分母（此后不再随加入/破产变化）。
+  // 起始资金那一半在 createGame 就写进 initialCashPerPlayer 了，这里不能再回写成常量 ——
+  // 否则开局面板选的 40000 会在开局瞬间掉回 15000，贷款上限也跟着缩。
   state.initialPlayerCount = state.players.length;
   // 开局赠送道具：机器娃娃/遥控骰子/路障/定时炸弹/地雷/机器工人 各 1（用户规则）
   for (const p of state.players) p.items = { ...STARTING_ITEMS };
@@ -2328,6 +2355,24 @@ export function autoSkipAction(state: GameState): PlayerAction | null {
     return { type: 'FINISH_LANDING' };
   }
   return null;
+}
+
+/**
+ * 此刻**手上该有操作权**的玩家 id：拍卖会由竞买人轮流主拍、额满舍弃由卡主弃牌，其余是轮到的人。
+ *
+ * 抽卡可能发生在别人的回合里（大福神显灵那类），所以舍弃阶段不能取 `currentPlayerIndex`。
+ * 联机用它拒绝越权，热座用它决定该替哪个 AI 行动 —— 两边必须是同一句话，
+ * 否则会出现「服务器认为轮到 A、客户端替 B 出手」这种两边各自合法的死锁。
+ */
+export function actingPlayerId(state: GameState): string | null {
+  if (state.phase === 'awaiting_auction') {
+    const a = state.auction;
+    return a ? a.bidders[a.turnIndex] ?? null : null;
+  }
+  if (state.phase === 'awaiting_discard') {
+    return state.pendingCards[0]?.ownerId ?? null;
+  }
+  return state.players[state.currentPlayerIndex]?.id ?? null;
 }
 
 /**
@@ -4058,7 +4103,8 @@ function checkTakeLoan(state: GameState, p: Player | null, action: ActionOf<'TAK
   if (state.loanBanDays > 0) return `银行挤兑中，${state.loanBanDays} 天内停止放款（EVT-01 事件 22）`;
   if (p!.loan) return '已有未还清的贷款';
   if (!Number.isInteger(action.amount) || action.amount <= 0) return '金额必须为正整数';
-  if (action.amount > MAX_LOAN) return `单笔贷款上限 ¥${MAX_LOAN}`;
+  const cap = maxLoanOf(state);
+  if (action.amount > cap) return `单笔贷款上限 ¥${cap}`;
   return null;
 }
 

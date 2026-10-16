@@ -48,88 +48,18 @@ button.small {
   font-size: 12px;
 }
 
-/* ---------- 开始界面 ---------- */
-.setup-screen {
-  height: 100%;
-  overflow: auto;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 12px;
-  padding: 24px 16px;
-  background: radial-gradient(ellipse at center, #1b3527 0%, #0d1512 70%);
-}
 
 /* 内容矮于视口时上下留白相等（居中）；高于视口时 flex 会把 auto 边距归零，
    退化成顶部对齐，避免 justify-content: center 那样把开头推出滚动区。 */
-.setup-screen > :first-child {
-  margin-top: auto;
-}
 
-.setup-screen > :last-child {
-  margin-bottom: auto;
-}
 
-.setup-screen h1 {
-  font-size: 42px;
-  letter-spacing: 4px;
-  color: #ffe082;
-  text-shadow: 0 4px 16px rgba(255, 224, 130, 0.3);
-}
 
-.subtitle {
-  color: #90a4ae;
-}
 
-/* 被弹回开局界面时的那句话：警告色而不是错误红，它描述的是刚发生的事，不是填错了什么 */
-.setup-notice {
-  padding: 8px 16px;
-  border: 1px solid #e9a23b;
-  border-radius: 999px;
-  background: rgba(233, 162, 59, 0.12);
-  color: #ffcc80;
-  font-size: 14px;
-  font-weight: 700;
-}
 
-.setup-card {
-  margin-top: 24px;
-  max-width: 100%;
-  background: #16211b;
-  border: 1px solid #2e4034;
-  border-radius: 16px;
-  padding: 28px 36px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 18px;
-}
 
-.setup-title {
-  font-size: 18px;
-  color: #c8e6c9;
-}
 
-.player-count-row {
-  display: flex;
-  gap: 10px;
-}
 
-.player-count-row button {
-  width: 64px;
-}
 
-/* ---------- 角色选择（热座开局）---------- */
-.char-row {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.char-row__hint {
-  font-size: 12px;
-  color: #607d8b;
-}
 
 .char-grid {
   display: grid;
@@ -155,25 +85,16 @@ button.small {
   background: #2a1b22;
 }
 
-.char-card__face {
-  font-size: 22px;
-  line-height: 1.1;
+.char-card__pic {
+  width: 56px;
+  height: 56px;
+  object-fit: contain;
+  pointer-events: none;
+  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.45));
 }
 
 .char-card__meta {
   color: #78909c;
-}
-
-/* 座位徽章压在卡片右上角：一眼看完"几号位是谁"，不必逐个点开对 */
-.char-card__seat {
-  position: absolute;
-  top: -7px;
-  right: -4px;
-  padding: 1px 6px;
-  border-radius: 8px;
-  background: #e91e63;
-  color: #fff;
-  font-size: 11px;
 }
 
 @media (max-width: 560px) {
@@ -182,10 +103,6 @@ button.small {
   }
 }
 
-.start-btn {
-  width: 180px;
-  font-size: 16px;
-}
 
 .hint {
   font-size: 12px;
@@ -994,48 +911,7 @@ button.mini {
   color: #e1bee7;
 }
 
-/* ---------- 模式选择 / 联机入口 ---------- */
-.mode-tabs {
-  display: flex;
-  gap: 8px;
-  margin-top: 8px;
-}
 
-.mode-tabs button {
-  padding: 8px 20px;
-  border-radius: 999px;
-  border: 1px solid #546e7a;
-  background: transparent;
-}
-
-.mode-tabs button.active {
-  background: #e91e63;
-  border-color: #e91e63;
-}
-
-.name-input,
-.join-row input {
-  width: 100%;
-  background: #263238;
-  border: 1px solid #546e7a;
-  border-radius: 8px;
-  padding: 10px 12px;
-  color: #eceff1;
-  font-family: inherit;
-  font-size: 14px;
-  outline: none;
-}
-
-.name-input:focus,
-.join-row input:focus {
-  border-color: #e91e63;
-}
-
-.join-row {
-  display: flex;
-  gap: 8px;
-  width: 100%;
-}
 
 .error-text {
   color: #ef9a9a;
@@ -1194,59 +1070,13 @@ button.mini {
   font-size: 12px;
 }
 
-/* ---------- 房间列表 ---------- */
-.room-browser {
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin-top: 6px;
-}
 
-.room-browser-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
 
-.room-empty {
-  font-size: 12px;
-  color: #607d8b;
-  text-align: center;
-  padding: 8px;
-  border: 1px dashed #37474f;
-  border-radius: 8px;
-}
 
-.room-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  background: rgba(38, 50, 56, 0.6);
-  border-radius: 8px;
-  padding: 6px 10px;
-  font-size: 13px;
-}
 
-.room-id {
-  font-family: Consolas, monospace;
-  color: #ffe082;
-  letter-spacing: 1px;
-}
 
-.room-players {
-  flex: 1;
-  color: #90a4ae;
-  font-size: 12px;
-}
 
-.room-idle {
-  color: #607d8b;
-}
 
-.resume-btn {
-  width: 100%;
-}
 
 /* ---------- 连接状态 ---------- */
 .conn-banner {
@@ -1266,76 +1096,15 @@ button.mini {
   color: #ef9a9a;
 }
 
-/* ---------- 账号 / 排行榜 ---------- */
-.auth-bar {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  color: #a5d6a7;
-  font-size: 13px;
-}
 
-.auth-form {
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
 
-.auth-row {
-  display: flex;
-  gap: 8px;
-}
 
-.auth-row input {
-  flex: 1;
-  background: #263238;
-  border: 1px solid #546e7a;
-  border-radius: 8px;
-  padding: 8px 10px;
-  color: #eceff1;
-  font-family: inherit;
-  font-size: 13px;
-  outline: none;
-}
 
-.auth-row input:focus {
-  border-color: #e91e63;
-}
 
-.leaderboard {
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  margin-top: 6px;
-}
 
-.lb-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  background: rgba(38, 50, 56, 0.6);
-  border-radius: 8px;
-  padding: 5px 10px;
-  font-size: 13px;
-}
 
-.lb-rank {
-  width: 20px;
-  color: #ffe082;
-  font-weight: 700;
-  text-align: center;
-}
 
-.lb-name {
-  flex: 1;
-}
 
-.lb-stats {
-  color: #90a4ae;
-  font-size: 12px;
-}
 
 /* ---------- 对局回放 ---------- */
 .replay-bar {
@@ -1397,33 +1166,9 @@ button.mini {
   font-weight: 600;
 }
 
-.replay-card {
-  width: min(560px, 92vw);
-}
 
-.replay-list {
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  max-height: 300px;
-  overflow-y: auto;
-}
 
-.record-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  background: rgba(38, 50, 56, 0.6);
-  border-radius: 8px;
-  padding: 8px 12px;
-  font-size: 13px;
-}
 
-.record-winner {
-  color: #ffe082;
-  flex-shrink: 0;
-}
 
 .record-meta {
   flex: 1;
@@ -2219,12 +1964,6 @@ button.mini {
   font-size: 13px;
 }
 
-/* 开始界面的设置/帮助按钮与模式 tab 并排 */
-button.setup-tool {
-  padding: 8px 10px;
-  font-size: 14px;
-  line-height: 1;
-}
 
 .settings-hint {
   font-size: 11px;

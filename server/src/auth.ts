@@ -18,7 +18,7 @@ export interface AuthedRequest extends Request {
   token?: string;
 }
 
-function requireAuth(req: Request, res: Response, next: NextFunction): void {
+export function requireAuth(req: Request, res: Response, next: NextFunction): void {
   const r = req as AuthedRequest;
   const token = (req.headers.authorization ?? '').replace(/^Bearer\s+/i, '');
   if (!token || !storageReady.redis) {

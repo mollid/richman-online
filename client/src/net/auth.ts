@@ -7,6 +7,8 @@ export interface LeaderboardEntry {
   username: string;
   wins: number;
   games: number;
+  /** 最近一局结束时间；服务端按 ISO 字符串下发 */
+  last_played: string | null;
 }
 
 import type { DateSerial, PlayerAction } from '@richman/shared';
@@ -120,11 +122,14 @@ export interface ReplayRecord extends ReplayRecordSummary {
   max_days?: number | null;
   /** 本局地图（缺省 / null = 自建 64 格环）；回放必须带着，否则原版图会复现成默认图 */
   map_id?: number | null;
+  /** 本局起始资金；缺省即按默认档复现（少了它会从第二手动作起全部错位） */
+  initial_cash?: number | null;
   actions: Array<{ turn: number; action: PlayerAction }>;
 }
 
-export async function fetchRecentRecords(limit = 20): Promise<ReplayRecordSummary[]> {
-  return request<ReplayRecordSummary[]>(`/records/recent?limit=${limit}`);
+/** 我参与过的对局（回放只收在登录后的用户菜单里，服务端按票过滤） */
+export async function fetchMyRecords(limit = 50): Promise<ReplayRecordSummary[]> {
+  return request<ReplayRecordSummary[]>(`/records/mine?limit=${limit}`);
 }
 
 export async function fetchRecord(id: string): Promise<ReplayRecord> {

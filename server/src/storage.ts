@@ -66,6 +66,9 @@ export async function initStorage(): Promise<void> {
         --     角色只能按座位回落 —— 于是改一次 characters.ts 就会让老录像复现出不同性别与头像，
         --     魔法屋「所有男生 / 所有女生」那两条条件在老录像里会打在不同人身上。
         ALTER TABLE game_record_players ADD COLUMN IF NOT EXISTS character_id VARCHAR(32);
+        --   initial_cash  起始资金：复现条件之一。不存的话 40000 的局回放出来按 15000 开局，
+        --     第一笔买地就现金不足，整条动作日志从第二步起全部错位
+        ALTER TABLE game_records ADD COLUMN IF NOT EXISTS initial_cash INT;
         CREATE INDEX IF NOT EXISTS idx_records_finished ON game_records(finished_at DESC);
         CREATE INDEX IF NOT EXISTS idx_record_players_user ON game_record_players(user_id);
       `);
@@ -157,6 +160,8 @@ export interface GameRecordInput {
   maxDays: number | null;
   /** 本局地图（null = 自建 64 格环）：不存就复现成另一张棋盘 */
   mapId: number | null;
+  /** 本局起始资金：不存就复现成另一套现金，动作日志从第二手起全部错位 */
+  initialCash: number;
   /** 按座位序传入（数组下标即 `seat`），`id` 是局内玩家 id */
   players: Array<{ id: string; userId: string | null; playerName: string; color: number; cash: number; bankrupt: boolean; characterId?: string | null }>;
 }
@@ -167,8 +172,8 @@ export async function saveGameRecord(input: GameRecordInput): Promise<void> {
   try {
     await client.query('BEGIN');
     const recordRes = await client.query<{ id: string }>(
-      `INSERT INTO game_records (room_id, seed, start_date, winner_name, player_count, turns, rounds, actions, max_days, map_id)
-       VALUES ($1, $2, $3::jsonb, $4, $5, $6, $7, $8::jsonb, $9, $10) RETURNING id`,
+      `INSERT INTO game_records (room_id, seed, start_date, winner_name, player_count, turns, rounds, actions, max_days, map_id, initial_cash)
+       VALUES ($1, $2, $3::jsonb, $4, $5, $6, $7, $8::jsonb, $9, $10, $11) RETURNING id`,
       [
         input.roomId,
         input.seed,
@@ -180,6 +185,7 @@ export async function saveGameRecord(input: GameRecordInput): Promise<void> {
         JSON.stringify(input.actions),
         input.maxDays,
         input.mapId,
+        input.initialCash,
       ],
     );
     const recordId = recordRes.rows[0]!.id;
@@ -219,33 +225,27 @@ export interface ReplayRecord extends ReplayRecordSummary {
   max_days: number | null;
   /** 本局地图；null = 自建 64 格环（老记录没有这一列，读出来即 null） */
   map_id: number | null;
+  /** 本局起始资金；缺省即按默认档复现 */
+  initial_cash: number | null;
   actions: Array<{ turn: number; action: unknown }>;
 }
 
-export async function listRecentRecords(limit = 20): Promise<ReplayRecordSummary[]> {
-  if (!pool || !storageReady.pg) return [];
+/** 某账号是否参与过这一局：回放按 id 直取时用它做归属校验 */
+export async function recordBelongsToUser(recordId: string, userId: string): Promise<boolean> {
+  if (!pool || !storageReady.pg) return false;
+  if (!/^[0-9a-f-]{36}$/i.test(recordId)) return false;
   const res = await pool.query(
-    `SELECT gr.id, gr.room_id, gr.winner_name, gr.player_count, gr.turns, gr.rounds, gr.finished_at,
-            COALESCE(
-              json_agg(json_build_object('player_name', rp.player_name, 'color', rp.color, 'cash', rp.cash, 'bankrupt', rp.bankrupt, 'player_key', rp.player_key, 'character_id', rp.character_id)
-                       ORDER BY rp.seat)
-              FILTER (WHERE rp.player_name IS NOT NULL), '[]'::json
-            ) AS players
-     FROM game_records gr
-     LEFT JOIN game_record_players rp ON rp.record_id = gr.id
-     GROUP BY gr.id
-     ORDER BY gr.finished_at DESC
-     LIMIT $1`,
-    [limit],
+    'SELECT 1 FROM game_record_players WHERE record_id = $1 AND user_id = $2 LIMIT 1',
+    [recordId, userId],
   );
-  return res.rows as ReplayRecordSummary[];
+  return (res.rowCount ?? 0) > 0;
 }
 
 export async function getRecord(id: string): Promise<ReplayRecord | null> {
   if (!pool || !storageReady.pg) return null;
   if (!/^[0-9a-f-]{36}$/i.test(id)) return null;
   const res = await pool.query<ReplayRecord>(
-    `SELECT gr.id, gr.room_id, gr.seed, gr.start_date, gr.max_days, gr.map_id, gr.winner_name, gr.player_count, gr.turns, gr.rounds, gr.actions, gr.finished_at,
+    `SELECT gr.id, gr.room_id, gr.seed, gr.start_date, gr.max_days, gr.map_id, gr.initial_cash, gr.winner_name, gr.player_count, gr.turns, gr.rounds, gr.actions, gr.finished_at,
             COALESCE(
               json_agg(json_build_object('player_name', rp.player_name, 'color', rp.color, 'cash', rp.cash, 'bankrupt', rp.bankrupt, 'player_key', rp.player_key, 'character_id', rp.character_id)
                        ORDER BY rp.seat)
@@ -264,22 +264,52 @@ export interface LeaderboardRow {
   username: string;
   wins: number;
   games: number;
+  /** 最近一局结束时间；只打过一局的人也有 */
+  last_played: Date | null;
 }
 
-export async function getLeaderboard(limit = 20): Promise<LeaderboardRow[]> {
+/**
+ * 排行榜只列「真打过局」的账号。
+ *
+ * 注册了但没开过场的人进榜会得到一排 0 胜 0 局，把榜变成用户名录 ——
+ * 榜的意义是「谁打得好」，不是「谁来了」。
+ */
+export async function getLeaderboard(limit = 50): Promise<LeaderboardRow[]> {
   if (!pool || !storageReady.pg) return [];
   const res = await pool.query<LeaderboardRow>(
     `SELECT u.username,
-            COUNT(*) FILTER (WHERE rp.user_id IS NOT NULL AND gr.winner_name = u.username)::int AS wins,
-            COUNT(DISTINCT gr.id)::int AS games
+            COUNT(DISTINCT gr.id) FILTER (WHERE gr.id IS NOT NULL)::int AS games,
+            COUNT(DISTINCT gr.id) FILTER (WHERE gr.winner_name = u.username)::int AS wins,
+            MAX(gr.finished_at) AS last_played
      FROM users u
-     LEFT JOIN game_record_players rp ON rp.user_id = u.id
-     LEFT JOIN game_records gr ON gr.id = rp.record_id
+     JOIN game_record_players rp ON rp.user_id = u.id
+     JOIN game_records gr ON gr.id = rp.record_id
      GROUP BY u.id, u.username
      ORDER BY wins DESC, games ASC, u.username ASC
      LIMIT $1`,
     [limit],
   );
   return res.rows;
+}
+
+/** 某个账号参与过的对局（回放收进用户菜单后，这是唯一的入口） */
+export async function listUserRecords(userId: string, limit = 50): Promise<ReplayRecordSummary[]> {
+  if (!pool || !storageReady.pg) return [];
+  const res = await pool.query(
+    `SELECT gr.id, gr.room_id, gr.winner_name, gr.player_count, gr.turns, gr.rounds, gr.finished_at,
+            COALESCE(
+              json_agg(json_build_object('player_name', rp.player_name, 'color', rp.color, 'cash', rp.cash, 'bankrupt', rp.bankrupt, 'player_key', rp.player_key, 'character_id', rp.character_id)
+                       ORDER BY rp.seat)
+              FILTER (WHERE rp.player_name IS NOT NULL), '[]'::json
+            ) AS players
+     FROM game_records gr
+     JOIN game_record_players mine ON mine.record_id = gr.id AND mine.user_id = $1
+     LEFT JOIN game_record_players rp ON rp.record_id = gr.id
+     GROUP BY gr.id
+     ORDER BY gr.finished_at DESC
+     LIMIT $2`,
+    [userId, limit],
+  );
+  return res.rows as ReplayRecordSummary[];
 }
 

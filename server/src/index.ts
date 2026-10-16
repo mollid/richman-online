@@ -5,8 +5,8 @@ import { createServer } from 'node:http';
 import { Server, matchMaker } from '@colyseus/core';
 import { WebSocketTransport } from '@colyseus/ws-transport';
 import { GameRoom, ROOM_IDLE_TIMEOUT_SEC } from './rooms/GameRoom.js';
-import { authRouter } from './auth.js';
-import { getLeaderboard, getRecord, initStorage, listRecentRecords } from './storage.js';
+import { authRouter, requireAuth, type AuthedRequest } from './auth.js';
+import { getLeaderboard, getRecord, initStorage, listUserRecords, recordBelongsToUser } from './storage.js';
 
 const app = express();
 app.use(express.json());
@@ -40,17 +40,27 @@ app.get('/api/leaderboard', async (_req, res) => {
   }
 });
 
-app.get('/api/records/recent', async (req, res) => {
+/**
+ * 回放只对局中人开放：列表按登录账号过滤，单条还要再核一次归属。
+ *
+ * 原来这里挂的是 `/api/records/recent` —— 任何人不带票就能把全服每局的完整动作日志拖走。
+ * 收进用户菜单之后，这条口子必须跟着关：能看的只有「你自己打过的那几局」。
+ */
+app.get('/api/records/mine', requireAuth, async (req, res) => {
   try {
-    const limit = Math.min(Math.max(Number(req.query.limit ?? 20) || 20, 1), 50);
-    res.json(await listRecentRecords(limit));
+    const limit = Math.min(Math.max(Number(req.query.limit ?? 50) || 50, 1), 100);
+    res.json(await listUserRecords((req as AuthedRequest).user!.id, limit));
   } catch {
     res.status(500).json({ error: '获取对局列表失败' });
   }
 });
 
-app.get('/api/records/:id', async (req, res) => {
+app.get('/api/records/:id', requireAuth, async (req, res) => {
   try {
+    if (!(await recordBelongsToUser(req.params.id!, (req as AuthedRequest).user!.id))) {
+      res.status(403).json({ error: '这局对局与你无关' });
+      return;
+    }
     const record = await getRecord(req.params.id!);
     if (!record) {
       res.status(404).json({ error: '对局记录不存在' });

@@ -2,6 +2,7 @@ import { Room } from '@colyseus/core';
 import type { Client } from '@colyseus/core';
 import {
   addPlayer,
+  actingPlayerId,
   applyAction,
   availableActions,
   autoSkipAction,
@@ -13,6 +14,7 @@ import {
   pushLog,
   removePlayer,
   resolveCharacter,
+  resolveInitialCash,
   resolveMaxDays,
   setLobbyCharacter,
   setLobbyReady,
@@ -116,6 +118,7 @@ export class GameRoom extends Room {
     maxDays?: number | null;
     mapId?: number | null;
     isPrivate?: boolean;
+    initialCash?: number | null;
   }) {
     this.maxClients = Math.min(Math.max(options.maxPlayers ?? 4, 2), 4);
     this.isPrivate = options.isPrivate === true;
@@ -129,6 +132,9 @@ export class GameRoom extends Room {
       maxDays: options.maxDays === undefined ? ONLINE_DEFAULT_MAX_DAYS : resolveMaxDays(options.maxDays),
       // 地图同理要区分「没传」与「传了 null（自建默认图）」，而 0 号是合法地图
       mapId: options.mapId ?? null,
+      // 起始资金：房主在开局面板选的档位。非法值由 `resolveInitialCash` 退回默认档，
+      // 后面 `addPlayer` 与贷款上限都读这一份（`game.initialCashPerPlayer`）。
+      initialCash: resolveInitialCash(options.initialCash),
     });
     this.touch();
     this.updateMetadata('lobby');
@@ -372,17 +378,9 @@ export class GameRoom extends Room {
     }
   }
 
-  /** 当前应行动的玩家：拍卖会由竞买人轮流主拍、额满舍弃由**卡主**弃牌，其余情况为当前回合玩家 */
+  /** 当前应行动的玩家：判据与热座同源，见 shared `actingPlayerId` */
   private actingPlayerId(): string | null {
-    if (this.game.phase === 'awaiting_auction') {
-      const a = this.game.auction;
-      return a ? a.bidders[a.turnIndex] ?? null : null;
-    }
-    if (this.game.phase === 'awaiting_discard') {
-      // 抽卡可能发生在别人的回合里（大福神显灵那类）：该弃牌的是拿到那张卡的人，不是轮到的人
-      return this.game.pendingCards[0]?.ownerId ?? null;
-    }
-    return this.game.players[this.game.currentPlayerIndex]?.id ?? null;
+    return actingPlayerId(this.game);
   }
 
   private scheduleAutoAct() {
@@ -541,6 +539,7 @@ export class GameRoom extends Room {
         // 建局参数与座位序一并入库，否则回放复现不出这一局（天数上限、回合轮转都靠它）
         maxDays: this.game.maxDays,
         mapId: this.game.mapId,
+        initialCash: this.game.initialCashPerPlayer,
         players: this.game.players.map((p) => ({
           id: p.id,
           userId: this.userIds.get(p.id) ?? null,

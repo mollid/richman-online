@@ -1,26 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { CHARACTERS, MAP_CHOICES, MAX_DAY_CHOICES, ONLINE_DEFAULT_MAX_DAYS, type GameState, type PlayerAction } from '@richman/shared';
+import type { GameState, PlayerAction } from '@richman/shared';
 import { sfx } from './game/sfx.js';
-import {
-  loadHotseatGame,
-  LocalHotseatSession,
-  saveHotseatGame,
-  type GameSession,
-} from './net/session.js';
-import { ColyseusSession, hasSavedSession, type RoomSummary } from './net/remote.js';
-import {
-  fetchLeaderboard,
-  fetchMe,
-  fetchRecentRecords,
-  fetchRecord,
-  login as apiLogin,
-  logout as apiLogout,
-  register as apiRegister,
-  type AuthUser,
-  type LeaderboardEntry,
-  type ReplayRecord,
-  type ReplayRecordSummary,
-} from './net/auth.js';
+import { loadHotseatGame, LocalHotseatSession, type GameSession, type HotseatOptions } from './net/session.js';
+import { ColyseusSession, hasSavedSession } from './net/remote.js';
+import { fetchMe, logout as apiLogout, type AuthUser, type ReplayRecord } from './net/auth.js';
+import { saveLocalReplay } from './net/localReplays.js';
 import { ReplayScreen } from './ui/ReplayScreen.js';
 import { AcHudLayer } from './ui/AcHudLayer.js';
 import { confirmAction } from './ui/landingExit.js';
@@ -28,128 +12,21 @@ import { useGameSfx } from './ui/useGameSfx.js';
 import { useHotkeys } from './ui/useHotkeys.js';
 import { SettingsPanel } from './ui/SettingsPanel.js';
 import { HelpPanel } from './ui/HelpPanel.js';
+import { LobbyScreen } from './ui/lobby/LobbyScreen.js';
+import type { OnlineCreate } from './ui/lobby/OnlineModeDialog.js';
 import { duckMusic, initMusic } from './game/bgm.js';
-
-type SetupMode = 'local' | 'online' | 'replay';
-
-/** 天数上限的显示文案（`null` = 不限，只靠「对手全破产」收场） */
-function dayLimitLabel(days: number | null): string {
-  return days === null ? '不限' : `${days} 天`;
-}
-
-/** 房间多久没人动过。不到一分钟说「刚刚」，免得整列都是「0 分钟前」 */
-function idleLabel(sec: number): string {
-  return sec < 60 ? '刚刚' : `${Math.floor(sec / 60)} 分钟前`;
-}
-
-/**
- * 天数上限选择（CORE-04 / 玩法文档 §14 第 2 项）。
- * 热座默认「不限」（复刻原版的唯一结束条件），联机默认 60 天（长局收得了口）。
- */
-function DayLimitRow({ value, onChange }: { value: number | null; onChange: (days: number | null) => void }) {
-  return (
-    <div className="player-count-row day-limit-row">
-      <span className="setup-title">天数上限</span>
-      {MAX_DAY_CHOICES.map((days) => (
-        <button key={days ?? 'none'} className={value === days ? 'primary' : ''} onClick={() => onChange(days)}>
-          {dayLimitLabel(days)}
-        </button>
-      ))}
-    </div>
-  );
-}
-
-/**
- * 地图选择（R5-b）。`null` = 自建的 64 格环（默认图），其余是解自 map.mkf 的原版图。
- * 只在建局时生效：棋盘随状态一起下发，中途换图等于开另一局。
- */
-function MapRow({ value, onChange }: { value: number | null; onChange: (mapId: number | null) => void }) {
-  return (
-    <div className="player-count-row day-limit-row">
-      <span className="setup-title">地图</span>
-      {MAP_CHOICES.map((m) => (
-        <button key={m.id ?? 'default'} className={value === m.id ? 'primary' : ''} onClick={() => onChange(m.id)}>
-          {m.name} · {m.cells} 格
-        </button>
-      ))}
-    </div>
-  );
-}
-
-/**
- * 房间可见性（只在建房时生效）。私密房不进大厅列表 —— 服务端连 roomId 都不下发，
- * 所以防陌生人是真防，不是前端藏起来；想加的人只能拿房主发出的房间码走「加入房间」。
- */
-function RoomVisibilityRow({ value, onChange }: { value: boolean; onChange: (isPrivate: boolean) => void }) {
-  return (
-    <div className="player-count-row day-limit-row">
-      <span className="setup-title">房间可见性</span>
-      <button className={value ? '' : 'primary'} onClick={() => onChange(false)}>
-        公开
-      </button>
-      <button className={value ? 'primary' : ''} onClick={() => onChange(true)}>
-        私密
-      </button>
-    </div>
-  );
-}
-
-/**
- * 角色选择行（热座开局）。
- *
- * 为什么要有这一行：波 3 之前角色是**按座位静默分配**的，玩家根本不知道自己在操作谁 ——
- * 决策人要的是"可选，不是随机"。默认仍替前 N 个座位填好（角色表是男女交替排的，
- * 见 `characters.ts`），所以不 care 的人照样一键开局，care 的人点卡片换。
- *
- * 交互取"点击顺序即座位号"而不是"每座一个下拉"：下拉要把 10 个名字藏进 N 层点击，
- * 而棋盘上真正想知道的是"这一号位是谁"，卡片上的座位徽章一眼就能看完。
- */
-function CharacterRow({ count, picks, onChange }: { count: number; picks: string[]; onChange: (next: string[]) => void }) {
-  const seatOf = (id: string) => picks.indexOf(id);
-  const toggle = (id: string) => {
-    if (seatOf(id) >= 0) return onChange(picks.filter((p) => p !== id));
-    // 满了就不吃这次点击：座位数由上面那排「N 人」决定，这一行只管"谁来坐"
-    if (picks.length >= count) return undefined;
-    onChange([...picks, id]);
-  };
-  return (
-    <div className="char-row">
-      <div className="char-row__hint">点角色卡按点击顺序占座 · 再点一次腾出位子</div>
-      <div className="char-grid">
-        {CHARACTERS.map((c) => {
-          const seat = seatOf(c.id);
-          return (
-            <button
-              key={c.id}
-              type="button"
-              className={`char-card${seat >= 0 ? ' char-card--on' : ''}`}
-              title={c.blurb}
-              aria-pressed={seat >= 0}
-              onClick={() => toggle(c.id)}
-            >
-              <span className="char-card__face">{c.avatar}</span>
-              <span className="char-card__name">{c.name}</span>
-              <span className="char-card__meta">
-                {c.gender === 'male' ? '男' : '女'} · {c.age} 岁
-              </span>
-              {seat >= 0 && <span className="char-card__seat">{seat + 1} 号位</span>}
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
 
 export default function App() {
   const [session, setSession] = useState<GameSession | null>(null);
   const [replayRecord, setReplayRecord] = useState<ReplayRecord | null>(null);
   const [connecting, setConnecting] = useState(false);
   const [connectError, setConnectError] = useState('');
-  /** 被弹回开局界面时的一句话（`connectError` 只在联机卡片里渲染，被踢时人可能在别的页签） */
+  /** 被弹回大厅时的一句话（`connectError` 只在联机面板里渲染，被踢时人可能早关了那个面板） */
   const [connectNotice, setConnectNotice] = useState('');
   const [showSettings, setShowSettings] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
+  const [user, setUser] = useState<AuthUser | null>(null);
+  const [canResume] = useState(() => hasSavedSession());
 
   const { registerAction } = useHotkeys();
 
@@ -157,17 +34,25 @@ export default function App() {
   useEffect(() => registerAction('open_settings', () => setShowSettings(true)), [registerAction]);
   useEffect(() => registerAction('open_help', () => setShowHelp(true)), [registerAction]);
 
-  const startLocal = (playerCount: number, maxDays: number | null, mapId: number | null, characterIds?: string[]) => {
+  /* 票一直存在 localStorage 里（联机握手与 /api 都带着它），丢的只是这份 React state。
+     挂载时拿票换回登录态，否则每次刷新都要重新登录。 */
+  useEffect(() => {
+    void fetchMe().then((u) => {
+      if (u) setUser(u);
+    });
+  }, []);
+
+  const startLocal = (opts: HotseatOptions) => {
     session?.destroy();
     setConnectError('');
-    setSession(new LocalHotseatSession(playerCount, undefined, null, maxDays, mapId, characterIds));
+    setConnectNotice('');
+    setSession(new LocalHotseatSession(opts));
   };
 
-  // UI-03 存储 / 读取：手动存 / 读档（仅热座模式）
+  // UI-03 存储 / 读取：手动存 / 读档（仅单人模式）
   const saveGame = useCallback(() => {
-    if (!session || session.roomId) return;
-    const ok = saveHotseatGame(session.getGame());
-    setConnectError(ok ? '' : '存档失败：浏览器存储不可用');
+    if (!session?.saveToBrowser) return;
+    setConnectError(session.saveToBrowser() ? '' : '存档失败：浏览器存储不可用');
   }, [session]);
 
   const loadGame = useCallback(() => {
@@ -178,7 +63,8 @@ export default function App() {
     }
     session?.destroy();
     setConnectError('');
-    setSession(new LocalHotseatSession(restored.players.length, 0, restored));
+    setConnectNotice('');
+    setSession(new LocalHotseatSession({ resume: restored }));
   }, [session]);
 
   const resumeLast = async () => {
@@ -200,24 +86,13 @@ export default function App() {
     }
   };
 
-  const connectRemote = async (
-    playerName: string,
-    roomId?: string,
-    maxDays?: number | null,
-    mapId?: number | null,
-    isPrivate?: boolean,
-  ) => {
+  /** 建房与凭码加入走两条路：天数、金额、地图、可见性是建房者的参数，加入者说了不算 */
+  const connectRemote = async (opts: { playerName: string; roomId?: string }) => {
     setConnecting(true);
     setConnectError('');
     setConnectNotice('');
     try {
-      const next = await ColyseusSession.connect({
-        playerName,
-        roomId: roomId?.trim() || undefined,
-        maxDays,
-        mapId,
-        isPrivate,
-      });
+      const next = await ColyseusSession.connect(opts);
       session?.destroy();
       setSession(next);
     } catch (e) {
@@ -230,6 +105,11 @@ export default function App() {
   const exit = () => {
     session?.destroy();
     setSession(null);
+  };
+
+  const handleLogout = async () => {
+    await apiLogout();
+    setUser(null);
   };
 
   // 设置 / 帮助面板挂在最外层，任何界面都能通过热键或按钮打开
@@ -252,21 +132,19 @@ export default function App() {
   if (!session) {
     return (
       <>
-        <SetupScreen
-          onStartLocal={startLocal}
-          onConnect={connectRemote}
-          onResume={resumeLast}
-          onWatchReplay={async (id) => {
-            setConnectError('');
-            try {
-              setReplayRecord(await fetchRecord(id));
-            } catch (e) {
-              setConnectError(e instanceof Error ? e.message : '获取回放失败');
-            }
-          }}
+        <LobbyScreen
+          user={user}
+          notice={connectNotice}
           connecting={connecting}
           error={connectError}
-          notice={connectNotice}
+          canResume={canResume}
+          onAuthed={setUser}
+          onLogout={() => void handleLogout()}
+          onStartSingle={startLocal}
+          onCreateRoom={(o) => void connectRemote({ ...o, roomId: undefined })}
+          onJoinRoom={(roomId) => void connectRemote({ playerName: user?.username ?? '', roomId })}
+          onResume={() => void resumeLast()}
+          onWatchReplay={setReplayRecord}
           onOpenSettings={() => setShowSettings(true)}
           onOpenHelp={() => setShowHelp(true)}
         />
@@ -280,6 +158,7 @@ export default function App() {
       <GameScreen
         key={`${session.roomId ?? 'local'}:${session.myPlayerId ?? 'hotseat'}`}
         session={session}
+        userName={user?.username ?? null}
         onExit={exit}
         onNotice={setConnectNotice}
         registerAction={registerAction}
@@ -293,320 +172,9 @@ export default function App() {
   );
 }
 
-function SetupScreen({
-  onStartLocal,
-  onConnect,
-  onResume,
-  onWatchReplay,
-  connecting,
-  error,
-  notice,
-  onOpenSettings,
-  onOpenHelp,
-}: {
-  onStartLocal: (playerCount: number, maxDays: number | null, mapId: number | null, characterIds?: string[]) => void;
-  onConnect: (playerName: string, roomId?: string, maxDays?: number | null, mapId?: number | null, isPrivate?: boolean) => void;
-  onResume: () => void;
-  onWatchReplay: (recordId: string) => void;
-  connecting: boolean;
-  error: string;
-  /** 从对局里被弹回来时带的话（被踢）。放在页签上方：`error` 只在联机分支里渲染 */
-  notice: string;
-  onOpenSettings: () => void;
-  /** UI-03 存 / 读档（仅热座模式） */
-  onSaveGame?: () => void;
-  onLoadGame?: () => void;
-  onOpenHelp: () => void;
-}) {
-  const [mode, setMode] = useState<SetupMode>('local');
-  const [playerCount, setPlayerCount] = useState(2);
-  // 已选角色（按座位序）。默认填前 N 个座位 ⇒ 一键开局仍然成立，改动才是玩家自己的选择
-  const [localPicks, setLocalPicks] = useState<string[]>(CHARACTERS.slice(0, 2).map((c) => c.id));
-
-  /** 改人数时同步 picks：减就砍尾，加就按座位序补没被占的角色 */
-  const setLocalCount = (n: number) => {
-    setPlayerCount(n);
-    setLocalPicks((prev) => {
-      if (prev.length > n) return prev.slice(0, n);
-      const taken = new Set(prev);
-      return [...prev, ...CHARACTERS.filter((c) => !taken.has(c.id)).slice(0, n - prev.length).map((c) => c.id)];
-    });
-  };
-  // 天数上限（CORE-04 / §14 第 2 项）：热座默认不限，联机默认 60 天
-  const [localMaxDays, setLocalMaxDays] = useState<number | null>(null);
-  const [onlineMaxDays, setOnlineMaxDays] = useState<number | null>(ONLINE_DEFAULT_MAX_DAYS);
-  // 地图（R5-b）：null = 自建的 64 格环。热座与联机各记一份，只有建房者/开局者说了算
-  const [localMap, setLocalMap] = useState<number | null>(null);
-  const [onlineMap, setOnlineMap] = useState<number | null>(null);
-  // 建房默认可公开 —— 大厅列表本来就是给「顺手凑一桌」用的，想只发给好友再切成私密
-  const [onlinePrivate, setOnlinePrivate] = useState(false);
-  const [playerName, setPlayerName] = useState('');
-  const [roomId, setRoomId] = useState('');
-  const [rooms, setRooms] = useState<RoomSummary[]>([]);
-  const [canResume] = useState(() => hasSavedSession());
-  const [user, setUser] = useState<AuthUser | null>(null);
-  const [authName, setAuthName] = useState('');
-  const [authPass, setAuthPass] = useState('');
-  const [authError, setAuthError] = useState('');
-  const [authBusy, setAuthBusy] = useState(false);
-  const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
-  const [records, setRecords] = useState<ReplayRecordSummary[]>([]);
-
-  /* 票本来就一直存在 localStorage 里（联机握手与 /api 都带着它），丢的只是这份 React state。
-     挂载时拿票换回登录态，否则每次刷新都要重新登录。 */
-  useEffect(() => {
-    void fetchMe().then((u) => {
-      if (!u) return;
-      setUser(u);
-      setPlayerName((prev) => prev || u.username);
-    });
-  }, []);
-
-  const refreshRooms = async () => {
-    try {
-      setRooms(await ColyseusSession.listRooms());
-    } catch {
-      setRooms([]);
-    }
-  };
-
-  const refreshLeaderboard = async () => {
-    try {
-      setLeaderboard(await fetchLeaderboard());
-    } catch {
-      setLeaderboard([]);
-    }
-  };
-
-  const refreshRecords = async () => {
-    try {
-      setRecords(await fetchRecentRecords(20));
-    } catch {
-      setRecords([]);
-    }
-  };
-
-  const handleAuth = async (mode: 'login' | 'register') => {
-    setAuthBusy(true);
-    setAuthError('');
-    try {
-      const u = mode === 'login' ? await apiLogin(authName.trim(), authPass) : await apiRegister(authName.trim(), authPass);
-      setUser(u);
-      setPlayerName(u.username);
-      setAuthPass('');
-    } catch (e) {
-      setAuthError(e instanceof Error ? e.message : '操作失败');
-    } finally {
-      setAuthBusy(false);
-    }
-  };
-
-  const handleLogout = async () => {
-    await apiLogout();
-    setUser(null);
-  };
-
-  useEffect(() => {
-    if (mode === 'online') {
-      void refreshRooms();
-      void refreshLeaderboard();
-      // 服务端会在后台收房（空闲满 15 分钟、或最后一个玩家走清后 autoDispose），
-      // 不轮询的话列表就一直挂着已经没了的房，直到人手动点刷新。
-      const poll = setInterval(() => void refreshRooms(), 10_000);
-      return () => clearInterval(poll);
-    }
-    if (mode === 'replay') void refreshRecords();
-  }, [mode]);
-
-  return (
-    <div className="setup-screen">
-      <h1>大富翁 Online</h1>
-      <p className="subtitle">TypeScript · React · PixiJS · Colyseus</p>
-
-      {notice && <div className="setup-notice">{notice}</div>}
-
-      <div className="mode-tabs">
-        <button className={mode === 'local' ? 'active' : ''} onClick={() => setMode('local')}>
-          本地热座
-        </button>
-        <button className={mode === 'online' ? 'active' : ''} onClick={() => setMode('online')}>
-          联机对战
-        </button>
-        <button className={mode === 'replay' ? 'active' : ''} onClick={() => setMode('replay')}>
-          对局回放
-        </button>
-        <button className="ghost small setup-tool" title="设置" onClick={onOpenSettings}>
-          ⚙️
-        </button>
-        <button className="ghost small setup-tool" title="帮助" onClick={onOpenHelp}>
-          ❓
-        </button>
-      </div>
-
-      {mode === 'local' ? (
-        <div className="setup-card">
-          <div className="setup-title">本地热座模式</div>
-          <div className="player-count-row">
-            {[2, 3, 4].map((n) => (
-              <button key={n} className={playerCount === n ? 'primary' : ''} onClick={() => setLocalCount(n)}>
-                {n} 人
-              </button>
-            ))}
-          </div>
-          <CharacterRow count={playerCount} picks={localPicks} onChange={setLocalPicks} />
-          <DayLimitRow value={localMaxDays} onChange={setLocalMaxDays} />
-          <MapRow value={localMap} onChange={setLocalMap} />
-          <button
-            className="primary start-btn"
-            disabled={localPicks.length !== playerCount}
-            onClick={() => onStartLocal(playerCount, localMaxDays, localMap, localPicks)}
-          >
-            {localPicks.length === playerCount ? '开始游戏' : `还差 ${playerCount - localPicks.length} 个角色`}
-          </button>
-        </div>
-      ) : mode === 'online' ? (
-        <div className="setup-card">
-          <div className="setup-title">联机对战模式</div>
-          {user ? (
-            <div className="auth-bar">
-              <span>
-                账号：<b>{user.username}</b>
-              </span>
-              <button className="small ghost" onClick={() => void handleLogout()}>
-                登出
-              </button>
-            </div>
-          ) : (
-            <div className="auth-form">
-              <div className="auth-row">
-                <input placeholder="账号（2-16 位）" maxLength={16} value={authName} onChange={(e) => setAuthName(e.target.value)} />
-                <input
-                  placeholder="密码（至少 6 位）"
-                  type="password"
-                  value={authPass}
-                  onChange={(e) => setAuthPass(e.target.value)}
-                />
-              </div>
-              <div className="auth-row">
-                <button disabled={authBusy || !authName.trim() || authPass.length < 6} onClick={() => void handleAuth('login')}>
-                  登录
-                </button>
-                <button disabled={authBusy || !authName.trim() || authPass.length < 6} onClick={() => void handleAuth('register')}>
-                  注册
-                </button>
-              </div>
-              {authError && <div className="error-text">{authError}</div>}
-              <p className="hint">登录后战绩将计入排行榜；不登录也可游客游玩</p>
-            </div>
-          )}
-          <input
-            className="name-input"
-            placeholder="你的昵称（最多 8 字）"
-            maxLength={8}
-            value={playerName}
-            onChange={(e) => setPlayerName(e.target.value)}
-          />
-          <DayLimitRow value={onlineMaxDays} onChange={setOnlineMaxDays} />
-          <MapRow value={onlineMap} onChange={setOnlineMap} />
-          <RoomVisibilityRow value={onlinePrivate} onChange={setOnlinePrivate} />
-          <button
-            className="primary start-btn"
-            disabled={!playerName.trim() || connecting}
-            onClick={() => onConnect(playerName.trim(), undefined, onlineMaxDays, onlineMap, onlinePrivate)}
-          >
-            {connecting ? '连接中…' : '创建房间'}
-          </button>
-          <div className="join-row">
-            <input
-              placeholder="房间码"
-              value={roomId}
-              onChange={(e) => setRoomId(e.target.value.trim())}
-            />
-            <button
-              disabled={!playerName.trim() || !roomId.trim() || connecting}
-              onClick={() => onConnect(playerName.trim(), roomId)}
-            >
-              加入房间
-            </button>
-          </div>
-          {canResume && (
-            <button className="ghost resume-btn" disabled={connecting} onClick={onResume}>
-              回到上次对局
-            </button>
-          )}
-          {error && <div className="error-text">{error}</div>}
-          <div className="room-browser">
-            <div className="room-browser-header">
-              <span className="panel-title">公开房间</span>
-              <button className="small ghost" onClick={() => void refreshRooms()}>
-                刷新
-              </button>
-            </div>
-            {rooms.length === 0 ? (
-              <div className="room-empty">暂无等待中的房间</div>
-            ) : (
-              rooms.map((room) => (
-                <div key={room.roomId} className="room-row">
-                  <span className="room-id">{room.roomId}</span>
-                  <span className="room-players">
-                    {room.players}/{room.maxPlayers} 人<span className="room-idle"> · {idleLabel(room.idleSec)}</span>
-                  </span>
-                  <button
-                    disabled={!playerName.trim() || connecting || room.players >= room.maxPlayers}
-                    onClick={() => onConnect(playerName.trim(), room.roomId)}
-                  >
-                    加入
-                  </button>
-                </div>
-              ))
-            )}
-          </div>
-          {leaderboard.length > 0 && (
-            <div className="leaderboard">
-              <div className="panel-title">排行榜</div>
-              {leaderboard.map((entry, i) => (
-                <div key={entry.username} className="lb-row">
-                  <span className="lb-rank">{i + 1}</span>
-                  <span className="lb-name">{entry.username}</span>
-                  <span className="lb-stats">
-                    {entry.wins} 胜 / {entry.games} 局
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
-          <p className="hint">创建房间后把房间码发给好友，2 人即可开局（最多 4 人）；私密房不出现在下面的公开房间列表里，只能凭码加入</p>
-        </div>
-      ) : (
-        <div className="setup-card replay-card">
-          <div className="setup-title">已结束的对局</div>
-          <div className="replay-list">
-            {records.length === 0 ? (
-              <div className="room-empty">暂无已结束的对局记录</div>
-            ) : (
-              records.map((r) => (
-                <div key={r.id} className="record-row">
-                  <span className="record-winner">🏆 {r.winner_name ?? '-'}</span>
-                  <span className="record-meta">
-                    {r.players.map((p) => p.player_name).join(' vs ')} · {r.turns} 回合
-                  </span>
-                  <button onClick={() => onWatchReplay(r.id)}>观看回放</button>
-                </div>
-              ))
-            )}
-          </div>
-          <button className="small ghost" onClick={() => void refreshRecords()}>
-            刷新
-          </button>
-          <p className="hint">回放基于确定性引擎：同一 seed 与动作序列可完整复现整局</p>
-        </div>
-      )}
-    </div>
-  );
-}
-
 function GameScreen({
   session,
+  userName,
   onExit,
   onNotice,
   registerAction,
@@ -616,12 +184,14 @@ function GameScreen({
   onLoadGame,
 }: {
   session: GameSession;
+  /** 登录账号：单人局打完用它当本地回放的归属键 */
+  userName: string | null;
   onExit: () => void;
-  /** 被弹回开局界面时带一句话（被踢）；不传就只是安静地退出 */
+  /** 被弹回大厅时带一句话（被踢）；不传就只是安静地退出 */
   onNotice?: (text: string) => void;
   registerAction: (name: string, fn: () => void) => () => void;
   onOpenSettings: () => void;
-  /** UI-03 存 / 读档（仅热座模式） */
+  /** UI-03 存 / 读档（仅单人模式） */
   onSaveGame?: () => void;
   onLoadGame?: () => void;
   onOpenHelp: () => void;
@@ -645,7 +215,7 @@ function GameScreen({
   }, [session]);
 
   /* 被踢不是「留在原地看一条横幅」：这块棋盘已经没有你的位置了，
-     人和话一起送回开局界面。 */
+     人和话一起送回大厅。 */
   useEffect(() => {
     if (connection !== 'kicked') return;
     onNotice?.('👋 你被房主请出了房间 · 拿到房间码还可以再进来');
@@ -653,10 +223,22 @@ function GameScreen({
   }, [connection, onExit, onNotice]);
 
   const current = game.players[game.currentPlayerIndex];
-  const isMyTurn =
-    session.myPlayerId == null || (current != null && current.id === session.myPlayerId);
+  /* AI 座位由会话层自己代打（单人模式补位那几席）。这一层不看住，人就能替 AI 掷骰 ——
+     引擎只认「轮到谁」，不认「谁在点」，于是那一步会照常生效。 */
+  const autoPlayed = !!current && (session.autoPlayerIds?.has(current.id) ?? false);
+  const isMyTurn = session.myPlayerId == null ? !autoPlayed : current != null && current.id === session.myPlayerId;
   const interactive = isMyTurn && game.phase !== 'game_over';
   const isRemote = session.myPlayerId != null;
+
+  /* 单人局只在终局那一刻落一份本地回放：中途落盘会把「打到一半」也收成一局。
+     拿 session 本身当已存标记，重渲染与同一会话里的后续动作都不会再写。 */
+  const replaySavedFor = useRef<GameSession | null>(null);
+  useEffect(() => {
+    if (game.phase !== 'game_over' || isRemote || !userName || !session.toReplayRecord) return;
+    if (replaySavedFor.current === session) return;
+    replaySavedFor.current = session;
+    saveLocalReplay(userName, session.toReplayRecord());
+  }, [game.phase, isRemote, session, userName]);
 
   // UI-02 指令热键：把动作名绑到真实实现。
   // onAction 保持“收到就派发”的原语义（面板按钮依赖它，含强制舍弃手牌等流程）；

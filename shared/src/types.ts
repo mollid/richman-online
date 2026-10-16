@@ -712,7 +712,10 @@ export interface GameState {
   minigame: MinigameState | null;
   /** 游戏日历（时间系统基线） */
   calendar: GameCalendar;
-  /** 开局单人初始资金（startGame 冻结，物价指数分母） */
+  /**
+   * 开局单人初始资金：createGame 按面板选项写入，此后不变。
+   * 三个下游共用这一个数 —— 物价指数分母、每位新玩家的现金、单笔贷款上限（见 `maxLoanOf`）。
+   */
   initialCashPerPlayer: number;
   /** 开局玩家人数（startGame 冻结，物价指数分母） */
   initialPlayerCount: number;

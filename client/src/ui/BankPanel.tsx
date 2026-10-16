@@ -4,7 +4,7 @@ import {
   DEPOSIT_MONTHLY_INTEREST,
   fromSerial,
   gameDate,
-  MAX_LOAN,
+  maxLoanOf,
   toSerial,
   type GameState,
   type PlayerAction,
@@ -37,7 +37,7 @@ export function BankPanel({
   const date = gameDate(game);
   const maxDeposit = current.cash;
   const maxWithdraw = current.deposit;
-  const maxLoan = MAX_LOAN;
+  const maxLoan = maxLoanOf(game);
   const maxRepay = loan ? Math.min(current.cash, loan.principal) : 0;
 
   const dueDate = loan ? fromSerial(toSerial(game.calendar.start) + loan.dueDayIndex) : null;
@@ -109,7 +109,7 @@ export function BankPanel({
 
       <div className="bank-loan">
         <div className="bank-loan-info">
-          贷款上限 ¥{MAX_LOAN.toLocaleString('zh-CN')} · 利率 0% · 期限 3 个月
+          贷款上限 ¥{maxLoan.toLocaleString('zh-CN')} · 利率 0% · 期限 3 个月
         </div>
         {loan ? (
           <>

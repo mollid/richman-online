@@ -4,6 +4,10 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>大富翁 Online</title>
+    <!-- 大厅与 HUD 都用这套自托管圆体（狮尾圆体 + M PLUS Rounded 1c）。
+         AcHudLayer 会再挂一份带 id 的同源链接并在卸载时摘掉，所以这一份不带 id：
+         它是不随界面切换消失的那一份。 -->
+    <link rel="stylesheet" href="/fonts/fonts.css" />
   </head>
   <body>
     <div id="root"></div>
