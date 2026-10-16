@@ -46,10 +46,10 @@ export function CalendarPanel({ game }: { game: GameState }) {
 
       <div className="calendar-toggle">
         <button className={`small ${monthView ? '' : 'primary'}`} onClick={() => setMonthView(false)}>
-          日曆
+          日历
         </button>
         <button className={`small ${monthView ? 'primary' : ''}`} onClick={() => setMonthView(true)}>
-          月曆
+          月历
         </button>
       </div>
 

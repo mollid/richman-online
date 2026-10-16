@@ -6,14 +6,15 @@ import { LeaderboardDialog } from './LeaderboardDialog.js';
 import { MyReplaysDialog } from './MyReplaysDialog.js';
 import { OnlineModeDialog, type OnlineCreate } from './OnlineModeDialog.js';
 import { SingleModeDialog } from './SingleModeDialog.js';
+import { Icon } from '../mp/Icon.js';
 import './lobby.css';
 
 type Panel = 'single' | 'online' | 'rank' | 'replays' | 'auth' | null;
 
-const NAV: Array<{ panel: Exclude<Panel, null>; cls: string; ico: string; label: string; sub: string; needsUser: boolean }> = [
-  { panel: 'single', cls: 'lb-nav__btn--single', ico: '🎲', label: '单人模式', sub: '本机开局 · 可补 AI', needsUser: true },
-  { panel: 'online', cls: 'lb-nav__btn--online', ico: '🌐', label: '联机模式', sub: '建房 / 凭码加入', needsUser: true },
-  { panel: 'rank', cls: 'lb-nav__btn--rank', ico: '🏆', label: '排行榜', sub: '按账号看胜场', needsUser: false },
+const NAV: Array<{ panel: Exclude<Panel, null>; cls: string; icon: string; label: string; sub: string; needsUser: boolean }> = [
+  { panel: 'single', cls: 'lb-nav__btn--single', icon: 'i-dice', label: '单人模式', sub: '本机开局 · 可补 AI', needsUser: true },
+  { panel: 'online', cls: 'lb-nav__btn--online', icon: 'i-globe', label: '联机模式', sub: '建房 / 凭码加入', needsUser: true },
+  { panel: 'rank', cls: 'lb-nav__btn--rank', icon: 'i-trophy', label: '排行榜', sub: '按账号看胜场', needsUser: false },
 ];
 
 export interface LobbyProps {
@@ -77,7 +78,9 @@ export function LobbyScreen(props: LobbyProps) {
       <nav className="lb-nav">
         {NAV.map((n) => (
           <button key={n.panel} type="button" className={`lb-nav__btn ${n.cls}`} onClick={() => open(n.panel, n.needsUser)}>
-            <span className="lb-nav__ico">{n.ico}</span>
+            <span className="lb-nav__ico">
+              <Icon id={n.icon} />
+            </span>
             <span className="lb-nav__txt">
               <span>{n.label}</span>
               <span className="lb-nav__sub">{n.sub}</span>
@@ -88,14 +91,16 @@ export function LobbyScreen(props: LobbyProps) {
 
       <div className="lb-corner">
         <button className="lb-icon" title="设置" onClick={props.onOpenSettings}>
-          ⚙
+          <Icon id="i-gear" size="s" />
         </button>
         <button className="lb-icon" title="帮助" onClick={props.onOpenHelp}>
-          ?
+          <Icon id="i-question" size="s" />
         </button>
         <div className="lb-user">
           <button className={`lb-chip${user ? '' : ' lb-chip--guest'}`} onClick={() => (user ? setMenuOpen((v) => !v) : open('auth', false))}>
-            <span className="lb-chip__ava">{user ? user.username.slice(0, 1).toUpperCase() : '☺'}</span>
+            <span className="lb-chip__ava">
+              {user ? user.username.slice(0, 1).toUpperCase() : <Icon id="i-user" size="s" />}
+            </span>
             {user ? user.username : '登录 / 注册'}
           </button>
           {user && menuOpen && (
@@ -114,7 +119,7 @@ export function LobbyScreen(props: LobbyProps) {
                     setPanel('replays');
                   }}
                 >
-                  ▶ 我的回放
+                  <Icon id="i-arrow-right" size="s" /> 我的回放
                 </button>
                 <button
                   className="lb-menu__item"
@@ -123,7 +128,7 @@ export function LobbyScreen(props: LobbyProps) {
                     setPanel('rank');
                   }}
                 >
-                  🏆 我的战绩榜
+                  <Icon id="i-trophy" size="s" /> 我的战绩榜
                 </button>
                 <button
                   className="lb-menu__item lb-menu__item--danger"
@@ -132,7 +137,7 @@ export function LobbyScreen(props: LobbyProps) {
                     props.onLogout();
                   }}
                 >
-                  ⏻ 退出登录
+                  <Icon id="i-exit" size="s" /> 退出登录
                 </button>
               </div>
             </>

@@ -175,11 +175,11 @@ describe('bot 的买股闸门跟着原版收紧到 1/3', () => {
   });
 
   it('买哪一只仍然问注册表：没有流通量的那张票不会被 bot 撞上（引擎会拒）', () => {
-    const g = applyAction(createGame(BOTS, 410, { mapId: 1 }), { type: 'START_GAME' });   // 中國图：中國石油 0 张
+    const g = applyAction(createGame(BOTS, 410, { mapId: 1 }), { type: 'START_GAME' });   // 中国图：中国石油 0 张
     g.players[0]!.deposit = 500_000;
     g.players[0]!.cash = 500_000;
     const action = botDecide(g, 'b1', () => 0) as Extract<PlayerAction, { type: 'BUY_STOCK' }> | null;
     expect(action?.type).toBe('BUY_STOCK');
-    expect(action!.stockId).not.toBe(g.stockMarket.stocks.find((s) => s.name === '中國石油')!.id);
+    expect(action!.stockId).not.toBe(g.stockMarket.stocks.find((s) => s.name === '中国石油')!.id);
   });
 });

@@ -1,4 +1,5 @@
 import { useEffect, type ReactNode } from 'react';
+import { Icon } from '../mp/Icon.js';
 import './lobby.css';
 
 /**
@@ -45,7 +46,7 @@ export function LbDialog({
             {sub && <span className="lb-dialog__hd-sub">{sub}</span>}
           </span>
           <button className="lb-dialog__x" aria-label="关闭" onClick={onClose}>
-            ✕
+            <Icon id="i-x" size="s" />
           </button>
         </div>
         <div className="lb-dialog__bd">{children}</div>

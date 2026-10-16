@@ -1,0 +1,300 @@
+/* ============================================================================
+   马卡龙派对皮肤 · 令牌与共用件（mp- 前缀）
+   ----------------------------------------------------------------------------
+   色板与描边语法取自 design/大富翁_UI_元素库（27 枚 symbol 已抽到
+   client/public/mp/sprite.svg）。三条硬规矩，改样式前先读：
+
+   1. 描边一律墨紫 #4a3652，2.5px（面板）/ 2px（小件）。不用灰色描边。
+   2. 阴影是「街沿式硬阴影」：0 4px 0 <同色加深版>，**blur 必须是 0**。
+      用主题色的 -d 变体，不用 rgba 灰 —— 灰阴影会把马卡龙色洗脏。
+   3. 高光是硬切：色块直接切换（linear-gradient 里写 0 55% / 55% 100% 这种
+      两个同位停止点），不做柔渐变。软渐变会让描边风格的东西看起来像掉帧。
+
+   与 ac-（对局 HUD 旧皮肤）、lb-（上一版大厅）是三条独立轨道，别互相引令牌。
+   ============================================================================ */
+
+:root {
+  /* 墨线 */
+  --mp-ink: #4a3652;
+  --mp-ink-2: #6d5878;
+  --mp-ink-soft: #a08fae;
+  /* 纸面 */
+  --mp-paper: #fffdf6;
+  --mp-paper-2: #fdf3dd;
+  --mp-bg: #fff3df;
+  /* 马卡龙：每支都配一个「加深版」当街沿阴影，不用灰 */
+  --mp-straw: #ff8fae; --mp-straw-d: #e0597f;
+  --mp-mint: #4fc9a4;  --mp-mint-d: #2e9e7c;
+  --mp-butter: #ffc44d; --mp-butter-d: #e39c17;
+  --mp-sky: #6fbaea;   --mp-sky-d: #3f94ce;
+  --mp-lav: #b48ee8;   --mp-lav-d: #8d62d2;
+  --mp-gold: #ff9e5c;  --mp-gold-d: #e0763a;
+  --mp-money: #5bbe7e; --mp-money-d: #3e9c60;
+  /* 语义位：主色天蓝、强调奶油黄、成功薄荷、危险草莓（决策人指定） */
+  --mp-primary: var(--mp-sky);
+  --mp-primary-d: var(--mp-sky-d);
+  --mp-accent: var(--mp-butter);
+  --mp-accent-d: var(--mp-butter-d);
+  --mp-ok: var(--mp-mint);
+  --mp-ok-d: var(--mp-mint-d);
+  --mp-bad: var(--mp-straw);
+  --mp-bad-d: var(--mp-straw-d);
+  /* 描边与街沿 */
+  --mp-w: 2.5px;
+  --mp-sh: 4px;
+  --mp-r-s: 9px;
+  --mp-r: 14px;
+  --mp-r-lg: 20px;
+  /* 字体分工照元素库的 demo 来，两条都必须守住：
+
+     1. **display 只用 400**。站酷快乐体是单字重字体，demo 里
+        `h1,h2,h3,h4 { font-family: var(--font-display); font-weight: 400 }`，
+        `.m-btn` 也只设 family 不设 weight（继承 400）。在这里写 700 会让浏览器
+        合成假粗 —— 一个笔画本来就圆的标记体被糊成一团，是这套皮肤最容易踩的坑。
+     2. **正文才吃字重**。demo 的正文是 Noto Sans SC（400/500/700/900 四档）。
+        本项目没自托管它，这里用已在包里的狮尾圆体顶：它有真 700/900 两档，
+        而且本身就是圆体，比无衬线的 Noto 更贴这套糖果风。**这是刻意偏离 demo 的一处**，
+        代价是正文不是 demo 那种中性黑体感；要换真 Noto 就走 build-fonts.py 加一份源。 */
+  --mp-display: 'ZCOOL KuaiLe', 'M PLUS Rounded 1c', 'Swei Spring CJKsc', 'Microsoft YaHei', system-ui, sans-serif;
+  --mp-font: 'M PLUS Rounded 1c', 'Swei Spring CJKsc', 'Microsoft YaHei', system-ui, sans-serif;
+  --mp-num: 'Nunito', 'M PLUS Rounded 1c', 'Swei Spring CJKsc', sans-serif;
+}
+
+/* ---------- 图标 ---------- */
+.mp-icon {
+  width: 22px;
+  height: 22px;
+  flex: none;
+  vertical-align: -5px;
+}
+.mp-icon--s { width: 16px; height: 16px; vertical-align: -3px; }
+.mp-icon--l { width: 32px; height: 32px; }
+.mp-icon--xl { width: 44px; height: 44px; }
+/* 极性色：神明福祸、涨跌箭头靠 currentColor 上色，结构色在 symbol 里写死 */
+.mp-icon--good { color: var(--mp-mint); }
+.mp-icon--bad { color: var(--mp-straw-d); }
+.mp-icon--flat { color: var(--mp-ink-soft); }
+
+/* ---------- 按钮 ---------- */
+.mp-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  padding: 11px 20px 12px;
+  border: var(--mp-w) solid var(--mp-ink);
+  border-radius: 999px;
+  background: var(--b, var(--mp-paper));
+  color: var(--fg, var(--mp-ink));
+  font-family: var(--mp-display);
+  font-size: 15px;
+  /* 站酷是单字重：这里必须 400，写 700 会被浏览器合成假粗糊成一团 */
+  font-weight: 400;
+  letter-spacing: 0.03em;
+  cursor: pointer;
+  /* 街沿硬阴影：blur 必须是 0 */
+  box-shadow: 0 var(--mp-sh) 0 var(--bd, var(--mp-ink-soft));
+  transition: transform 0.08s, box-shadow 0.08s, filter 0.08s;
+}
+.mp-btn:hover:not(:disabled) { filter: brightness(1.05); transform: translateY(-1px); box-shadow: 0 calc(var(--mp-sh) + 1px) 0 var(--bd, var(--mp-ink-soft)); }
+.mp-btn:active:not(:disabled) { transform: translateY(var(--mp-sh)); box-shadow: 0 0 0 var(--bd, var(--mp-ink-soft)); }
+.mp-btn:disabled { opacity: 0.45; cursor: not-allowed; filter: saturate(0.5); }
+.mp-btn--primary { --b: var(--mp-sky); --bd: var(--mp-sky-d); --fg: #fff; }
+.mp-btn--accent { --b: var(--mp-butter); --bd: var(--mp-butter-d); --fg: #7a4e00; }
+.mp-btn--ok { --b: var(--mp-mint); --bd: var(--mp-mint-d); --fg: #1f6b53; }
+.mp-btn--bad { --b: var(--mp-straw); --bd: var(--mp-straw-d); --fg: #fff; }
+.mp-btn--lav { --b: var(--mp-lav); --bd: var(--mp-lav-d); --fg: #fff; }
+.mp-btn--ghost { --b: var(--mp-paper); --bd: var(--mp-ink-soft); }
+.mp-btn--sm { font-size: 12.5px; padding: 7px 14px 8px; }
+.mp-btn--lg { font-size: 18px; padding: 14px 30px 15px; }
+.mp-btn--block { width: 100%; }
+
+/* 图标按钮（顶栏那几个圆钮） */
+.mp-iconbtn {
+  position: relative;
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  border: var(--mp-w) solid var(--mp-ink);
+  border-radius: 50%;
+  background: var(--mp-paper);
+  color: var(--mp-ink);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  box-shadow: 0 3px 0 var(--mp-ink-soft);
+  transition: transform 0.08s, box-shadow 0.08s;
+}
+.mp-iconbtn:hover { transform: translateY(-1px); }
+.mp-iconbtn:active { transform: translateY(3px); box-shadow: 0 0 0 var(--mp-ink-soft); }
+.mp-iconbtn--on { background: var(--mp-butter); }
+
+/* 未读角标：信息变化只在这里提醒，不新增常驻条 */
+.mp-n {
+  position: absolute;
+  top: -7px;
+  right: -7px;
+  min-width: 19px;
+  height: 19px;
+  padding: 0 5px;
+  border-radius: 999px;
+  border: 2px solid var(--mp-ink);
+  background: var(--mp-straw-d);
+  color: #fff;
+  font-family: var(--mp-num);
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 15px;
+  text-align: center;
+}
+.mp-n--pop { animation: mp-pop 0.34s ease-out; }
+@keyframes mp-pop {
+  0% { transform: scale(0.4); }
+  60% { transform: scale(1.28); }
+  100% { transform: scale(1); }
+}
+
+/* ---------- 面板 / 弹层 ---------- */
+.mp-panel {
+  position: relative;
+  border: var(--mp-w) solid var(--mp-ink);
+  border-radius: var(--mp-r-lg);
+  background: var(--mp-paper);
+  box-shadow: 0 var(--mp-sh) 0 var(--mp-ink);
+}
+.mp-panel__hd {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  border-bottom: var(--mp-w) solid var(--mp-ink);
+  border-radius: calc(var(--mp-r-lg) - 2px) calc(var(--mp-r-lg) - 2px) 0 0;
+  background: var(--mp-sky);
+  color: #fff;
+  font-family: var(--mp-display);
+  font-size: 16px;
+  font-weight: 400;
+  letter-spacing: 0.05em;
+  text-shadow: 0 1px 0 rgba(74, 54, 82, 0.35);
+}
+.mp-panel__hd--accent { background: var(--mp-butter); color: #7a4e00; text-shadow: none; }
+.mp-panel__hd--mint { background: var(--mp-mint); color: #1f6b53; text-shadow: none; }
+.mp-panel__bd { padding: 16px 18px 18px; }
+
+/* 遮罩：overflow:auto + margin:auto，不用 place-items:center。
+   居中容器一旦内容超高，place-items 会把顶部推出滚动区且滚不回来。 */
+.mp-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  padding: clamp(12px, 3vh, 32px);
+  overflow: auto;
+  background: rgba(74, 54, 82, 0.4);
+  backdrop-filter: blur(3px);
+}
+.mp-dialog { margin: auto; width: min(680px, 100%); }
+.mp-dialog--wide { width: min(880px, 100%); }
+.mp-dialog__x {
+  margin-left: auto;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 2px solid var(--mp-ink);
+  border-radius: 50%;
+  background: rgba(255, 253, 246, 0.6);
+  color: inherit;
+  font-family: var(--mp-font);
+  font-size: 15px;
+  font-weight: 800;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+}
+.mp-dialog__x:hover { background: var(--mp-paper); }
+
+/* ---------- 表单 ---------- */
+.mp-field { display: flex; flex-direction: column; gap: 8px; }
+.mp-label {
+  font-size: 12.5px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: var(--mp-ink-2);
+}
+.mp-label small { margin-left: 8px; font-size: 11px; opacity: 0.85; }
+.mp-input {
+  padding: 10px 13px;
+  border: 2px solid var(--mp-ink);
+  border-radius: var(--mp-r-s);
+  background: #fff;
+  color: var(--mp-ink);
+  font-family: var(--mp-font);
+  font-size: 15px;
+  box-shadow: inset 0 2px 0 rgba(74, 54, 82, 0.08);
+}
+.mp-input:focus { outline: none; border-color: var(--mp-sky-d); box-shadow: 0 0 0 3px rgba(111, 186, 234, 0.35); }
+.mp-input--err { border-color: var(--mp-straw-d); }
+
+.mp-seg { display: flex; flex-wrap: wrap; gap: 8px; }
+.mp-seg button {
+  padding: 8px 15px 9px;
+  border: 2px solid var(--mp-ink);
+  border-radius: 999px;
+  background: var(--mp-paper);
+  color: var(--mp-ink);
+  font-family: var(--mp-font);
+  font-size: 13.5px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 3px 0 var(--mp-ink-soft);
+  transition: transform 0.08s, box-shadow 0.08s;
+}
+.mp-seg button:hover:not(:disabled) { transform: translateY(-1px); }
+.mp-seg button[aria-pressed='true'] {
+  background: var(--mp-mint);
+  color: #1f6b53;
+  box-shadow: 0 3px 0 var(--mp-mint-d);
+}
+.mp-seg button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* ---------- 列表 ---------- */
+.mp-list { display: flex; flex-direction: column; gap: 8px; }
+.mp-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 2px solid var(--mp-ink);
+  border-radius: var(--mp-r-s);
+  background: var(--mp-paper);
+  box-shadow: 0 3px 0 rgba(160, 143, 174, 0.5);
+}
+.mp-item--win { background: rgba(79, 201, 164, 0.18); border-color: var(--mp-mint-d); }
+.mp-item__main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.mp-item__name { font-size: 14px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mp-item__sub { font-size: 11px; font-weight: 700; color: var(--mp-ink-2); }
+.mp-empty {
+  padding: 18px;
+  border: 2px dashed var(--mp-ink-soft);
+  border-radius: var(--mp-r);
+  text-align: center;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--mp-ink-2);
+}
+.mp-scroll { max-height: 46vh; overflow: auto; padding-right: 4px; }
+
+/* ---------- 杂件 ---------- */
+.mp-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 9px;
+  border: 2px solid var(--mp-ink);
+  border-radius: 999px;
+  background: var(--mp-paper-2);
+  font-size: 11px;
+  font-weight: 700;
+}
+.mp-hint { font-size: 12px; font-weight: 700; color: var(--mp-ink-2); line-height: 1.7; }
+.mp-err { font-size: 13px; font-weight: 700; color: var(--mp-straw-d); }

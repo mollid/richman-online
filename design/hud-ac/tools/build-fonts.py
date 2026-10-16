@@ -103,6 +103,20 @@ SOURCES: dict[str, dict] = {
         'home': 'https://github.com/googlefonts/nunito',
         'note': 'Nunito 可变字体 —— 金额与数值专用（设计稿 --ac-num）',
     },
+    # 站酷快乐体：马卡龙派对皮肤（mp-）指定的 display 字面。
+    # **纯简体字库**（6766 个 CJK 基本区字 ≈ GB2312 全集），不含繁体专用字形 ——
+    # 所以原版数据必须先繁转简（见 tools/t2s-map.json 与 tools/decode_map_mkf.py），
+    # 否则「臺積電」这类格名会整串掉回系统字，棋盘上两种字体并存。
+    # 只切 hot 一片：它只用于标题与按钮这类**来自源码的固定文案**，
+    # 玩家昵称走正文的狮尾圆体，不需要它覆盖生僻字。
+    'zcool-kuaile': {
+        'url': 'https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/zcoolkuaile/ZCOOLKuaiLe-Regular.ttf',
+        'file': 'ZCOOLKuaiLe-Regular.ttf',
+        'license': 'SIL Open Font License 1.1',
+        'license_url': 'https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/zcoolkuaile/OFL.txt',
+        'home': 'https://fonts.google.com/specimen/ZCOOL+KuaiLe',
+        'note': '站酷快乐体 —— mp 皮肤的 display 字面（单字重）',
+    },
     # 像素字体：官方已按语言切好，zh_hans 同时覆盖简繁，直接整包自托管
     'fusion-pixel': {
         'url': 'https://github.com/TakWolf/fusion-pixel-font/releases/download/2026.09.25/fusion-pixel-font-12px-proportional-otf.woff2-v2026.09.25.zip',
@@ -287,6 +301,7 @@ def main() -> int:
     mplus_bold = fetch('mplus-bold', args.clean)
     mplus_eb = fetch('mplus-extrabold', args.clean)
     nunito = fetch('nunito', args.clean)
+    zcool = fetch('zcool-kuaile', args.clean)
     pixel_zip = fetch('fusion-pixel', args.clean)
     qiuye = fetch('qiuye-round', args.clean)
 
@@ -319,6 +334,11 @@ def main() -> int:
     nunito_size = subset(nunito, nunito_dest, unicodes=LATIN_UPLUS)
     log(f'  {nunito_dest.name:32} {nunito_size / 1024:8.1f} KB')
 
+    # 站酷快乐体：只切 hot 一片（见 SOURCES 里那段说明——它是纯简体库，且只上固定文案）
+    zcool_dest = OUT / 'zcool-kuaile-hot.woff2'
+    zcool_size = subset(zcool, zcool_dest, text_file=CACHE / 'chars-hot.txt')
+    log(f'  {zcool_dest.name:32} {zcool_size / 1024:8.1f} KB')
+
     # 像素字体：官方虽按语言切了包，但实测各语言构建**体积几乎一致**
     # （latin 651.7KB / zh_hans 650.6KB / zh_tw 659.2KB），说明并没有真的做语言裁剪，
     # zh_hans 本身已含拉丁。同时发两份只是白扔 650KB，故只留 zh_hans。
@@ -348,12 +368,13 @@ def main() -> int:
 
     log('=== 生成 @font-face ===')
     verify_disjoint(hot, common, rare)
-    write_css(hot, common, rare, swei_out, mplus_out, nunito_size)
+    write_css(hot, common, rare, swei_out, mplus_out, nunito_size, zcool_size)
     write_licenses()
 
     log('\n=== 首屏字体预算（界面文字全在 hot 片）===')
     first_paint = sum(sz for w, s, sz in swei_out if s == 'hot') + sum(sz for _, sz in mplus_out) + nunito_size
     log(f'  hot ×2 字重 + 拉丁 + 数字 = {first_paint / 1024:.0f} KB')
+    log(f'  display 站酷快乐体 hot 片 = {zcool_size / 1024:.0f} KB（mp 皮肤才用，但同为首屏下载）')
     log(f'  仅在被触发时才下的：common {sum(sz for w, s, sz in swei_out if s == "common") / 1024:.0f} KB'
         f' · rare {sum(sz for w, s, sz in swei_out if s == "rare") / 1024:.0f} KB')
     log(f'  像素字体（也只在真的用到时才下）：缝合像素 12px 650 KB · 秋叶圆体 16px {qiuye_size / 1024:.0f} KB')
@@ -410,7 +431,7 @@ def _ranges(chars: set[str]) -> list[tuple[int, int]]:
     return [(a, b) for a, b in out]
 
 
-def write_css(hot, common, rare, swei_out, mplus_out, nunito_size) -> None:
+def write_css(hot, common, rare, swei_out, mplus_out, nunito_size, zcool_size) -> None:
     hot_r, common_r, rare_r = (to_unicode_range(s) for s in (hot, common, rare))
     swei_files = {(w, s): sz for w, s, sz in swei_out}
     parts: list[str] = [
@@ -422,6 +443,9 @@ def write_css(hot, common, rare, swei_out, mplus_out, nunito_size) -> None:
         ' *   common GB2312 一级常用字里 hot 之外的 —— 只在玩家昵称出现新字时才拉',
         ' *   rare   GB2312 二级生僻字 —— 同上，极少数情况',
         ' * 拉丁与数字 = M PLUS Rounded 1c（设计稿指定）+ Nunito（金额）。',
+        ' * display = 站酷快乐体 ZCOOL KuaiLe（mp 马卡龙皮肤），**只有 400 一档**，',
+        ' *   所以用它的地方一律 font-weight: 400 —— 写 700 会被合成假粗。',
+        ' *   它是纯简体字库，故上屏文字必须已经繁转简（见 tools/t2s-map.json）。',
         ' */',
         '',
         '/* ---------- 中文：狮尾圆体 Swei Spring ---------- */',
@@ -464,6 +488,21 @@ def write_css(hot, common, rare, swei_out, mplus_out, nunito_size) -> None:
         '  font-display: swap;',
         '  src: url(./nunito-var.woff2) format("woff2");',
         f'  unicode-range: {LATIN_UPLUS};',
+        '}',
+        '',
+    ]
+
+    # 站酷快乐体：mp 皮肤的 display 字面。unicode-range 用 hot 那片 —— 它只上源码里的
+    # 固定文案，昵称那类走正文的狮尾圆体，所以不必带 common/rare。
+    parts += [
+        '/* ---------- display：站酷快乐体（mp 皮肤，只收 hot 那片） ---------- */',
+        '@font-face {',
+        "  font-family: 'ZCOOL KuaiLe';",
+        '  font-style: normal;',
+        '  font-weight: 400;',
+        '  font-display: swap;',
+        '  src: url(./zcool-kuaile-hot.woff2) format("woff2");',
+        f'  unicode-range: {hot_r};',
         '}',
         '',
     ]

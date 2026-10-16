@@ -102,6 +102,47 @@ def fix_name(s: str) -> str:
     return NAME_FIXES.get(s, s)
 
 
+# ---------------------------------------------------------------- 繁 → 简
+# 界面字体（站酷快乐体）是纯简体字库，不含繁体专用字形，而 mkf 里的名字是原版繁体。
+# 所以**上屏简体、解码全程繁体**：转换只发生在写 JSON 前的最后一道，
+# 这样 fix_name（键是繁体串）、`name == ''` 的空白格判据、与 SVG 的拓扑对拍
+# 全都跑在原字上，一个都不受影响。
+#
+# 字表 tools/t2s-map.json 由 opencc 的 t2s 单字映射导出，只收「转换后仍是单字」的条目，
+# 避开 一↔壹 这类要按词才判得对的歧义。
+# 原文没有丢：map.mkf 与 docs/assets/board-svg/*.svg 仍是繁体，重跑本脚本即可回到原字。
+_T2S: dict[str, str] = {}
+
+
+def load_t2s() -> dict[str, str]:
+    global _T2S
+    if not _T2S:
+        _T2S = json.loads((ROOT / 'tools' / 't2s-map.json').read_text(encoding='utf-8'))
+    return _T2S
+
+
+def to_simplified(s: str) -> str:
+    m = load_t2s()
+    return ''.join(m.get(c, c) for c in s)
+
+
+def simplify_names(out: dict) -> dict:
+    """就地转掉所有会进界面的 name 字段。
+
+    股票表那边（`shared/src/maps/stocks.json`，手维护、没有生成脚本）用同一张表转，
+    两边必须一致 —— `maps/index.ts` 是按 `s.name ===` 把棋盘公司与股票 join 起来的，
+    只转一边会让 `companiesFromMap` 直接抛。
+    """
+    out['name'] = to_simplified(out['name'])
+    for c in out['cells']:
+        c['name'] = to_simplified(c['name'])
+        if 'sidName' in c:
+            c['sidName'] = to_simplified(c['sidName'])
+    for g in out['companies']:
+        g['name'] = to_simplified(g['name'])
+    return out
+
+
 def svg_graph(map_no: int):
     txt = (SVG_DIR / f'map{map_no}.svg').read_text(encoding='utf-8')
     circles = [(float(m[0]), float(m[1])) for m in re.findall(r'<circle cx="([\d.]+)" cy="([\d.]+)"', txt)]
@@ -244,7 +285,7 @@ def main() -> None:
             'cells': cells,
         }
         p = OUT_DIR / f'map{map_no}.json'
-        p.write_text(json.dumps(out, ensure_ascii=False, indent=1), encoding='utf-8')
+        p.write_text(json.dumps(simplify_names(out), ensure_ascii=False, indent=1), encoding='utf-8')
         print(f'地图 {map_no} {MAP_NAMES[map_no]}：{n} 格 → {p.name}')
         print(f'  格型分布 {types}')
         print(f'  邻居度数分布 {deg}（3+ = 岔口，1 = 死端）')

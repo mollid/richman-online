@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { fetchMyRecords, fetchRecord, type ReplayRecord } from '../../net/auth.js';
 import { getLocalReplay, listLocalReplays, type ReplayListItem } from '../../net/localReplays.js';
+import { Icon } from '../mp/Icon.js';
 import { LbDialog } from './LbDialog.js';
 
 function when(iso: string): string {
@@ -66,7 +67,9 @@ export function MyReplaysDialog({ username, onWatch, onClose }: { username: stri
           {rows.map((r) => (
             <div key={`${r.local ? 'l' : 's'}-${r.id}`} className="lb-item">
               <span className="lb-item__main">
-                <span className="lb-item__name">🏆 {r.winner_name ?? '无人胜出'}</span>
+                <span className="lb-item__name">
+                  <Icon id="i-trophy" size="s" /> {r.winner_name ?? '无人胜出'}
+                </span>
                 <span className="lb-item__sub">
                   {r.players.map((p) => p.player_name).join(' vs ')} · {r.turns} 回合 · {when(r.finished_at)}
                 </span>

@@ -64,7 +64,7 @@ describe('原版地图数据', () => {
       return hist;
     };
     expect(deg(0)).toEqual({ 1: 2, 2: 99, 3: 2 }); // 潮汕：闭环挂两条死端支路
-    expect(deg(3)).toEqual({ 2: 118 });            // 美國：纯闭环
+    expect(deg(3)).toEqual({ 2: 118 });            // 美国：纯闭环
   });
 
   it('商业用地占两格同段（原版「两个普通地块连一起」），空白格不带任何可结算数值', () => {
@@ -92,7 +92,7 @@ describe('按地图建局', () => {
     expect(g.companies).toHaveLength(1);
     expect(g.companies[0]).toMatchObject({
       kind: 'insurance',
-      name: '汕頭人壽',
+      name: '汕头人寿',
       // 面值 = 股票表的 par。mkf 企业行那一列（这里是 750）**不是**面值 —— 拿 par 去除
       // mkf 的资本额得到 8000 这类像总股本的数，拿 750 去除只得到 533，见 stocks.json 的 _note
       sharePrice: 40,
@@ -105,7 +105,7 @@ describe('按地图建局', () => {
       's0-0', 'corp-insurance', 's0-2', 's0-3', 's0-4', 's0-5',
       's0-6', 's0-7', 's0-8', 's0-9', 's0-10', 's0-11',
     ]);
-    expect(g.stockMarket.stocks.map((s) => s.name)[0]).toBe('汕頭信託');
+    expect(g.stockMarket.stocks.map((s) => s.name)[0]).toBe('汕头信托');
     expect(g.stockMarket.stocks.map((s) => s.price)).toEqual([100, 40, 25, 180, 80, 60, 60, 27, 310, 66, 171, 280]);
   });
 
@@ -283,12 +283,12 @@ describe('原版图没有薪水', () => {
  * `tools/decode_map_mkf.py` 的 `NAME_FIXES` 注释里。
  */
 describe('机构名以股票表为准', () => {
-  it('中国图上的百货节点叫「王府井百貨」，行情池里也是同一支', () => {
+  it('中国图上的百货节点叫「王府井百货」，行情池里也是同一支', () => {
     const cn = ORIGINAL_MAPS.find((m) => m.mapId === 1)!;
     expect(JSON.stringify(cn).includes('玉井府')).toBe(false);
-    expect(cn.cells.some((c) => c.sidName === '王府井百貨')).toBe(true);
+    expect(cn.cells.some((c) => c.sidName === '王府井百货')).toBe(true);
     const g = createGame(GOLDEN_PLAYERS, 7, { startDate: MONDAY, mapId: 1 });
-    expect(g.stockMarket.stocks.some((s) => s.name === '王府井百貨')).toBe(true);
+    expect(g.stockMarket.stocks.some((s) => s.name === '王府井百货')).toBe(true);
   });
 });
 
@@ -321,34 +321,34 @@ describe('本地股绑地价，非本地股绑面值', () => {
   it('每支的波动系数与流通量都取自表，不再一律 1.0 / 按市值定标', () => {
     const jp = createGame(GOLDEN_PLAYERS, 7, { startDate: MONDAY, mapId: 2 });
     const byName = new Map(jp.stockMarket.stocks.map((s) => [s.name, s]));
-    expect(byName.get('三越百貨')!.volatility).toBe(2);
-    expect(byName.get('富士銀行')!.volatility).toBe(0.8);
+    expect(byName.get('三越百货')!.volatility).toBe(2);
+    expect(byName.get('富士银行')!.volatility).toBe(0.8);
     expect(byName.get('任天堂')!.volatility).toBe(1);
-    expect(byName.get('三越百貨')!.floatShares).toBe(10000);   // 本地股不必然 5000，表里这支给的是 10000
+    expect(byName.get('三越百货')!.floatShares).toBe(10000);   // 本地股不必然 5000，表里这支给的是 10000
     expect(byName.get('ＳＥＧＡ')!.floatShares).toBe(5000);
     // 中國石油那行表里就是 0 张流通（用户 2026-10-12 确认是原值，不是没初始化）—— 代码不替它垫数
     const cn = createGame(GOLDEN_PLAYERS, 7, { startDate: MONDAY, mapId: 1 });
-    const oil = cn.stockMarket.stocks.find((s) => s.name === '中國石油')!;
+    const oil = cn.stockMarket.stocks.find((s) => s.name === '中国石油')!;
     expect(oil.floatShares).toBe(0);
     expect(oil.remainingShares).toBe(0);
   });
 
   it('没有流通量的那张票：行情与公司格两条渠道都被引擎拒掉，理由各说各的', () => {
     const g = applyAction(createGame(GOLDEN_PLAYERS, 9, { startDate: MONDAY, mapId: 1 }), { type: 'START_GAME' });
-    const oil = g.stockMarket.stocks.find((s) => s.name === '中國石油')!;
+    const oil = g.stockMarket.stocks.find((s) => s.name === '中国石油')!;
     const me = g.players[g.currentPlayerIndex]!;
     me.deposit = 9_999_999;
     me.cash = 9_999_999;
     expect(() => applyAction(g, { type: 'BUY_STOCK', stockId: oil.id, quantity: 1 })).toThrow('没有流通量，行情池里买不到这张票');
     // 踩到它家门口也一样：认购吃的是同一个流通池
-    const company = g.companies.find((c) => c.name === '中國石油')!;
+    const company = g.companies.find((c) => c.name === '中国石油')!;
     const atDoor = { ...g, phase: 'awaiting_action' as const, landing: { cellId: company.cellId, venue: null, turn: g.turn } };
     atDoor.players = atDoor.players.map((p) => (p.id === me.id ? { ...p, position: company.cellId, cash: 9_999_999 } : p));
     expect(() => applyAction(atDoor, { type: 'BUY_SHARES', cellId: company.cellId, quantity: 10 })).toThrow(
       '没有流通量，行情与公司格两条渠道都拿不到它',
     );
     // 而同图其他支照常能买 —— 别把这一条写坏成整张图都拒
-    const bank = g.stockMarket.stocks.find((s) => s.name === '上海銀行')!;
+    const bank = g.stockMarket.stocks.find((s) => s.name === '上海银行')!;
     expect(applyAction(g, { type: 'BUY_STOCK', stockId: bank.id, quantity: 10 }).stockMarket.stocks.find((s) => s.id === bank.id)!.remainingShares)
       .toBe(bank.remainingShares - 10);
   });
