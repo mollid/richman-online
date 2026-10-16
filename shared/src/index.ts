@@ -10,6 +10,7 @@ export * from './normalize.js';
 export * from './cards.js';
 export * from './characters.js';
 export * from './icons.js';
+export * from './palette.js';
 export * from './items.js';
 export * from './targets.js';
 export * from './tiles.js';
