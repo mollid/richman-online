@@ -7,21 +7,25 @@
    三条不许破坏的前提：
    1. `.mp-stagebox` 是 React 的，`.mp-stage` 由 useBoardStage 命令式创建塞进去。
       舞台里的一切都会被 `world.dispose()`（innerHTML=''）与 `overlay.dispose()`
-      （删掉舞台内所有 canvas）扫掉 —— 所以读数、小地图、图例全部做成**兄弟节点**。
-   2. 棋盘要能拿到全部剩余高度，所以整壳用 grid 三行（顶栏 / 主体 / 操作台），
-      主体内部再切「棋盘 | 导轨」两列。任何一块用 position:fixed 都会把棋盘压没。
+      （删掉舞台内所有 canvas）扫掉 —— 所以读数、小地图、图例、浮在盘面上的骰子
+      全部做成**兄弟节点**。
+   2. 版面照 `design/rich4-ui/original.html`：整壳两行（顶栏 / 主体），主体两列
+      （盘面 | 右面板）。**没有底部操作台** —— 骰子在盘面里，地契在右面板里。
+      任何一块用 position:fixed 都会把棋盘压没。
    3. 近景的小地图是方位感的唯一来源（近景只露周围几格），不是装饰件：
       它跟着 `cam.iso` 显隐，隐藏时用 `hidden` 而不是 display:none —— 钩子里读
       `canvas.hidden` 决定要不要画，省掉每帧无用的绘制。
    ============================================================================ */
 
 .mp-shell {
+  /* 右面板宽度：够铺两列行囊格（每格 ≥72px）＋ 地契的「归属 / 经营权」两行不折行 */
+  --mp-side-w: 316px;
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-rows: auto minmax(0, 1fr);
   gap: 10px;
   /* 整壳就是一屏：用 height + overflow:hidden，不是 min-height。
-     实测 min-height 时顶栏折行、操作台在窄屏堆成三行，总高 986 > 视口 785，
-     页面开始出现滚动条 —— 而棋盘是 flex 出来的那一块，它跟着被顶下去半屏。
+     实测 min-height 时顶栏折行会把总高顶出视口，页面开始出现滚动条 ——
+     而棋盘是吃富余的那一块，它跟着被顶下去半屏。
      让主体那一行吃掉全部富余，任何一块折行都只挤棋盘，不会漏出第二条滚动。 */
   height: 100vh;
   height: 100dvh;
@@ -230,9 +234,11 @@
 }
 
 /* ============================ 主体 ============================ */
+/* 盘面吃富余、右面板定宽 —— 与 original.html 的「棋盘 1fr / 面板 400px」同一个意思，
+   只是这里的面板要装地契 + 行囊 + 页签，316 比 400 更贴实际内容宽度。 */
 .mp-main {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) var(--mp-side-w);
   gap: 10px;
   min-height: 0;
 }
@@ -371,47 +377,105 @@
   color: var(--mp-ink-2);
 }
 
-/* ---------------- 右导轨：老玩家找旧入口的那 10 秒 ---------------- */
-.mp-rail {
+/* ---------------- 右侧面板：原来摊在底部操作台上的东西搬到这里 ----------------
+   两行 grid：正文可滚 + 脚下小件栏贴底。正文再长（行囊铺开、地契多两行）都只在
+   自己那一格里滚，退出永远在视线里，不用为了退出先滚一遍。 */
+.mp-side {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  gap: 8px;
+  min-height: 0;
+  min-width: 0;
+}
+.mp-side__bd {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  width: 66px;
-  padding: 8px 6px;
+  gap: 9px;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 10px 10px 12px;
   border: var(--mp-w) solid var(--mp-ink);
   border-radius: var(--mp-r);
   background: var(--mp-paper);
   box-shadow: 0 var(--mp-sh) 0 var(--mp-ink);
 }
-.mp-rail__btn {
+/* 细滚动条：面板宽 316，Windows 默认 17px 的槽会把行囊格挤成两列半 */
+.mp-side__bd::-webkit-scrollbar {
+  width: 8px;
+}
+.mp-side__bd::-webkit-scrollbar-thumb {
+  border-radius: 99px;
+  background: var(--mp-ink-soft);
+}
+
+/* 页签做成两列糖果片：竖导轨那一列已经没有了（右面板要装地契，不能只立 66px） */
+.mp-side__tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin-top: 2px;
+}
+.mp-side__tab {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 9px;
+  border: 2px solid var(--mp-ink);
+  border-radius: 11px;
+  background: #fff;
+  color: var(--mp-ink);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  text-align: left;
+  cursor: pointer;
+  box-shadow: 0 3px 0 var(--mp-ink-soft);
+  transition: background 0.12s, transform 0.12s, box-shadow 0.12s;
+}
+.mp-side__tab:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 0 var(--mp-ink-soft);
+}
+/* 选中态做成「这一格被翻开」的糖果块，而不是加粗描边 */
+.mp-side__tab--on {
+  background: var(--mp-butter);
+  border-color: var(--mp-butter-d);
+  color: #7a4e00;
+  box-shadow: 0 3px 0 var(--mp-butter-d);
+}
+
+/* 脚下小件：四个一样大的方片，图标在上、字在下。整条只有 46px 高 */
+.mp-side__foot {
+  display: flex;
+  gap: 6px;
+  padding: 6px;
+  border: var(--mp-w) solid var(--mp-ink);
+  border-radius: var(--mp-r);
+  background: var(--mp-paper);
+  box-shadow: 0 var(--mp-sh) 0 var(--mp-ink);
+}
+.mp-side__mini {
+  flex: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 2px;
-  padding: 6px 2px 5px;
+  gap: 1px;
+  padding: 5px 2px 4px;
   border: 2px solid transparent;
-  border-radius: 12px;
+  border-radius: 10px;
   background: none;
   color: var(--mp-ink);
   font: inherit;
   font-size: 10.5px;
   font-weight: 800;
   cursor: pointer;
-  transition: background 0.12s, transform 0.12s;
+  transition: background 0.12s;
 }
-.mp-rail__btn:hover {
+.mp-side__mini:hover {
   background: var(--mp-paper-2);
-  transform: translateY(-1px);
 }
-/* 选中态做成「这一格被翻开」的糖果块，而不是加粗描边 —— 与页签本身同色才不抢注意力 */
-.mp-rail__btn--on {
-  background: var(--mp-butter);
-  border-color: var(--mp-butter-d);
-  color: #7a4e00;
-  box-shadow: 0 3px 0 var(--mp-butter-d);
-}
-.mp-rail__btn--quit {
-  margin-top: auto;
+.mp-side__mini--quit {
   color: var(--mp-straw-d);
 }
 .mp-rail__sep {
@@ -422,19 +486,20 @@
   opacity: 0.5;
 }
 
-/* ---------------- 抽屉：点导轨才浮出来 ----------------
-   刻意做成**浮层**而不是 grid 里的一列：`.mp-main` 只有两列（棋盘 | 导轨），
-   抽屉作为第 3 个子节点会被自动排到第 2 行第 1 列 —— 实测落在 x=12/y=600 的左下角，
-   把棋盘往下挤；窗口再窄一点就被 `.mp-shell` 的 overflow:hidden 剪成 4px 高。
+/* ---------------- 抽屉：点页签才浮出来 ----------------
+   刻意做成**浮层**而不是 grid 里的一列：`.mp-main` 只有两列（盘面 | 右面板），
+   抽屉作为第 3 个子节点会被自动排到第 2 行第 1 列 —— 实测落在左下角、把棋盘往下挤；
+   窗口再窄一点就被 `.mp-shell` 的 overflow:hidden 剪成 4px 高。
    出流之后棋盘拿回整幅宽度，读数时也不会看不见正在发生什么。
+   位置贴着右面板的左边沿：尖角正对页签那一块，说明它是从面板里请出来的。
    不带遮罩：这是只读面板，压一层 scrim 会把棋盘的点击吃掉，也挡住「边看边查」。 */
 .mp-panel.mp-drawer {
   position: fixed;
   top: 78px;
-  right: 88px;
+  right: calc(var(--mp-side-w) + 22px);
   z-index: 30;
-  width: min(392px, calc(100vw - 120px));
-  max-height: calc(100dvh - 230px);
+  width: min(392px, calc(100vw - var(--mp-side-w) - 60px));
+  max-height: calc(100dvh - 130px);
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -442,7 +507,7 @@
   box-shadow: 0 var(--mp-sh) 0 var(--mp-ink), 0 14px 30px rgba(74, 54, 82, 0.22);
   animation: mp-pop-in 0.16s ease-out;
 }
-/* 指向导轨那颗页签的小尖角：说明这块是从那一列里请出来的，不是凭空浮在那 */
+/* 指向右面板的小尖角：说明这块是从那一列里请出来的，不是凭空浮在那 */
 .mp-drawer::after {
   content: "";
   position: absolute;
@@ -470,32 +535,95 @@
   background: rgba(255, 253, 246, 0.55);
 }
 
-/* ============================ 底部操作台 ============================ */
-.mp-dock {
-  position: relative;
-  display: grid;
-  grid-template-columns: minmax(230px, 1.1fr) auto minmax(280px, 1.3fr);
+/* ====================== 盘面里的骰子条 / 右面板里的地契 ====================== */
+/* 骰子浮在盘面底边中间：大富翁4 原版就是「骰子在盘子上」。
+   这一条是 `.mp-stage` 的兄弟节点，`pointer-events` 只在子件上开 ——
+   容器本身留空，否则盘面底部那一条就拖不动也点不到格子了。
+   max-width 让开右下角的小地图（120px + 12px 边距），两者永远不会叠在一起。 */
+.mp-dicebar {
+  position: absolute;
+  left: 50%;
+  bottom: 16px;
+  transform: translateX(-50%);
+  z-index: 5;
+  display: flex;
   align-items: center;
-  gap: 14px;
-  padding: 10px 14px;
-  border-radius: var(--mp-r);
+  gap: 9px;
+  max-width: calc(100% - 168px);
+  pointer-events: none;
 }
-.mp-dock--locked .mp-dice,
-.mp-dock--locked .mp-btn,
-.mp-dock--locked .mp-bag {
+.mp-dicebar > * {
+  pointer-events: auto;
+}
+.mp-dicebar--locked .mp-dice,
+.mp-dicebar--locked .mp-chip {
   filter: saturate(0.45) brightness(1.02);
 }
+.mp-dicewrap {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+/* 骰子条是 flex，默认会按内容比缩 —— 骰子被挤窄之后「掷骰」会竖着排。
+   盘面上这一颗是主操作，宁可让旁边的小胶囊让位，也不让它缩。 */
+.mp-dicebar .mp-dice,
+.mp-dicebar .mp-chip {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
 
-/* 这两块必须**占位恒定**，否则每次按掷骰都会闪一下屏。
-   实测：按下骰子那一刻，脚下格从「有售价有租金」变成「什么都没有」，
-   `.mp-tile__rows` 少一行 → dock 187.2→166.2px → 舞台 506→512.8px →
-   world 挂在舞台上的 ResizeObserver 触发 `renderer.setSize()`，WebGL 画布被清空重绘 ——
-   玩家看到的就是整块棋盘白闪一下。回合换了、落格换了、换人换了都会再来一次。
-   所以这里按各自的最大态预留，而不是让内容去推高度。 */
+/* 盘上那颗比原来大一号：它现在是盘面里唯一的实体件，得撑得起主操作的分量 */
+.mp-dicebar .mp-dice {
+  padding: 8px 22px 8px 9px;
+}
+.mp-dicebar .mp-dice__cube {
+  width: 62px;
+  height: 62px;
+  border-radius: 15px;
+}
+.mp-dicebar .mp-dice__pips {
+  width: 38px;
+  height: 38px;
+}
+
+/* 小胶囊：落格出口、「更多动作 N」。压在盘面上，所以底色带一点透明 + 更硬的描边 */
+.mp-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 13px;
+  border: 2px solid var(--mp-ink);
+  border-radius: 999px;
+  background: rgba(255, 253, 246, 0.94);
+  color: var(--mp-ink);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+  cursor: pointer;
+  box-shadow: 0 3px 0 var(--mp-ink-soft);
+  transition: transform 0.08s, background 0.12s;
+}
+.mp-chip:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+.mp-chip--on {
+  background: var(--mp-butter);
+  border-color: var(--mp-butter-d);
+  color: #7a4e00;
+  box-shadow: 0 3px 0 var(--mp-butter-d);
+}
+.mp-chip:disabled {
+  cursor: not-allowed;
+  filter: saturate(0.4) opacity(0.7);
+}
+
+/* 地契的行区按最大态预留：不预留时，选中不同格子会让右面板自己跳一下高度，
+   视线正读着「租金」那一行，它就往上挪了半个字。
+   注意它已经不在盘面高度链上了 —— 面板是独立一列，涨落不会再触发 renderer.setSize()。 */
 .mp-tile__rows {
-  /* 3 行 × 1.5 行高 + 2 条 3px 行间距（字号 12px ⇒ 60px）。
-     公司格那种 4 行的少见态仍会长高一点，但总比每一手都闪一次好。 */
-  min-height: calc(3 * 1.5em + 6px);
+  /* 2 行 × 1.5 行高 + 1 条 3px 行间距（字号 12px ⇒ 39px）。 */
+  min-height: calc(2 * 1.5em + 3px);
   align-content: start;
 }
 
@@ -563,12 +691,16 @@
 /* --- 2. 行囊入口 --- */
 .mp-bagwrap {
   position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 .mp-bag {
   position: relative;
   display: flex;
   align-items: center;
   gap: 9px;
+  width: 100%;
   padding: 8px 16px 8px 10px;
   border: 2.5px solid var(--mp-ink);
   border-radius: var(--mp-r);
@@ -589,6 +721,8 @@
   box-shadow: 0 0 0 var(--mp-lav-d);
 }
 .mp-bag__txt {
+  flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   text-align: left;
@@ -607,19 +741,16 @@
   right: -7px;
 }
 
-/* 浮层三件（行囊弹层 / 更多弹层 / 图例 / 更多菜单）都同时挂着 `mp-panel`，
-   而 tokens.css 里 `.mp-panel { position: relative }`。两条规则同特异性，谁赢由打包顺序决定 ——
-   实测 tokens 赢，于是行囊弹层变成 in-flow：它把 .mp-bagwrap 撑到 420×206，
-   操作台跟着涨到 264px，棋盘被压掉半屏。全部写成复合选择器，把特异性钉死在 0,2,0。 */
-.mp-panel.mp-bagpop {
-  position: absolute;
-  left: 50%;
-  bottom: calc(100% + 12px);
-  transform: translateX(-50%);
-  z-index: 20;
-  width: min(420px, 78vw);
-  padding: 11px 12px 13px;
-  border-radius: var(--mp-r);
+/* 行囊清单：就地铺开，不是浮层。
+   右面板本身就是抽屉（跟 document 抢层级没有意义），铺开后由 `.mp-side__bd` 统一滚动；
+   旧的 `.mp-bagpop` 是 absolute 浮层 —— 在「盘面 + 底部操作台」那套版面里它必须盖住骰子，
+   搬到面板里之后位置反而成了问题：它会往上盖住地契。 */
+.mp-baglist {
+  padding: 10px 10px 11px;
+  border: 2px solid var(--mp-ink);
+  border-radius: var(--mp-r-s);
+  background: var(--mp-paper-2);
+  animation: mp-in-list 0.16s ease-out;
 }
 .mp-grid {
   display: grid;
@@ -686,52 +817,11 @@
   -webkit-box-orient: vertical;
 }
 
-/* --- 3. 主操作：骰子那颗视觉权重最大，独占一行高 --- */
-.mp-act {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 10px;
-  flex-wrap: wrap;
-  min-width: 0;
-  /* 骰子在的时候 72px；飞行途中什么都不剩 —— 不预留就会缩，缩了就轮到棋盘闪。
-     次操作与出口已经搬去 `.mp-sub` 常驻第二行，这里只剩一颗主按钮，不会再折行。 */
-  min-height: 72px;
-}
-/* 常驻第二行：次操作 + 落格出口 + 相机读数。
-   min-height 让它**空着也占位** —— 这是 dock 高度恒定的关键，见 Dock.tsx 的注释。 */
-.mp-sub {
-  grid-column: 1 / -1;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-  min-height: 40px;
-  position: relative;
-}
+/* --- 3. 主操作：骰子那颗视觉权重最大 --- */
 .mp-morewrap {
   position: relative;
 }
-
-/* 相机只报两句：跟着谁、是不是还在飞。操作手法那句属于教学，教完就淡出 */
-.mp-camnote {
-  margin-left: auto;
-  display: inline-flex;
-  gap: 8px;
-  align-items: center;
-  position: relative;
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--mp-ink-2);
-}
-.mp-camnote em {
-  font-style: normal;
-  opacity: 0.7;
-  margin-left: 6px;
-}
-.mp-camnote--lock {
-  color: var(--mp-straw-d);
-}
+/* 弹层向上开：它挂在盘面底边，往下开就会被 `.mp-shell` 的 overflow:hidden 剪掉 */
 .mp-panel.mp-morepop {
   position: absolute;
   right: 0;
@@ -833,6 +923,7 @@
   flex-direction: column;
   text-align: left;
   line-height: 1.2;
+  white-space: nowrap;
 }
 .mp-dice__label b {
   font-family: var(--mp-display);
@@ -1171,10 +1262,12 @@
 .mp-bubble--up {
   bottom: calc(100% + 9px);
 }
+/* 操作手法那句教学气泡：本来贴在盘面底边，但骰子条已经占了那块 —— 往上抬到骰子之上，
+   否则它会正好盖在骰子标签上，两句话叠成一团。 */
 .mp-bubble--stage {
   position: absolute;
   left: 50%;
-  bottom: 18px;
+  bottom: 104px;
   transform: translateX(-50%);
   white-space: normal;
   max-width: min(440px, 80%);
@@ -1242,6 +1335,11 @@
   from { opacity: 0; transform: translate(-50%, 6px); }
   to { opacity: 1; transform: translate(-50%, 0); }
 }
+/* 就地铺开的行囊清单：从上面收下来，不带位移中心 —— 它不是一个居中的浮件 */
+@keyframes mp-in-list {
+  from { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 1; transform: none; }
+}
 @keyframes mp-pop-in {
   from { opacity: 0; transform: translate(8px, -4px) scale(0.97); }
   to { opacity: 1; transform: none; }
@@ -1264,17 +1362,18 @@
 }
 
 /* ============================ 窄屏 ============================ */
-/* 三列在 760px 以上还摆得下（230 + 行囊 + 280 + 间距 ≈ 746），所以断点从 900 降到 760：
-   实测 831px 宽的窗口原本命中 900 那条，操作台堆成三行 316px，棋盘只剩 506px。 */
+/* 右面板在 900 以下先瘦身（316 → 272），盘面还留着够看的宽度；到 760 再让顶栏胶囊独占一行。
+   底部没有操作台要折行了 —— 骰子在盘里，盘窄了它自己跟着挤，不会把版面顶高。 */
+@media (max-width: 900px) {
+  .mp-shell {
+    --mp-side-w: 272px;
+  }
+  .mp-dicebar {
+    /* 小地图在 760 以下会被挤到骰子底下，这里放宽让位限制 */
+    max-width: calc(100% - 140px);
+  }
+}
 @media (max-width: 760px) {
-  .mp-dock {
-    grid-template-columns: 1fr auto;
-    grid-auto-rows: auto;
-  }
-  .mp-act {
-    grid-column: 1 / -1;
-    justify-content: center;
-  }
   .mp-capsule {
     order: 3;
     flex-basis: 100%;

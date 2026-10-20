@@ -1,11 +1,15 @@
 /**
  * 马卡龙派对 HUD 的整壳。
  *
- * 版面（对照旧壳的删 / 并 / 收）：
+ * 版面（对照 `design/rich4-ui/original.html`：工具栏在上、盘面在左、面板在右，底部不摆条）：
  *
  *   ┌ 顶栏：资源区 · 状态胶囊（回合/行动者/物价 唯一一处）· 消息 · 更多 · 设置 ┐
- *   │ 舞台：棋盘 + 一句最新播报 + 近景切换 + 图例开关 + 小地图    │ 右导轨 │
- *   └ 底部：当前格卡片 · 行囊（角标）· 骰子（最大视觉权重）              ┘
+ *   │ 盘面：棋盘 + 一句最新播报 + 远景/近景 + 图例 + 小地图    │ 右面板：地契 │
+ *   │       + 骰子浮在盘面底边（大富翁4 原版就是这个位置）    │ 行囊 · 页签 │
+ *   └                                                          └ 规则/存取/退出 ┘
+ *
+ * 底部那条操作台已经不存在了：它把「每手必看」的地契和「每回合必按」的骰子摆在同一行，
+ * 结果两边都要为对方的高度让位，盘面只能吃剩下的。拆开之后骰子回到盘上、地契回到面板里。
  *
  * 与旧壳（`public/ac-hud/hud.js`）的关系：两者渲染进同一个 `#ac-hud-root`，用 `?hud=mp` 切换，
  * 好逐个对照。数据口径完全一致 —— 都只吃 `buildAcSnapshot()` 那份 `{ state, view }`；
@@ -16,7 +20,9 @@ import { GROUP_CSS, logIcon } from '@richman/shared';
 import type { AcSnapshot } from '../../game/acSnapshot.js';
 import { Icon } from '../mp/Icon.js';
 import { TopBar } from './TopBar.js';
-import { Dock, buildActions, type ActRow } from './Dock.js';
+import { DiceBar } from './DiceBar.js';
+import { SidePanel } from './SidePanel.js';
+import { buildActions, type ActRow } from './actions.js';
 import { DRAWER_TABS, DrawerBody, type DrawerTab } from './Drawer.js';
 import { useBoardStage, type StageApi, type StagePick } from './useBoardStage.js';
 import { useBubble } from './useGuidance.js';
@@ -191,7 +197,7 @@ export function MpHud({
     if (!drawer) return;
     const onDown = (e: PointerEvent) => {
       const t = e.target as Element | null;
-      if (!t || drawerRef.current?.contains(t) || t.closest('.mp-rail')) return;
+      if (!t || drawerRef.current?.contains(t) || t.closest('.mp-side__tabs')) return;
       setDrawer(null);
     };
     const onKey = (e: KeyboardEvent) => {
@@ -324,47 +330,29 @@ export function MpHud({
 
             {/* 近景只露周围几格，方位感全靠这块 —— 不是装饰，所以跟着近景一起显隐 */}
             <canvas className="mp-mini" ref={stage.miniRef} width={120} height={120} hidden={!cam.iso} />
+
+            {/* 骰子浮在盘面上，而不是盘外另开一条：大富翁4 原版就是「骰子在盘子上」 */}
+            <DiceBar snap={snap} interactive={interactive} camLocked={cam.locked} onFire={onFire} guideMore={showMore} />
           </div>
 
-          {showCam && <div className="mp-bubble mp-bubble--stage">拖拽转视角 · 滚轮推拉 · 悬停看格子 · 点击钉到下方卡片</div>}
+          {showCam && <div className="mp-bubble mp-bubble--stage">拖拽转视角 · 滚轮推拉 · 悬停看格子 · 点击钉到右侧地契</div>}
         </section>
 
-        <nav className="mp-rail" aria-label="数据页签">
-          {DRAWER_TABS.map((t) => (
-            <button
-              key={t.id}
-              className={`mp-rail__btn${drawer === t.id ? ' mp-rail__btn--on' : ''}`}
-              type="button"
-              title={t.label}
-              aria-pressed={drawer === t.id}
-              onClick={() => openDrawer(drawer === t.id ? null : t.id)}
-            >
-              <Icon id={t.icon} />
-              <span>{t.label}</span>
-            </button>
-          ))}
-          <span className="mp-rail__sep" />
-          <button className="mp-rail__btn" type="button" title="规则：这一格怎么办，鼠标指过来就有" onClick={onOpenHelp}>
-            <Icon id="i-question" />
-            <span>规则</span>
-          </button>
-          {!isRemote && onSaveGame && (
-            <button className="mp-rail__btn" type="button" title="存档" onClick={onSaveGame}>
-              <Icon id="i-save" />
-              <span>存档</span>
-            </button>
-          )}
-          {!isRemote && onLoadGame && (
-            <button className="mp-rail__btn" type="button" title="读档" onClick={onLoadGame}>
-              <Icon id="i-load" />
-              <span>读档</span>
-            </button>
-          )}
-          <button className="mp-rail__btn mp-rail__btn--quit" type="button" title="退出对局" onClick={onExit}>
-            <Icon id="i-exit" />
-            <span>退出</span>
-          </button>
-        </nav>
+        <SidePanel
+          snap={snap}
+          selCell={selCell}
+          onSelectCell={setSelCell}
+          onOpenPanel={onOpenPanel}
+          bagFocusKey={bagFocusKey}
+          guideBag={showBag}
+          drawer={drawer}
+          onOpenDrawer={openDrawer}
+          isRemote={isRemote}
+          onOpenHelp={onOpenHelp}
+          onSaveGame={onSaveGame}
+          onLoadGame={onLoadGame}
+          onExit={onExit}
+        />
 
         {drawer && (
           <aside ref={drawerRef} className="mp-drawer mp-panel">
@@ -375,7 +363,9 @@ export function MpHud({
                 <Icon id="i-x" size="s" />
               </button>
             </div>
-            <div className="mp-drawer__bd mp-scroll">
+            {/* 不再挂 `mp-scroll`：它把高度死锁在 46vh，那是「底部还有操作台、抽屉必须留位置」
+                年代的遗留。现在抽屉的上下界由 `.mp-drawer` 自己（top/fixed + max-height）说了算 */}
+            <div className="mp-drawer__bd">
               <DrawerBody
                 tab={drawer}
                 snap={snap}
@@ -390,21 +380,6 @@ export function MpHud({
           </aside>
         )}
       </main>
-
-      <Dock
-        snap={snap}
-        interactive={interactive}
-        camLocked={cam.locked}
-        camTarget={cam.target}
-        camIso={cam.iso}
-        camVisible={cam.visible}
-        selCell={selCell}
-        onSelectCell={setSelCell}
-        onFire={onFire}
-        onOpenPanel={onOpenPanel}
-        bagFocusKey={bagFocusKey}
-        guidance={{ bag: showBag, more: showMore }}
-      />
 
       {moreOpen && (
         <div ref={menuRef} className="mp-panel mp-menu" role="menu">
