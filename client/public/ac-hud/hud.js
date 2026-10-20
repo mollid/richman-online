@@ -31,10 +31,24 @@
      而是表现数据在一个不参与 typecheck 的静态脚本里又存了一份 —— 角色表一改名字或顺序，
      这边就静静地对不上。波 3 把它们收回角色表，本文件只认结构。 */
   const avaOf = (p) => p.avatar || '🧑‍🌾';
-  const GROUP = {
+  /* 配色（含小地图尺寸）的唯一出处在 shared/src/boardSkin.ts。本文件是 <script> 直挂的
+     vanilla、不能 import，所以由 React 层在加载它之前挂 `globalThis.RICHMAN_BOARD_SKIN`。
+     下面的 FALLBACK 只给「file:// 直接打开」用，数值必须与 shared 一致 ——
+     board_skin.test.ts 拿源码比对，漂了就红。 */
+  const FALLBACK_GROUP = {
     residential: '#8fd07a', commercial: '#7ec8ef', industrial: '#c9b48a',
     tech: '#b7a6e6', coastal: '#7fd8c8', financial: '#f0b96a',
   };
+  const FALLBACK_TYPE_MINI = {
+    start: '#ffe08a', chance: '#ffd0e0', news: '#dfe9ff', 'free-card': '#e6e0ff',
+    points: '#fff0b8', lottery: '#d6f2e6', magic: '#f0d9ff',
+    tax: '#e8e2d2', hospital: '#ffe3e3', jail: '#e3e6ee', game: '#d9f0ff',
+    shop: '#ffe6c8', bank: '#f2ead2', god: '#ffd9a8', company: '#d9c9a3',
+  };
+  const FALLBACK_MINI = { cell: 6, pad: 7, scale: 2, spacing: 2 };
+  const SKIN = globalThis.RICHMAN_BOARD_SKIN || null;
+  const GROUP = (SKIN && SKIN.groupCss) || FALLBACK_GROUP;
+  const TYPE_MINI = (SKIN && SKIN.typeCss) || FALLBACK_TYPE_MINI;
   const CELL = {
     start: ['🏁', '起点 · 经过领薪水'], property: ['🏠', '住宅用地'], commercial: ['🏬', '商业用地'],
     chance: ['🎋', '机会格'], news: ['📰', '新闻格'], 'free-card': ['🃏', '免费卡片格'],
@@ -328,7 +342,7 @@
    * 按地图坐标铺 + 持有者着色 + 四名玩家圆点 + 近景取景框。画在一块 2 倍图 canvas 上。
    * 只在近景显示：全盘俯视时它纯属占地方。
    */
-  const MINI = { cell: 6, pad: 7, scale: 2, spacing: 2 };
+  const MINI = (SKIN && SKIN.mini) || FALLBACK_MINI;
 
   /**
    * 小地图几何。一律按 `view.layout` 铺 —— 那是与 3D 场景**同一份**世界坐标。
@@ -438,19 +452,13 @@
   }
 
   /* 图例色块直接取 world.js 的 GROUP_HEX，改皮肤时两边一起动，不再用 emoji 近似色 */
-  /* 小地图的格子配色：有集团的格子取集团色，其余的按格类型给一个近似色。
-     刻意比 3D 里的正式配色灰一档 —— 小地图是导航用的，不该跟棋盘抢注意力。 */
-  const TYPE_MINI = {
-    start: '#ffe08a', chance: '#ffd0e0', news: '#dfe9ff', 'free-card': '#e6e0ff',
-    points: '#fff0b8', lottery: '#d6f2e6', magic: '#f0d9ff',
-    tax: '#e8e2d2', hospital: '#ffe3e3', jail: '#e3e6ee', game: '#d9f0ff',
-    shop: '#ffe6c8', bank: '#f2ead2', god: '#ffd9a8', company: '#d9c9a3',
+  /* 小地图的格子配色：有集团的格子取集团色，其余的按格类型给一个近似色（都来自 shared 的皮肤）。 */
+  const LEGEND_CN = {
+    residential: '住宅段', commercial: '商业段', industrial: '工业段',
+    tech: '科技段', coastal: '临海段', financial: '金融段',
   };
 
-  const LEGEND_GROUPS = [
-    ['#8fd07a', '住宅段'], ['#7ec8ef', '商业段'], ['#c9b48a', '工业段'],
-    ['#b7a6e6', '科技段'], ['#7fd8c8', '临海段'], ['#f0b96a', '金融段'],
-  ];
+  const LEGEND_GROUPS = Object.keys(GROUP).map((k) => [GROUP[k], LEGEND_CN[k] || k]);
   const LEGEND = LEGEND_GROUPS.map(([c, n]) => `<span><i class="d25-sw" style="--c:${c}"></i>${n}</span>`).join('') +
     `<span><i class="d25-sw d25-sw--ring" style="--c:#f5a742"></i><em>描边 = 持有者色</em></span>` +
     `<span><i class="d25-sw d25-sw--dot" style="--c:#ffd45e"></i><em>金晕 = 神明驻留</em></span>` +

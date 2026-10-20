@@ -5,20 +5,35 @@
 (function () {
   'use strict';
   const THREE = globalThis.THREE;
-  const SPACING = 2.0;      // 格距
-  const TILE = 1.86;        // 格边长
-  const DEPTH = 0.20;       // 格厚（参考《環島大富翁》里格子是薄片平板，不是方块）
-  const money = (n) => Math.round(n).toLocaleString('zh-CN');
-  const GROUP_HEX = {
+  /* ---------- 格子外观：唯一出处在 shared/src/boardSkin.ts ----------
+     本文件是 <script> 直挂的 vanilla、不能 import，所以由 React 层在加载它之前把
+     `globalThis.RICHMAN_BOARD_SKIN` 挂上（`installBoardSkin()`，见 AcHudLayer）。
+     下面这几份 FALLBACK 只在「file:// 直接打开」这种没有注入源的场景用，
+     数值必须与 shared 逐项一致 —— board_skin.test.ts 拿源码比对，漂了就红。 */
+  const FALLBACK_CELL = {
+    mapStep: 2, spacing: 2.0, tile: 1.86, radius: 0.28, depth: 0.08, bevel: 0.025,
+    padGrow: 0.12, padDepth: 0.12, padTop: 0.07, padRadius: 0.16, rimHeight: 0.06,
+  };
+  const FALLBACK_GROUP_HEX = {
     residential: 0x8fd07a, commercial: 0x7ec8ef, industrial: 0xc9b48a,
     tech: 0xb7a6e6, coastal: 0x7fd8c8, financial: 0xf0b96a,
   };
-  const TYPE_HEX = {
+  const FALLBACK_TYPE_HEX = {
     start: 0xffe08a, chance: 0xffd0e0, news: 0xdfe9ff, 'free-card': 0xe6e0ff,
     points: 0xfff0b8, lottery: 0xd6f2e6, magic: 0xf0d9ff,
     tax: 0xe8e2d2, hospital: 0xffe3e3, jail: 0xe3e6ee, game: 0xd9f0ff,
     shop: 0xffe6c8, bank: 0xf2ead2, god: 0xffd9a8, company: 0xd9c9a3, blank: 0xe9e6dc,
   };
+  const SKIN = globalThis.RICHMAN_BOARD_SKIN || null;
+  const GEOM = (SKIN && SKIN.cell) || FALLBACK_CELL;
+  const GROUP_HEX = (SKIN && SKIN.group) || FALLBACK_GROUP_HEX;
+  const TYPE_HEX = (SKIN && SKIN.type) || FALLBACK_TYPE_HEX;
+  /** 格面边长 / 格厚 */
+  const TILE = GEOM.tile;
+  const DEPTH = GEOM.depth;
+  /** 地图坐标 → 世界单位的缩放。默认 spacing/mapStep = 1，改 spacing 才真的会铺开 */
+  const K = GEOM.spacing / GEOM.mapStep;
+  const money = (n) => Math.round(n).toLocaleString('zh-CN');
   const EMOJI = {
     start: '🏁', property: '🏠', commercial: '🏬', chance: '🎋', news: '📰', 'free-card': '🃏',
     points: '🎟️', lottery: '🎰', magic: '🔮', tax: '💼', hospital: '🏥',
@@ -60,9 +75,9 @@
     s.lineTo(x, y + r); s.quadraticCurveTo(x, y, x + r, y);
     return s;
   }
-  const extrude = (w, h, r, d, bevel) => {
+  const extrude = (w, h, r, d, bevel, bev = 0.05) => {
     const g = new THREE.ExtrudeGeometry(roundedRect(w, h, r), {
-      depth: d, bevelEnabled: !!bevel, bevelSize: 0.05, bevelThickness: 0.05, bevelSegments: 1, curveSegments: 4,
+      depth: d, bevelEnabled: !!bevel, bevelSize: bev, bevelThickness: bev, bevelSegments: 1, curveSegments: 4,
     });
     g.rotateX(-Math.PI / 2);
     return g;
@@ -73,16 +88,17 @@
      不再伪造一个方环出来。 */
   let LAYOUT = null;
 
-  /** 格子 → 世界坐标。几何全在 shared，本文件不排任何形状 */
+  /** 格子 → 世界坐标。形状全在 shared，本文件不排任何形状；K 只按皮肤把地图坐标换算成世界单位 */
   function cellPos(i) {
     const p = LAYOUT && LAYOUT.cells[i];
-    return p ? { x: p.x, z: p.z } : { x: 0, z: 0 };
+    return p ? { x: p.x * K, z: p.z * K } : { x: 0, z: 0 };
   }
 
   /* 岛体那一摞（海 / 浅滩 / 浪花 / 沙底 / 草地 / 树）尺寸是按 64 格小盘写死的。
-     原版图按邻距定标后半径能到 54，不跟着放大格子就铺到海面之外、悬在空上。 */
+     原版图按邻距定标后半径能到 54，不跟着放大格子就铺到海面之外、悬在空上。
+     棋盘坐标乘了 K 之后，岛的半径也得跟着乘 —— 否则把 spacing 调大，格子就跑到海里去了。 */
   function islandK() {
-    return LAYOUT ? Math.max(1, LAYOUT.radius / 22.6) : 1;
+    return LAYOUT ? Math.max(1, (LAYOUT.radius * K) / 22.6) : 1;
   }
 
   /* ---------- 贴面文字纹理 ---------- */
@@ -232,6 +248,8 @@
     cam.dist = 70 * IK;
     /* 重新挂载（dispose 后再 mount）时清空上一轮的容器，否则贴面 / 棋子会逐轮累积 */
     tileMeshes = []; decalByCell = new Map(); tokenGroups = new Map(); rimGroup = null; focusRing = null;
+    /* 光环也属于上一轮那个 scene：留着引用会把环画进一个已经不渲染的场景里 */
+    hoverSkirt = null; selSkirt = null;
     treasureMesh = null;   // 上一轮场景已经重建，旧盒子留在变量里会把宝箱画在一个不存在的格上
     /* 选格 / 选人的高亮也一样：它们属于**上一轮那个 scene**，留着引用会把绿环画进
        一个已经不渲染的场景里（换局后「进选格态却什么都看不见」就是这么来的）。 */
@@ -297,16 +315,21 @@
        高度按几何实测顶面推 —— ExtrudeGeometry 的 bevel 会把实际顶面抬到 depth 之上，
        写死 0.53/0.54 会被草地盖住（实测就是这样丢的）。 */
     groundY = new THREE.Box3().setFromObject(grass).max.y;
-    /* 原版图的路径会穿过岛的内陆，而草地台的顶面（实测 0.53）比格面（0.45）还高 ——
+    /* 原版图的路径会穿过岛的内陆，而草地台顶面是算出来的（实测 0.53），比格面高 ——
        实测潮汕有六成格子整块埋在草里，全盘看下去只剩沙带上零星几格。
-       带自带坐标的图一律把草地降到与沙面同高：内陆读成一块平的公园绿地，格子永远浮在上面。
-       必须在广场 / 小径 / 树之前做，它们的高度全是从 `groundY` 推的。 */
+       带自带坐标的图一律把草地降到「沙面之上、奶油台座面之下」这条窄缝里：
+       内陆读成一块平的公园绿地，格子永远浮在草上面。
+       必须在广场 / 小径 / 树之前做，它们的高度全是从 `groundY` 推的。
+       ⚠️ 目标高度必须从皮肤推，不能写死数字：格子压扁到 depth 0.08 之后格面只有 0.105，
+       老版本写死的 0.12 比格面还高，于是内陆格子又被整块埋掉 —— 近景只剩草地和树，
+       一个格子都看不见（主子截图就是这个）。 */
     if (LAYOUT && groundY > 0.4) {
-      // 0.12：高于沙面 0.05（否则两张大面共面，掠射角下糊出一片斑马状 z-fighting 条纹），
-      // 又低于格面 0.45（否则内陆的格子还是被埋）
-      const sink = groundY - 0.12;
-      grass.position.y -= sink;
-      groundY -= sink;
+      /* 0.008：刚好低于奶油台座顶（0.07）而高于沙面（0.05）。
+         从俯视角看，台座是看它的**顶面**，所以被草淹到 0.062 仍然露出完整一圈奶油边；
+         格子只露顶上那 0.04 的厚度，读起来就是「画在地上的一格」。 */
+      const grassTop = GEOM.padTop - 0.008;
+      const sink = groundY - grassTop;
+      if (sink > 0) { grass.position.y -= sink; groundY -= sink; }
     }
     const plaza = new THREE.Mesh(new THREE.CircleGeometry(6.6 * IK, 44), mat(0xf4e8cd, { roughness: 0.94 }));
     plaza.rotation.x = -Math.PI / 2; plaza.position.y = groundY + 0.012; plaza.receiveShadow = true;
@@ -339,8 +362,42 @@
     scene.add(signBoard);
 
     // 池塘 + 装饰（位置固定，保证每次渲染一致）
+    /* ---------- 装饰不许落在格子上 ----------
+     * 下面这些坐标是按「64 格环」排的：环内是空地，树怎么摆都不碰格子。
+     * 换成 103 格的原版图之后，路径会**穿过岛的内陆**，于是有一棵树正长在某格中央 ——
+     * 近景里那格连同旁边的名字、价签全被树冠吞掉（主子截的那张就是）。
+     * 这里按「离最近一格的中心 ≥ 1.1 倍格距」筛一遍：树干不会被格子顶穿，树冠也不压字。
+     * 固定坐标 + 固定筛选 ⇒ 每次刷新长得一样，前后对比截图仍然可比。 */
+    const CELL_CLEAR = GEOM.spacing * 1.1;
+    const cellSpots = state.board.map((c) => cellPos(c.id));
+    const clearOfCells = (x, z) => {
+      /* 没有坐标的图（老 64 环）退回 null layout，cellPos 全给 (0,0) —— 拿它筛会把
+         岛心的装饰误删一片，所以那种图干脆不筛（它们的格子本来也在环上、碰不到装饰） */
+      if (!LAYOUT) return true;
+      for (const p of cellSpots) if (Math.hypot(p.x - x, p.z - z) < CELL_CLEAR) return false;
+      return true;
+    };
+    /* 草丛 / 花 / 灌木只有零点几个单位宽，阈值收一点：别把格子周围的绿化整圈剃光，
+       但又不能让它们长在格面上 */
+    const NARROW_CLEAR = GEOM.spacing * 0.62;
+    const clearOfCellsNarrow = (x, z) => {
+      if (!LAYOUT) return true;
+      for (const p of cellSpots) if (Math.hypot(p.x - x, p.z - z) < NARROW_CLEAR) return false;
+      return true;
+    };
+
     const pond = new THREE.Mesh(new THREE.CylinderGeometry(3.1, 3.4, 0.5, 26), mat(pal.water, { roughness: 0.25, metalness: 0.1 }));
-    pond.position.set(6.4, 0.16, 6.2); scene.add(pond);
+    /* 池塘半径 3.4 —— 比一格还宽，写死一个位置总会有格子被泡在水下（顶面 0.4 远高于格面）。
+       按固定的候选序列找第一处「叠不到任何格子」的水面；一处都找不到就不画。
+       固定序列 ⇒ 每次刷新一样，截图仍然可比。 */
+    for (const [ox, oz] of [[0, 0], [0, -2.6], [2.8, 0], [0, 2.6], [-2.8, 0], [2.8, -2.8],
+      [-2.8, -2.8], [2.8, 2.8], [-2.8, 2.8], [5.2, 0], [0, 5.2], [-5.2, 0], [0, -5.2]]) {
+      const px = 6.4 + ox, pz = 6.2 + oz;
+      if (!cellSpots.every((p) => Math.hypot(p.x - px, p.z - pz) > 4.3)) continue;
+      pond.position.set(px, groundY + 0.04, pz);   // +0.04：与草地上表面的相对高度保持原样
+      scene.add(pond);
+      break;
+    }
 
     const trunkGeo = new THREE.CylinderGeometry(0.16, 0.26, 1.7, 8);
     const trunkMat = mat(pal.trunk);
@@ -361,6 +418,7 @@
       }
     };
     for (const [x, z, s] of [[-8.6, -8.4, 1], [-3.2, -9.4, .85], [4.4, -8.6, .95], [9.2, -2.6, .9], [-9.4, 3.6, 1.05], [-6.2, 9.4, .8], [2.6, 9.6, .9]]) {
+      if (!clearOfCells(x * IK, z * IK)) continue;
       plantTree(x, z, s, groundY - 0.05);   // 草地顶面；给 0 会让树干整根埋进草里（旧值就是这样）
     }
     /* ---------- 环内树带 ----------
@@ -370,7 +428,9 @@
     for (let k = 0; k < 12; k++) {
       const a = THREE.MathUtils.degToRad(12 + k * 30);
       const r = 12.9 + (k % 3) * 0.45;
-      plantTree(Math.cos(a) * r, Math.sin(a) * r, 0.8 + (k % 4) * 0.1, groundY - 0.05);
+      const bx = Math.cos(a) * r, bz = Math.sin(a) * r;
+      if (!clearOfCells(bx * IK, bz * IK)) continue;   // 这一带正好压在环内的格子上，落上就跳过
+      plantTree(bx, bz, 0.8 + (k % 4) * 0.1, groundY - 0.05);
     }
 
     /* ---------- 环外椰林 ----------
@@ -384,11 +444,13 @@
       [-18.4, -12, .95], [-18.1, -4, .85], [-18.5, 4, 1.0], [-18.2, 12, .9],
       [18.2, -8, .9], [18.5, 0, 1.05], [18.1, 8, .85],
     ]) {
+      if (!clearOfCells(x * IK, z * IK)) continue;   // 同一套筛选：沙带上也可能正好铺着格子
       plantTree(x, z, s, 0.05);        // 0.05 = 沙色底座顶面
     }
     instanced(trunkGeo, trunkMat, trunkList, true);
     instanced(leafGeo, leafMat, leafList, true);
     instanced(hedgeGeo, hedgeMat, [[-11.5, -11.5], [11.5, -11.5], [-11.5, 11.5], [11.5, 11.5], [2.4, -12.6], [-12.6, 3.2]]
+      .filter(([x, z]) => clearOfCells(x * IK, z * IK))
       .map(([x, z]) => ({ x: x * IK, y: 0.35, z: z * IK, s: [1.5, 0.8, 1.5] })), true);
 
     /* 礁石：半沉在浅滩 / 海面里，只露出一角。外侧 10 块沉水、四角 4 块搁在沙带边。
@@ -420,6 +482,7 @@
     for (let i = 0; i < 110; i++) {
       const a = trnd() * Math.PI * 2, r = (8.6 + trnd() * 5.0) * IK;
       const x = Math.cos(a) * r, z = Math.sin(a) * r;
+      if (!clearOfCellsNarrow(x, z)) continue;   // 小株也不能扎在格面上
       /* 草丛高度要按缩放算：锥体的原点在「体中心」，固定 y 会让大株悬空、小株埋进土里 */
       const s = 0.55 + trnd() * 0.85;
       tuftList.push({ x, y: groundY + 0.26 * s, z, ry: trnd() * 6.3, s });
@@ -448,7 +511,7 @@
     const houseSpots = [
       [11.6, 6.2, 0.45], [-11.6, -6.0, -0.35], [-6.0, -11.6, 0.90], [6.4, -11.4, -0.80],
       [10.4, 9.8, 1.35], [-9.2, 11.6, 0.20],   // 补两栋贴近环内的：跟随镜头只看得见这一圈
-    ];
+    ].filter(([x, z]) => clearOfCells(x, z));   // 房子占地比树大，同样不许压格子
     instanced(new THREE.BoxGeometry(1.5, 1.0, 1.4), mat(0xfff3dd, { roughness: 0.85 }),
       houseSpots.map(([x, z, ry]) => ({ x, y: groundY + 0.50, z, ry })), true);
     /* 四棱锥当屋顶：ConeGeometry 用 4 个径向段就是方锥；+45° 让四个坡面对齐房身四个面 */
@@ -456,20 +519,21 @@
       houseSpots.map(([x, z, ry]) => ({ x, y: groundY + 1.41, z, ry: ry + Math.PI / 4 })), true);
 
     // 64 格
-    geoTile = extrude(TILE, TILE, 0.28, DEPTH, true);
+    geoTile = extrude(TILE, TILE, GEOM.radius, DEPTH, true, GEOM.bevel);
     geoTile.computeBoundingBox();
     tileTop = geoTile.boundingBox.max.y;   // 实测：bevel 让顶面高于 DEPTH（写死 DEPTH 会把贴面埋进格子里）
     /* 奶油台座：参考图里每格外围有一圈白边，格子像是坐在一只奶油小碟上 —— 近景下这圈白边
        是「棋盘」和「地面」之间唯一的视觉分隔，没有它，草地色的格子和草地会糊成一片。
-       宽度只能顶到 SPACING（2.0）—— 再宽邻格台座就会互相插进去。TILE+0.12=1.98 留 0.01 缝，
-       正好在格与格之间露出一条连续的奶油线。
-       高度上限：沙面在 y=0.05，台座顶抬到 0.085 就只露出 0.035 —— 够读成一条边，又不会把格子架空。 */
-    geoPad = extrude(TILE + 0.12, TILE + 0.12, 0.16, 0.30, true);
+       宽度上限由皮肤钉着：台座总宽（tile + padGrow）必须小于 spacing，
+       否则邻格台座互相插进去。默认 1.86 + 0.12 = 1.98，留一条 0.02 的缝正好连成奶油线。
+       高度上限：沙面在 y=0.05，台座顶抬到 padTop 就只露一条边，不会把格子架空。 */
+    const PAD = Math.min(TILE + GEOM.padGrow, GEOM.spacing * 0.999);
+    geoPad = extrude(PAD, PAD, GEOM.padRadius, GEOM.padDepth, true, GEOM.bevel);
     geoPad.computeBoundingBox();
-    geoPad.translate(0, -geoPad.boundingBox.max.y + 0.085, 0);
-    /* 持有者色环：贴在台座上沿的一圈彩色裙边（比格面宽 0.06）。
-       上限同样是 SPACING —— 环再宽就会与邻格的环相撞。 */
-    geoRim = new THREE.BoxGeometry(TILE + 0.12, 0.13, TILE + 0.12);
+    geoPad.translate(0, -geoPad.boundingBox.max.y + GEOM.padTop, 0);
+    /* 持有者色环：贴在台座上沿的一圈彩色裙边（与台座同宽）。
+       上限同样是 spacing —— 环再宽就会与邻格的环相撞。 */
+    geoRim = new THREE.BoxGeometry(PAD, GEOM.rimHeight, PAD);
     geoDecal = new THREE.PlaneGeometry(TILE, TILE);
     geoDecal.rotateX(-Math.PI / 2);
     /* 台座 64 个同材质 → 实例化成 1 次 draw call（关键：软件渲染下 64 次会吃掉近一半帧） */
@@ -507,6 +571,7 @@
       }
     }
     paintOwners();
+    buildSkirts();
 
     buildTokens();
     buildDice();
@@ -608,6 +673,50 @@
 
   /* 持有者标色：早前把「着色块」放在 y=0.06 和「描边」放在 y=-0.03，都埋在格子体内，等于没画。
      改成在格子下半部套一圈更宽的彩色台座（plinth）—— 从外面能看见一圈持有者色的裙边。 */
+  /* ---------- 互动裙边 ----------
+   * 选中 / 悬停**不靠抬高格子，也不是浮在半空的环**：用和「持有者色裙边」同一套语言，
+   * 在那格底下套一圈贴地的彩色带 —— 选中奶油金、悬停纯白。
+   * 语义一致：占据这一格的东西（地主 / 光标 / 选中）都用「裙边」表达，位置也一致。
+   *
+   * 三个细节：
+   * - 带宽与台座同宽（＝持有者裙边的宽度），横向只放大 0.8%：格距 2.0、台座 1.98，
+   *   再宽就没有缝了，邻格的裙边会插进来。
+   * - 高度就取 `rimHeight`，顶面刚好齐格面 —— 这是**上限**，不是随便挑的数。
+   *   想靠「做高一点更显眼」会让顶面高过格面、把整格吞掉（名字与价签全被盖住），
+   *   等于把「点击挡住格子信息」这个老毛病原样复发。显眼靠颜色与自发光，不靠长高。
+   * - 高度从 `padTop` 起算，只比台座顶高一丁点 —— 它是一条裙边，不是一个盘子。
+   * 早前那版是 `RingGeometry` 浮在格面之上，读起来像悬空的准星，与裙边语言不符。 */
+  let hoverSkirt = null, selSkirt = null;
+
+  function buildSkirts() {
+    /* 与台座同宽的带宽：PAD 是 buildWorld 里的局部量，这里按同一口径重算一份，
+       不引新常量（否则皮肤改了两处口径又要各改一次） */
+    const w = Math.min(TILE + GEOM.padGrow, GEOM.spacing * 0.999);
+    /* 几何与「可点格绿裙边」同规格：顶面齐格面，不许高过它（原因见上面那段） */
+    const geoSkirt = new THREE.BoxGeometry(w, GEOM.rimHeight, w);
+    const mk = (color, yOff) => {
+      const m = new THREE.Mesh(geoSkirt, new THREE.MeshLambertMaterial({ color, emissive: color, emissiveIntensity: 0 }));
+      m.scale.set(1.008, 1, 1.008);
+      m.userData.yOff = yOff;      // 两条互相让开一点，压在同一个高度会 z-fighting
+      m.visible = false;
+      scene.add(m);
+      return m;
+    };
+    hoverSkirt = mk(0xffffff, 0.004);
+    selSkirt = mk(0xffa726, 0.006);
+    /* 悬停不做呼吸（鼠标一直在动，再脉动会晃眼），只给一档常亮，让它从奶油台座上跳出来 */
+    hoverSkirt.material.emissiveIntensity = 0.5;
+  }
+
+  /** 把一条裙边挪到某一格；`id` 为 null 就藏起来 */
+  function placeSkirt(skirt, id) {
+    if (!skirt) return;
+    if (id === null || id === undefined) { skirt.visible = false; return; }
+    const p = cellPos(id);
+    skirt.position.set(p.x, GEOM.padTop + (skirt.userData.yOff || 0.002), p.z);
+    skirt.visible = true;
+  }
+
   function paintOwners() {
     if (!rimGroup) { rimGroup = new THREE.Group(); scene.add(rimGroup); }
     rimGroup.clear();
@@ -617,7 +726,9 @@
       if (!pid) { if (decal) decal.position.y = tileTop + 0.012; continue; }
       const { x, z } = cellPos(cell.id);
       const plinth = new THREE.Mesh(geoRim, mat(new THREE.Color(cssOf(pid)), { roughness: 0.55 }));
-      plinth.position.set(x, 0.085, z);
+      /* 裙边中心对齐台座顶面（而不是写死 0.085）—— 换了皮肤之后高度必须跟着走，
+         否则格子一贴地，这道色环就会整条浮在半空。 */
+      plinth.position.set(x, GEOM.padTop, z);
       plinth.castShadow = true;
       rimGroup.add(plinth);
       if (decal) decal.position.y = tileTop + 0.012;
@@ -1055,20 +1166,26 @@
       if (decal) decal.material.color.setScalar(dim ? 0.55 : 1);
     }
     if (!pickOverlay) {
-      const geo = new THREE.RingGeometry(TILE * 0.33, TILE * 0.45, 22);
-      geo.rotateX(-Math.PI / 2);
+      /* 与选中/悬停同一套语言：一条贴地的绿裙边，而不是浮在格面之上的准星环 ——
+         环会压在名字上，而且和「裙边=占据这一格」的读法打架。 */
+      const geo = new THREE.BoxGeometry(TILE + GEOM.padGrow, GEOM.rimHeight, TILE + GEOM.padGrow);
       pickOverlay = new THREE.InstancedMesh(geo,
-        new THREE.MeshBasicMaterial({ color: 0x7fe07a, transparent: true, opacity: 0.8, depthWrite: false, side: THREE.DoubleSide }),
+        new THREE.MeshLambertMaterial({ color: 0x4fc9a4, emissive: 0x2e9e7c, emissiveIntensity: 0.35 }),
         Math.max(1, tileMeshes.length));
       pickOverlay.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
       pickOverlay.renderOrder = 4;
       pickOverlay.visible = false;
       scene.add(pickOverlay);
     }
+    /* 比选中裙边再高一点点、再大一点点：选格态下「选中」和「可点」可能落在同一格 */
     const mat4 = new THREE.Matrix4();
+    const pos = new THREE.Vector3();
+    const rot = new THREE.Quaternion();
+    const scl = new THREE.Vector3(1.008, 1.1, 1.008);
     for (let i = 0; i < pickIds.length; i++) {
       const p = cellPos(pickIds[i]);
-      mat4.makeTranslation(p.x, tileTop + 0.03, p.z);
+      pos.set(p.x, GEOM.padTop + 0.005, p.z);
+      mat4.compose(pos, rot, scl);
       pickOverlay.setMatrixAt(i, mat4);
     }
     pickOverlay.count = pickIds.length;
@@ -1266,17 +1383,13 @@
     return o ? o.userData.pid : null;
   }
 
+  /* 悬停只换一条贴地的白裙边，不再把格子纵向拉伸 1.5 倍 —— 那个动作会让格子在近景里
+     鼓成一个立体的墩子，并且把贴面文字顶歪。 */
   function setHover(id) {
     if (hoverCell === id) return;
-    if (hoverCell != null) {
-      const old = tileMeshes.find((m) => m.userData.cellId === hoverCell);
-      if (old) old.scale.set(1, 1, 1);
-    }
     hoverCell = id;
-    if (id != null) {
-      const m = tileMeshes.find((x) => x.userData.cellId === id);
-      if (m) m.scale.set(1.06, 1.5, 1.06);
-    }
+    /* 已经选中的那一格由金裙边负责，悬停裙边让位，免得两条叠成一条 */
+    placeSkirt(hoverSkirt, id !== null && id === selCell ? null : id);
     hooks.onHover && hooks.onHover(id);
   }
 
@@ -1324,6 +1437,9 @@
         if (pid) { hooks.onPickPlayer && hooks.onPickPlayer(pid); drag = null; return; }
         const id = pick(e.clientX, e.clientY);
         selCell = id;
+        /* 选中改成在那格底下套一条金裙边：格子本身一动不动，视线里不会多出一块飞起来的板子 */
+        placeSkirt(selSkirt, id);
+        if (hoverCell != null && hoverCell === id) placeSkirt(hoverSkirt, null);
         hooks.onSelect && hooks.onSelect(id);
       }
       drag = null;
@@ -1404,13 +1520,15 @@
         if (cube.userData.spin <= 0) settle(cube, cube.userData.value);
       }
     }
-    if (selCell != null && !REDUCED) {
-      const m = tileMeshes.find((x) => x.userData.cellId === selCell);
-      if (m) m.position.y = 0.12 + Math.sin(t * 5) * 0.05;
+    /* 选中裙边的呼吸：只动自发光强度，不动透明度 —— 半透明的金裙边压在有主的粉裙边上
+       会混成第三种颜色，读起来像「这格主人变了」。`prefers-reduced-motion` 下不脉动。 */
+    if (selSkirt && selSkirt.visible) {
+      selSkirt.material.emissiveIntensity = REDUCED ? 0.34 : 0.22 + 0.2 * Math.sin(t * 4.6);
     }
-    /* 选格绿环的呼吸：只在选态里跑；`prefers-reduced-motion` 下固定不脉动 */
+    /* 候选裙边与选中裙边同频：一眼看出「这两类亮的是同一回事 —— 此刻能点」。
+       同样只动自发光，不动透明度。 */
     if (pickOverlay && pickOverlay.visible) {
-      pickOverlay.material.opacity = REDUCED ? 0.8 : 0.5 + 0.32 * Math.sin(t * 4.6);
+      pickOverlay.material.emissiveIntensity = REDUCED ? 0.4 : 0.28 + 0.2 * Math.sin(t * 4.6);
     }
     /* 候选玩家的环与绿环同频闪动：一眼看出「这两类亮的是同一回事 —— 此刻能点」 */
     for (const ring of pickPlayerRings.values()) {

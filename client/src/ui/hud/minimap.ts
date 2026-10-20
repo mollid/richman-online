@@ -8,10 +8,11 @@
  * 几何必须与 3D 场景同源：`view.layout` 是 shared 的 `boardLayout` 算出来的世界坐标，
  * 这里按同一个 `spacing` 定标。两处各算一次，取景框就会相对格子偏掉。
  */
-import { miniColor, type BoardCell, type BoardLayout } from '@richman/shared';
+import { BOARD_SKIN, miniColor, type BoardCell, type BoardLayout } from '@richman/shared';
 
-/** `cell` = 一格边长（CSS 像素），`scale` = 画布倍图，`spacing` 与世界层同口径 */
-export const MINI = { cell: 6, pad: 7, scale: 2, spacing: 2 };
+/** `cell` = 一格边长（CSS 像素），`scale` = 画布倍图，`spacing` 与世界层同口径。
+ *  值来自 shared 的皮肤（`boardSkin.ts`），与旧整壳 hud.js 读的是同一份。 */
+export const MINI = BOARD_SKIN.mini;
 
 /** `D25World.cameraState()` 里取景框用得上的那几项（全部可选：world 没挂载时按 0 处理） */
 export interface MiniCam {

@@ -1,5 +1,5 @@
 import { Assets, Application, Container, Graphics, Sprite, Text, Texture } from 'pixi.js';
-import { boardLayout, CHARACTERS } from '@richman/shared';
+import { boardLayout, BOARD_SKIN, CHARACTERS, skinColor } from '@richman/shared';
 import type { BoardCell, FacilityType, GameState, Player } from '@richman/shared';
 import { getSettings, SETTINGS_CHANGED_EVENT } from './settings.js';
 
@@ -15,24 +15,15 @@ function animationSpeed(): number {
   }
 }
 
-/** 等距瓦片尺寸：格宽 64、格高 32（2:1 菱形） */
-const TILE_W = 64;
-const TILE_H = 32;
+/** 格子几何：与对局盘同一份皮肤（`shared/src/boardSkin.ts`），改格子尺寸只改那里 */
+const TILE_W = BOARD_SKIN.iso.tilePx;
+const TILE_H = TILE_W / 2;
 const MOVE_SPEED_CELLS_PER_SEC = 6;
 
 /** 美术 v6：深棕描边（全项目统一轮廓色） */
 const OUTLINE_COLOR = 0x4a3222;
 /** 美术 v6：瓦片平台挤出厚度（像素） */
-const TILE_DEPTH = 9;
-
-const GROUP_COLORS: Record<string, number> = {
-  residential: 0x9ccc65,
-  commercial: 0xffb74d,
-  industrial: 0x90a4ae,
-  tech: 0x4dd0e1,
-  coastal: 0x64b5f6,
-  financial: 0xba68c8,
-};
+const TILE_DEPTH = BOARD_SKIN.iso.depthPx;
 
 /** 美术 v6 贴图清单（client/public/art 下，构建时静态拷贝） */
 const ART_BASE = '/art';
@@ -75,23 +66,9 @@ const CELL_ICONS: Partial<Record<BoardCell['type'], string>> = {
   company: '🏢',
 };
 
-const TYPE_COLORS: Partial<Record<BoardCell['type'], number>> = {
-  start: 0xffe082,
-  chance: 0xf48fb1,
-  tax: 0xef9a9a,
-  hospital: 0xf5f5f5,
-  jail: 0xb0bec5,
-  shop: 0xffcc80,
-  bank: 0xa5d6a7,
-  god: 0xb39ddb,
-  commercial: 0xffe0b2,
-  'free-card': 0xce93d8,
-  points: 0xfff59d,
-  lottery: 0xffab91,
-  magic: 0xd1c4e9,
-  news: 0xb0e0e6,
-  company: 0xbcaaa4,
-};
+/* 配色不再自带一份：回放盘原先用的是另一套 Material 色板（青柠 / 橙 / 蓝灰），
+   与对局盘的马卡龙色完全对不上 —— 同一副棋盘，回放里是一个样、对局里是另一个样。
+   现在统一读 shared 的 `skinColor()`（＝小地图那条「有集团取集团色，否则按格型」的口径）。 */
 
 /** 商业设施徽章（EST-07：五种建设项目） */
 /**
@@ -132,7 +109,7 @@ const FACILITY_MARKS: Record<FacilityType, { icon: string; color: number }> = {
  * 定标：`boardLayout` 默认 `spacing = 2`（相邻格世界距离 = 2），而等距投影里一格的屏幕位移是
  * (±TILE_W/2, ±TILE_H/2)。所以世界 1 单位 = TILE_W/(2·spacing) 个屏幕像素，两个方向同式。
  */
-const LAYOUT_SPACING = 2;
+const LAYOUT_SPACING = BOARD_SKIN.cell.mapStep;
 const ISO_A = TILE_W / (2 * LAYOUT_SPACING);
 const ISO_B = TILE_H / (2 * LAYOUT_SPACING);
 
@@ -141,8 +118,7 @@ function isoOf(x: number, z: number): { x: number; y: number } {
 }
 
 function cellColor(cell: BoardCell): number {
-  if (cell.type === 'property' && cell.group) return GROUP_COLORS[cell.group] ?? 0xcfd8dc;
-  return TYPE_COLORS[cell.type] ?? 0xcfd8dc;
+  return skinColor(cell);
 }
 
 /** 颜色变暗（乘法系数），用于瓦片侧面挤出 */

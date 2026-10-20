@@ -11,7 +11,7 @@
  * 所以它不开面板，改在行囊格上方就地展开一条 `HandQuickBar`，棋盘全程可见可点。
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { actionRefusal, CHARACTERS, characterById } from '@richman/shared';
+import { actionRefusal, CHARACTERS, characterById, installBoardSkin } from '@richman/shared';
 import type { GameState, PlayerAction } from '@richman/shared';
 import { buildAcSnapshot } from '../game/acSnapshot.js';
 import { characterPortrait } from '../game/portrait.js';
@@ -196,6 +196,9 @@ let loadPromise: Promise<void> | null = null;
 function loadAcHud(): Promise<void> {
   if (!loadPromise) {
     loadPromise = (async () => {
+      /* 格子皮肤必须在 world.js / hud.js 之前挂上：两个 vanilla 脚本在自己的 IIFE 顶层
+         就把尺寸与配色取成常量了，晚挂一步读到的还是它们各自的 FALLBACK。 */
+      installBoardSkin();
       await loadScript(`${HUD_BASE}/vendor/three.umd.min.js`);
       await loadScript(`${HUD_BASE}/vendor/pixi.min.js`);
       await loadScript(`${HUD_BASE}/world.js`);
