@@ -68,30 +68,19 @@
     return g;
   };
 
-  /* 64 格 = 17×17 外圈；格号 0/16/32/48 是四角，顺时针 */
-  function ringPos(i) {
-    const L = 17;
-    let col, row;
-    if (i < L - 1) { col = i + 1; row = 1; }
-    else if (i < 2 * (L - 1)) { col = L; row = i - (L - 2); }
-    else if (i < 3 * (L - 1)) { col = L - (i - 2 * (L - 1)); row = L; }
-    else { col = 1; row = L - (i - 3 * (L - 1)); }
-    return { x: (col - 9) * SPACING, z: (row - 9) * SPACING };
-  }
-
-  /* 地图自带坐标时的世界布局（`view.layout`，由 shared 的 boardLayout 算）。
-     null = 这张图没带坐标（自建的 64 格环），全部几何退回上面那个方环算法。 */
+  /* 世界布局（`view.layout`）：由 shared 的 `boardLayout` 按地图自带坐标换算，四张图每张都有。
+     没有它就说明这副棋盘没坐标（引擎里那份 64 格自建盘，单测夹具）—— 那时不摆格子，
+     不再伪造一个方环出来。 */
   let LAYOUT = null;
 
-  /** 格子 → 世界坐标：优先用地图自带几何，没有才退回方环 */
+  /** 格子 → 世界坐标。几何全在 shared，本文件不排任何形状 */
   function cellPos(i) {
     const p = LAYOUT && LAYOUT.cells[i];
-    return p ? { x: p.x, z: p.z } : ringPos(i);
+    return p ? { x: p.x, z: p.z } : { x: 0, z: 0 };
   }
 
-  /* 岛体那一摞（海 / 浅滩 / 浪花 / 沙底 / 草地 / 树）尺寸全是按 64 环的 ±16 写死的。
-     原版图按邻距定标后半径能到 54，不跟着放大格子就铺到海面之外、悬在空上。
-     自建图 LAYOUT 为 null ⇒ 系数恒为 1，画面与改动前逐像素相同。 */
+  /* 岛体那一摞（海 / 浅滩 / 浪花 / 沙底 / 草地 / 树）尺寸是按 64 格小盘写死的。
+     原版图按邻距定标后半径能到 54，不跟着放大格子就铺到海面之外、悬在空上。 */
   function islandK() {
     return LAYOUT ? Math.max(1, LAYOUT.radius / 22.6) : 1;
   }

@@ -204,13 +204,19 @@ export function walkWindow(board: BoardCell[], center: number, back: number, for
 /**
  * 棋盘几何：把地图自带的原始坐标换算成世界坐标。
  *
+ * 产品里四张地图（103 / 144 / 110 / 118 格）**每张都自带坐标**，所以棋盘形状一律按图走：
+ * 没有「64 格环」这回事。返回 `null` 只剩两种情况 —— 空棋盘，或坐标混用/退化
+ * （引擎里那份 64 格自建盘 `DEFAULT_BOARD` 就是无坐标的，仅作单测夹具）。
+ * 渲染层拿到 `null` 应当**不画棋盘**，而不是伪造一个环出来：形状是数据的一部分，
+ * 画布不该替数据做决定（旧版那个方环兜底已经删掉了）。
+ *
  * 放在 shared 而不是各写一份在 `world.js` / `hud.js` 里，有两个理由：
- * 1. 3D 场景与右下小地图**必须**用同一份几何，否则取景框与格子会错位；
- * 2. 这份换算是可以断言的（邻接对称、半径为正、缺坐标时干净退回 null），散在两个脚本里就没人测得到。
+ * 1. 3D 场景、小地图、回放盘**必须**用同一份几何，否则取景框与格子会错位；
+ * 2. 这份换算是可以断言的（质心归零、邻距定标、缺坐标时干净退回 null），散在脚本里就没人测得到。
  *
  * 缩放按**邻接边的中位长度**定标，让相邻两格的台座正好相距 `spacing`。
  * 不能按包围盒缩放：台座与描边环的尺寸是按 `spacing` 的上限设计的（见 `world.js` 里 TILE 那段注释），
- * 把 100+ 格的图硬塞进原来 ±16 的范围里，格子会互相穿插成一团。
+ * 把 100+ 格的图硬塞进同一个包围盒里，格子会互相穿插成一团。
  */
 export interface BoardLayout {
   /** 下标即 cellId */
@@ -221,7 +227,7 @@ export interface BoardLayout {
 
 export function boardLayout(board: BoardCell[], spacing = 2): BoardLayout | null {
   if (board.length === 0) return null;
-  if (board.some((c) => !Number.isFinite(c.x) || !Number.isFinite(c.y))) return null; // 混用 ⇒ 整体退回环，避免半张图错位
+  if (board.some((c) => !Number.isFinite(c.x) || !Number.isFinite(c.y))) return null; // 混用 ⇒ 整体退回 null，避免半张图错位
 
   const lens: number[] = [];
   for (const c of board) {
@@ -242,35 +248,6 @@ export function boardLayout(board: BoardCell[], spacing = 2): BoardLayout | null
   const cy = board.reduce((s, c) => s + (c.y ?? 0), 0) / board.length;
   const cells = board.map((c) => ({ x: ((c.x ?? 0) - cx) * k, z: ((c.y ?? 0) - cy) * k }));
   return { cells, radius: Math.max(...cells.map((p) => Math.hypot(p.x, p.z))) };
-}
-
-/** `ringCells` 的一项：格子在方环示意上的落位。 */
-export interface RingCell {
-  cellId: number;
-  /** 1 基，与 CSS `grid-column` / `grid-row` 直接对齐 */
-  col: number;
-  row: number;
-  edge: 'top' | 'right' | 'bottom' | 'left';
-}
-
-/**
- * 把棋盘摊成「正方形外圈」：上边 → 右边 → 下边 → 左边，顺时针。
- *
- * 别因为「产品里不要方环兜底棋盘了」就删掉它 —— 它是 `boardLayout` 返回 `null`
- * （这张图没带坐标，或坐标混用/退化）时**小地图唯一的几何兜底**。删了它，
- * 自建图与任何缺坐标的原版图右下小地图会一起空白。
- *
- * 边长按格数现算而不是写死 17：64 格正好是 17×17 外圈，但原版图有 100+ 格，
- * 沿用 17 会让多出来的格子从负坐标开始往外排。
- */
-export function ringCells(board: readonly BoardCell[]): RingCell[] {
-  const L = Math.ceil(board.length / 4) + 1;
-  return board.map((cell, i): RingCell => {
-    if (i < L - 1) return { cellId: cell.id, col: i + 1, row: 1, edge: 'top' };
-    if (i < 2 * (L - 1)) return { cellId: cell.id, col: L, row: i - (L - 2), edge: 'right' };
-    if (i < 3 * (L - 1)) return { cellId: cell.id, col: L - (i - 2 * (L - 1)), row: L, edge: 'bottom' };
-    return { cellId: cell.id, col: 1, row: L - (i - 3 * (L - 1)), edge: 'left' };
-  });
 }
 
 /** 图上最短步数（环上的 `min(d, size - d)` 是它的特例） */

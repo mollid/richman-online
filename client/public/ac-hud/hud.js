@@ -6,23 +6,14 @@
   'use strict';
   let S = globalThis.GAME_SNAPSHOT;
   if (!S) { console.error('[ac-hud] 缺少 GAME_SNAPSHOT，HUD 未挂载'); return; }
-  let st, view, A, cur, me, RING;
+  let st, view, A, cur, me;
   let hostApi = { dispatch: null, openPanel: null };
   const AC_ROOT_ID = 'ac-hud-root';
-  /** 宿主换一局 / 推进一回合后调用：重新绑定派生量（RING / me / cur 都随 state 变） */
+  /** 宿主换一局 / 推进一回合后调用：重新绑定派生量（me / cur 都随 state 变） */
   function bindSnap(snap) {
     S = snap; st = S.state; view = S.view; A = view.actions;
     cur = st.players[st.currentPlayerIndex];
     me = st.players.find((p) => p.id === view.myPlayerId) || st.players[0];
-    /* 方环示意（没有 WebGL 时的兜底棋盘）：边长按格数现算，64 格正好是 17×17 外圈。
-       写死 17 的话，100+ 格的原版图会从这里开始往负坐标里排。 */
-    const L = Math.ceil(st.board.length / 4) + 1;
-    RING = st.board.map((cell, i) => {
-      if (i < L - 1) return { cell, col: i + 1, row: 1, edge: 'top' };
-      if (i < 2 * (L - 1)) return { cell, col: L, row: i - (L - 2), edge: 'right' };
-      if (i < 3 * (L - 1)) return { cell, col: L - (i - 2 * (L - 1)), row: L, edge: 'bottom' };
-      return { cell, col: 1, row: L - (i - 3 * (L - 1)), edge: 'left' };
-    });
   }
   bindSnap(S);
   const money = (n) => Math.round(n).toLocaleString('zh-CN');
@@ -218,7 +209,7 @@
     for (const e of fresh) pushTicker(e.text);
   }
 
-  /* ---------------- 棋盘：默认 2.5D（three.js 世界 + Pixi 叠加），?board=flat 回方环 ---------------- */
+  /* ---------------- 棋盘：默认 2.5D（three.js 世界 + Pixi 叠加），?board=flat 换平面示意 ---------------- */
   const FLAT0 = /board=flat/.test(location.search) || /board=flat/.test(location.hash);
   let flatMode = FLAT0;
   const HAS_GL = !!globalThis.THREE && !!globalThis.PIXI && !!globalThis.D25World && !!globalThis.D25Overlay;
@@ -311,7 +302,7 @@
   let lastMiniTick = -1;
 
   function toggleCamMode() {
-    if (flatMode || !HAS_GL) { toast('方环示意下没有相机，切回 2.5D 再试。'); return; }
+    if (flatMode || !HAS_GL) { toast('平面示意下没有相机，切回 2.5D 再试。'); return; }
     const next = isoMode() ? 'top' : 'iso';
     globalThis.D25World.setCamMode(next, activePid);
     applyCamModeUI();
@@ -334,38 +325,31 @@
   }
 
   /* ---------------- 小地图 ----------------
-   * 64 格环 + 持有者着色 + 四名玩家圆点 + 近景取景框。画在一块 2 倍图 canvas 上。
+   * 按地图坐标铺 + 持有者着色 + 四名玩家圆点 + 近景取景框。画在一块 2 倍图 canvas 上。
    * 只在近景显示：全盘俯视时它纯属占地方。
    */
   const MINI = { cell: 6, pad: 7, scale: 2, spacing: 2 };
 
   /**
-   * 小地图几何。自建图沿用 17×17 方环；原版图按 `view.layout` 铺 ——
-   * 那是与 3D 场景**同一份**世界坐标（都由 shared 的 `boardLayout` 算出来）。
+   * 小地图几何。一律按 `view.layout` 铺 —— 那是与 3D 场景**同一份**世界坐标。
    * 取景框和格子必须同源，否则近景里看着框偏了一格。画布边长按包围盒现算。
+   *
+   * 没有 layout 就返回 null（不画）。这里曾经有个「方环兜底」，拿格号排一个 17×17 外圈，
+   * 连原点都写错过一格（写 8，真值 9）。形状是数据的一部分，没有就不画。
    */
   function miniGeom() {
     const k = MINI.cell / MINI.spacing;              // 世界单位 → 小地图像素
     const L = view.layout;
-    if (L && L.cells && L.cells.length === st.board.length) {
-      const xs = L.cells.map((p) => p.x);
-      const zs = L.cells.map((p) => p.z);
-      const midX = (Math.max(...xs) + Math.min(...xs)) / 2;
-      const midZ = (Math.max(...zs) + Math.min(...zs)) / 2;
-      const w = (Math.max(...xs) - Math.min(...xs)) * k + MINI.cell + MINI.pad * 2;
-      const h = (Math.max(...zs) - Math.min(...zs)) * k + MINI.cell + MINI.pad * 2;
-      const px = (x) => w / 2 + (x - midX) * k;
-      const pz = (z) => h / 2 + (z - midZ) * k;
-      return { w, h, k, at: (id) => [px(L.cells[id].x), pz(L.cells[id].z)], world: (tx, tz) => [px(tx), pz(tz)] };
-    }
-    const d = MINI.cell * 17 + MINI.pad * 2;
-    const at = (col, row) => [MINI.pad + (col - 1) * MINI.cell + MINI.cell / 2, MINI.pad + (row - 1) * MINI.cell + MINI.cell / 2];
-    return {
-      w: d, h: d, k,
-      at: (id) => { const r = RING[id]; return at(r.col, r.row); },
-      world: (tx, tz) => [MINI.pad + (tx / MINI.spacing + 8) * MINI.cell + MINI.cell / 2,
-        MINI.pad + (tz / MINI.spacing + 8) * MINI.cell + MINI.cell / 2],
-    };
+    if (!L || !L.cells || L.cells.length !== st.board.length) return null;
+    const xs = L.cells.map((p) => p.x);
+    const zs = L.cells.map((p) => p.z);
+    const midX = (Math.max(...xs) + Math.min(...xs)) / 2;
+    const midZ = (Math.max(...zs) + Math.min(...zs)) / 2;
+    const w = (Math.max(...xs) - Math.min(...xs)) * k + MINI.cell + MINI.pad * 2;
+    const h = (Math.max(...zs) - Math.min(...zs)) * k + MINI.cell + MINI.pad * 2;
+    const px = (x) => w / 2 + (x - midX) * k;
+    const pz = (z) => h / 2 + (z - midZ) * k;
+    return { w, h, k, at: (id) => [px(L.cells[id].x), pz(L.cells[id].z)], world: (tx, tz) => [px(tx), pz(tz)] };
   }
 
   function drawMinimap() {
@@ -373,6 +357,8 @@
     if (!cv || cv.hidden) return;
     const ctx = cv.getContext('2d');
     const g = miniGeom();
+    /* 没有几何就不画（引擎那份无坐标的自建盘）；以前会伪造一个方环出来 */
+    if (!g) { ctx.clearRect(0, 0, cv.width, cv.height); return; }
     if (cv.width !== Math.round(g.w * MINI.scale) || cv.height !== Math.round(g.h * MINI.scale)) {
       cv.width = Math.round(g.w * MINI.scale); cv.height = Math.round(g.h * MINI.scale);
     }
@@ -412,7 +398,7 @@
        画出来比任何文字都直观 —— 一眼看出「现在只看得到这一段」。 */
     const cs = globalThis.D25World.cameraState();
     if (isoMode()) {
-      /* 世界单位 → 小地图像素的换算由 `miniGeom` 给（原版图的定标与方环不同源）。
+      /* 世界单位 → 小地图像素的换算由 `miniGeom` 给（与 3D 场景读同一份 layout）。
          宽高比取 world 报上来的 aspect（已夹过 ISO.maxAspect）—— 自己算舞台宽高比的话，
          超宽屏下相机的横向视野被夹过，框却还按舞台铺满，画出来比实际看得见的范围宽一截。 */
       const aspectBox = cs.aspect || (cv.parentElement && cv.parentElement.clientHeight
@@ -479,8 +465,8 @@
   const WIDE_MQ = typeof matchMedia === 'function' ? matchMedia('(min-aspect-ratio: 3/2)') : null;
   const isWide = () => !!(WIDE_MQ && WIDE_MQ.matches);
 
-  /* 棋盘形态切换（方环示意）已移除：产品里只有 3D 棋盘一种形态，
-     方环仅作为 three / pixi 载入失败时的兜底路径，不再提供手动入口。 */
+  /* 棋盘形态切换已移除：产品里只有 3D 棋盘一种形态，
+     平面示意仅作为 three / pixi 载入失败时的兜底路径，不再提供手动入口。 */
 
   /* 悬停浮层：贴着指针走，只讲「这一格是什么」；点击把详情钉进 dock，不常驻挡棋盘。
      选格态下多问一句「这一格能不能选」—— 不能选时把引擎的原话贴出来，玩家不用点了才知道。 */
@@ -573,10 +559,10 @@
     if (flatMode || !HAS_GL) {
       const w = renderFlatBoard();
       w.classList.add('hud-board--flat');
-      if (!flatMode) w.insertBefore(el('div', 'hud-foot', 'three.js / pixi.js 没加载（vendor 缺件），已退回方环示意。'), w.firstChild);
-      /* 方环铺满整列宽，四角都是格子，浮动按钮会压住格 —— 走一行独立工具条 */
+      if (!flatMode) w.insertBefore(el('div', 'hud-foot', 'three.js / pixi.js 没加载（vendor 缺件），已退回平面示意图。'), w.firstChild);
+      /* 平面图按真实形状铺，四周都是格子，浮动按钮会压住格 —— 走一行独立工具条 */
       const bar = el('div', 'hud-flatbar');
-      bar.appendChild(el('span', 'hud-chip hud-chip--off', '方环示意（可读性优先）'));
+      bar.appendChild(el('span', 'hud-chip hud-chip--off', '平面示意（可读性优先）'));
       w.appendChild(bar);
       return w;
     }
@@ -701,7 +687,7 @@
     else if (WIDE_MQ.addListener) WIDE_MQ.addListener(onBreakpoint);
   }
 
-  /* ---------------- 格子明细：方环与 2.5D 共用一份文案 ---------------- */
+  /* ---------------- 格子明细：平面示意与 2.5D 共用一份文案 ---------------- */
   /* 一家公司可能占两格（原版图就是如此），所以「这格是不是公司」一律按 footprint 问。
      缺 footprint 的旧快照退回单格，不至于整张图认不出公司。 */
   const companyFootprint = (c) => (c.footprint && c.footprint.length ? c.footprint : [c.cellId]);
@@ -730,17 +716,51 @@
     return bits;
   }
 
-  /* ---------------- 棋盘环（?board=flat） ---------------- */
+  /* ---------------- 平面棋盘（?board=flat / 没有 WebGL 时的回退） ----------------
+   * 按 `view.layout` 的地图坐标绝对定位，**不再排方环**。
+   * 四张地图分别 103 / 144 / 110 / 118 格、形状是沿路线铺开的不规则网；
+   * 以前把格号硬排成 17×17 外圈，144 格就会被摊成一个跟实战毫无关系的方阵。
+   * 没有坐标（引擎那份 64 格自建盘）时不画，只留一句说明。
+   */
   function renderFlatBoard() {
     const wrap = el('section', 'hud-board');
     const ring = el('div', 'hud-ring');
+    const L = view.layout;
     const godAt = new Map(st.boardGods.map((g) => [g.cellId, g]));
     const companyAt = new Map(st.companies.flatMap((c) => companyFootprint(c).map((id) => [id, c])));
 
-    for (const { cell, col, row } of RING) {
+    if (!L || !L.cells || L.cells.length !== st.board.length) {
+      wrap.appendChild(el('div', 'hud-foot', '这副棋盘没有地图坐标，平面视图无法定位。'));
+      return wrap;
+    }
+
+    /* 定标：世界 1 单位 → `cw` 像素。格子尺寸按包围盒往 880×560 里塞，塞不下就缩。 */
+    const xs = L.cells.map((p) => p.x);
+    const zs = L.cells.map((p) => p.z);
+    const minX = Math.min(...xs), maxX = Math.max(...xs);
+    const minZ = Math.min(...zs), maxZ = Math.max(...zs);
+    const spanX = Math.max(1, Math.round((maxX - minX) / MINI.spacing));
+    const spanZ = Math.max(1, Math.round((maxZ - minZ) / MINI.spacing));
+    const cw = Math.max(12, Math.min(44, Math.floor(Math.min(880 / (spanX + 1), 560 / (spanZ + 1)))));
+    ring.style.setProperty('--cw', `${cw}px`);
+    /* 100+ 格的图上，一个格子只剩十几像素：名字挤成噪点不如不显示，边框也收细一档 */
+    ring.classList.toggle('hud-ring--tiny', cw < 24);
+    ring.style.width = `${(spanX + 1) * cw}px`;
+    ring.style.height = `${(spanZ + 1) * cw}px`;
+
+    const at = (cellId) => {
+      const p = L.cells[cellId];
+      return p
+        ? [(p.x - minX) / MINI.spacing * cw, (p.z - minZ) / MINI.spacing * cw]
+        : [ring.style.width, ring.style.height];
+    };
+
+    for (const cell of st.board) {
       const d = el('div', 'hud-cell hud-tip');
-      d.style.gridColumn = String(col);
-      d.style.gridRow = String(row);
+      const [left, top] = at(cell.id);
+      d.dataset.cellId = String(cell.id);
+      d.style.left = `${left}px`;
+      d.style.top = `${top}px`;
       const [emoji] = CELL[cell.type];
       const owner = ownerColor(cell.id);
       const corp = companyAt.get(cell.id);
@@ -764,7 +784,9 @@
 
     /* 玩家棋子：同一格挤在一起时挂进该格内部的 pips 容器 */
     const cellEls = new Map();
-    [...ring.children].forEach((node, i) => { if (node.classList.contains('hud-cell')) cellEls.set(RING[i].cell.id, node); });
+    for (const node of ring.children) {
+      if (node.classList.contains('hud-cell')) cellEls.set(Number(node.dataset.cellId), node);
+    }
     const byCell = new Map();
     for (const p of st.players) {
       const list = byCell.get(p.position) || [];
@@ -784,12 +806,17 @@
       host.appendChild(pips);
     }
 
-    ring.appendChild(wrapCenter());
+    /* 中心块放在棋盘质心（layout 已把质心归零），占包围盒的一小块 */
+    const center = wrapCenter();
+    center.style.left = `${((spanX + 1) * cw) / 2}px`;
+    center.style.top = `${((spanZ + 1) * cw) / 2}px`;
+    ring.appendChild(center);
+
     wrap.appendChild(ring);
     return wrap;
   }
 
-  /* 方环回退：环心里把「选中格」和「岛况」两块叠起来 */
+  /* 平面视图的中心块：把「选中格」和「岛况」两块叠在棋盘质心 */
   function wrapCenter() {
     const c = el('div', 'hud-center');
     const bd = el('div', 'ac-panel');
@@ -1262,8 +1289,8 @@
   function renderCamBar() {
     const cam = el('div', 'hud-cambar');
     if (flatMode || !HAS_GL) {
-      /* 方环兜底形态下没有相机：不摆一个假的「跟随 xx」，直接说清楚 */
-      cam.innerHTML = `<span class="hud-camtag hud-camtag--hint">方环示意下没有相机系统</span>`;
+      /* 平面兜底形态下没有相机：不摆一个假的「跟随 xx」，直接说清楚 */
+      cam.innerHTML = `<span class="hud-camtag hud-camtag--hint">平面示意下没有相机系统</span>`;
       return cam;
     }
     cam.innerHTML =
@@ -1536,7 +1563,7 @@
   });
 
   globalThis.AC_HUD = {
-    /** 宿主推进/换局后调用：重新绑定派生量（RING / me / cur 随 state 变）并整壳重绘 */
+    /** 宿主推进/换局后调用：重新绑定派生量（me / cur 随 state 变）并整壳重绘 */
     update(snap) {
       bindSnap(snap);
       /* 热座下「我」就是当前行动者：表现层视角跟着回合走（联机时锁在自己身上，不动用户手选） */
@@ -1556,7 +1583,7 @@
      * 移动演出是否已经落定（棋子逐格跳完、骰子停手）。
      * 宿主用它决定**什么时候把落格面板弹出来** —— 引擎把「掷骰 → 走 n 步 → 落格」压成
      * 一个原子动作，快照到达时棋子还在路上；这时糊一层面板，玩家看到的是上一格的镜头
-     * 配下一格的决定。方环示意 / 没有 WebGL 时恒为「已落定」。
+     * 配下一格的决定。平面示意 / 没有 WebGL 时恒为「已落定」。
      */
     isSettled: () => !(globalThis.D25World && globalThis.D25World.isHopping && globalThis.D25World.isHopping()),
     /**
@@ -1572,7 +1599,7 @@
       pickPlayers = t && Array.isArray(t.players) ? t.players : [];
       pickPlayerReasons = new Map(((t && t.playerRejected) || []).map((r) => [r.id, r.reason]));
       if (stage) stage.classList.toggle('d25-stage--pick', picking());
-      /* 绿环与压暗交给世界层画（它才有格子 mesh）；方环兜底模式下没有 D25World，跳过视觉、通路仍通 */
+      /* 绿环与压暗交给世界层画（它才有格子 mesh）；平面兜底模式下没有 D25World，跳过视觉、通路仍通 */
       globalThis.D25World?.setPickHighlight?.(pickCells ?? []);
       globalThis.D25World?.setPickPlayers?.(pickPlayers);
     },

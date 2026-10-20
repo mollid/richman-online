@@ -71,7 +71,7 @@ export interface BoardCell {
    * 所以「环」只是图的一个特例，不是一条特殊分支。
    */
   neighbors?: number[];
-  /** 棋盘坐标（原版节点像素坐标，渲染层据此摆格子；自建图缺省走 ringPos） */
+  /** 棋盘坐标（原版节点像素坐标，渲染层据此摆格子；没有坐标的棋盘不画） */
   x?: number;
   y?: number;
 }

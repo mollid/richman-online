@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { CHARACTERS, MAP_CHOICES, MAX_DAY_CHOICES, START_CASH_CHOICES, STARTING_CASH, characterById } from '@richman/shared';
+import { CHARACTERS, DEFAULT_MAP_ID, MAP_CHOICES, MAX_DAY_CHOICES, START_CASH_CHOICES, STARTING_CASH, characterById } from '@richman/shared';
 import type { HotseatSeat } from '../../net/session.js';
 import { characterPortrait } from '../../game/portrait.js';
 import { CharacterGrid } from './CharacterGrid.js';
@@ -13,7 +13,8 @@ function dayLimitLabel(days: number | null): string {
 export interface SingleStart {
   seats: HotseatSeat[];
   maxDays: number | null;
-  mapId: number | null;
+  /** 开局地图：产品里只有四张原版图，没有「不选图」 */
+  mapId: number;
   initialCash: number;
 }
 
@@ -29,7 +30,7 @@ export function SingleModeDialog({ onStart, onClose }: { onStart: (opts: SingleS
   /** 座位号 → 是否 AI。缺省 false = 真人 */
   const [bots, setBots] = useState<boolean[]>([false, false, false, false]);
   const [maxDays, setMaxDays] = useState<number | null>(null);
-  const [mapId, setMapId] = useState<number | null>(null);
+  const [mapId, setMapId] = useState<number>(DEFAULT_MAP_ID);
   const [initialCash, setInitialCash] = useState<number>(STARTING_CASH);
 
   /** 改人数时同步 picks：减就砍尾，加就按座位序补没被占的角色 */

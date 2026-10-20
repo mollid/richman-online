@@ -18,6 +18,7 @@ import {
   godSummary,
   ITEMS,
   MAGIC_CONDITION_LABEL,
+  type BoardLayout,
   NPC_NAMES,
   priceIndex,
   TREASURE_POINTS,
@@ -65,11 +66,13 @@ export interface AcSnapshot {
     canOpenStock: boolean;
     owners: AcOwners;
     /**
-     * 棋盘几何（世界坐标）。`null` = 这张图没带坐标，渲染层退回「64 格 = 17×17 外圈」的老算法。
+     * 棋盘几何（世界坐标），由 shared 的 `boardLayout` 算 —— 3D 场景、小地图、回放盘共用这一份。
      *
-     * 由 shared 的 `boardLayout` 算，3D 场景与右下小地图共用同一份 —— 两处各算一次必然错位。
+     * 四张地图每张都自带坐标，所以正常局面里它**一定非空**；`null` 只对应引擎那份无坐标的
+     * 64 格自建盘（单测夹具）。渲染层遇到 `null` 就不画棋盘，不伪造环形兜底 ——
+     * 形状是数据的一部分，画布不该替数据做决定。
      */
-    layout: ReturnType<typeof boardLayout>;
+    layout: BoardLayout | null;
     gods: Array<{ godId: string; cellId: number; ttlDays: number; bornDay: number; name: string; emoji: string; summary: string }>;
     /** 障碍 / 炸弹 / 特殊单位 / 乞丐（见 `AcEntities`） */
     entities: AcEntities;

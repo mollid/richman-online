@@ -1,5 +1,5 @@
 import { Assets, Application, Container, Graphics, Sprite, Text, Texture } from 'pixi.js';
-import { CHARACTERS } from '@richman/shared';
+import { boardLayout, CHARACTERS } from '@richman/shared';
 import type { BoardCell, FacilityType, GameState, Player } from '@richman/shared';
 import { getSettings, SETTINGS_CHANGED_EVENT } from './settings.js';
 
@@ -15,8 +15,7 @@ function animationSpeed(): number {
   }
 }
 
-/** 17×17 外圈 = 64 格（波 3 扩棋盘）；每边 16 步 + 4 个角 */
-const GRID = 17;
+/** 等距瓦片尺寸：格宽 64、格高 32（2:1 菱形） */
 const TILE_W = 64;
 const TILE_H = 32;
 const MOVE_SPEED_CELLS_PER_SEC = 6;
@@ -123,16 +122,22 @@ const FACILITY_MARKS: Record<FacilityType, { icon: string; color: number }> = {
 };
 
 /**
- * 外圈 64 格 → 等距网格坐标（顺时针）：
- * 0..16 底边右行（含右下角）→ 17..32 右边上行（含右上角）
- * → 33..48 顶边左行（含左上角）→ 49..63 左边下行。
+ * 棋盘落位一律取 shared 的 `boardLayout`（地图自带坐标，与 3D 对局盘、右下小地图同一份），
+ * 本文件只做「世界坐标 → 2:1 等距屏幕」的投影。
+ *
+ * 这里以前排的是一个「64 格方环」：先自带一份 `perimeterGrid()`，后来又换成 shared 里的方环函数。
+ * 两次都错在同一件事 —— 四张地图各有 103 / 144 / 110 / 118 格、形状是沿路线铺开的不规则网，
+ * 把 144 个格号硬排成方环，回放里看到的棋盘跟实战完全不是一张图。
+ *
+ * 定标：`boardLayout` 默认 `spacing = 2`（相邻格世界距离 = 2），而等距投影里一格的屏幕位移是
+ * (±TILE_W/2, ±TILE_H/2)。所以世界 1 单位 = TILE_W/(2·spacing) 个屏幕像素，两个方向同式。
  */
-function perimeterGrid(index: number): { x: number; y: number } {
-  const side = GRID - 1;
-  if (index <= side) return { x: index, y: side };
-  if (index <= side * 2) return { x: side, y: side - (index - side) };
-  if (index <= side * 3) return { x: side - (index - side * 2), y: 0 };
-  return { x: 0, y: index - side * 3 };
+const LAYOUT_SPACING = 2;
+const ISO_A = TILE_W / (2 * LAYOUT_SPACING);
+const ISO_B = TILE_H / (2 * LAYOUT_SPACING);
+
+function isoOf(x: number, z: number): { x: number; y: number } {
+  return { x: (x - z) * ISO_A, y: (x + z) * ISO_B };
 }
 
 function cellColor(cell: BoardCell): number {
@@ -164,6 +169,8 @@ export class BoardRenderer {
   private board: BoardCell[];
   private container: HTMLElement;
   private destroyed = false;
+  /** 棋盘没有地图坐标：不再重试初始化，也不渲染（避免每次 setState 都刷一条警告） */
+  private noLayout = false;
   private elapsed = 0;
   private initializing = false;
   private initPromise: Promise<void> | null = null;
@@ -202,6 +209,14 @@ export class BoardRenderer {
   async init(): Promise<void> {
     if (this.destroyed || this.initializing) return;
     if (!this.board.length) return;
+    /* 没有地图坐标就不画棋盘：这里以前会排一个 64 格方环顶替，结果 144 格的图被排成假的形状。
+       回放数据来自真实对局，一定有坐标；走不到这一支时宁可空着也不编一个棋盘出来。 */
+    const layout = boardLayout(this.board, LAYOUT_SPACING);
+    if (!layout) {
+      this.noLayout = true;
+      console.warn('[BoardRenderer] 这副棋盘没有坐标（boardLayout 返回 null），不渲染');
+      return;
+    }
     this.initializing = true;
     const app = new Application();
     await app.init({
@@ -235,15 +250,14 @@ export class BoardRenderer {
     this.world.addChild(this.overlayLayer);
     this.world.addChild(this.tokenLayer);
 
-    // 计算外圈格子的等距屏幕坐标（先以原点为中心，渲染时整体居中）
+    // 地图坐标 → 等距屏幕坐标（先以原点为中心，渲染时整体居中）
     let minX = Infinity;
     let maxX = -Infinity;
     let minY = Infinity;
     let maxY = -Infinity;
     for (let i = 0; i < this.board.length; i++) {
-      const g = perimeterGrid(i);
-      const x = (g.x - g.y) * (TILE_W / 2);
-      const y = (g.x + g.y) * (TILE_H / 2);
+      const p = layout.cells[i]!;
+      const { x, y } = isoOf(p.x, p.z);
       this.cellPositions.push({ x, y });
       minX = Math.min(minX, x);
       maxX = Math.max(maxX, x);
@@ -276,7 +290,7 @@ export class BoardRenderer {
     this.pendingGame = game;
     if (!this.app) {
       // 远程大厅阶段棋盘数据可能尚未同步，延迟到数据到达后再初始化
-      if (this.board.length && !this.initializing) {
+      if (this.board.length && !this.initializing && !this.noLayout) {
         this.initPromise = this.init().then(() => {
           if (this.pendingGame && this.app) {
             this.drawOwnershipOverlay(this.pendingGame);

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { MAP_CHOICES, MAX_DAY_CHOICES, ONLINE_DEFAULT_MAX_DAYS, START_CASH_CHOICES, STARTING_CASH } from '@richman/shared';
+import { DEFAULT_MAP_ID, MAP_CHOICES, MAX_DAY_CHOICES, ONLINE_DEFAULT_MAX_DAYS, START_CASH_CHOICES, STARTING_CASH } from '@richman/shared';
 import { ColyseusSession, type RoomSummary } from '../../net/remote.js';
 import type { AuthUser } from '../../net/auth.js';
 import { LbDialog, LbField, LbSeg } from './LbDialog.js';
@@ -16,7 +16,8 @@ function idleLabel(sec: number): string {
 export interface OnlineCreate {
   playerName: string;
   maxDays: number | null;
-  mapId: number | null;
+  /** 开局地图：只有四张原版图 */
+  mapId: number;
   isPrivate: boolean;
   initialCash: number;
 }
@@ -48,7 +49,7 @@ export function OnlineModeDialog({
   onClose: () => void;
 }) {
   const [maxDays, setMaxDays] = useState<number | null>(ONLINE_DEFAULT_MAX_DAYS);
-  const [mapId, setMapId] = useState<number | null>(null);
+  const [mapId, setMapId] = useState<number>(DEFAULT_MAP_ID);
   const [initialCash, setInitialCash] = useState<number>(STARTING_CASH);
   // 建房默认可公开 —— 大厅列表本来就是给「顺手凑一桌」用的，想只发给好友再切成私密
   const [isPrivate, setIsPrivate] = useState(false);

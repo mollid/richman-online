@@ -74,11 +74,20 @@ import stockTableJson from './stocks.json';
 
 export const ORIGINAL_MAPS: OriginalMap[] = [map0, map1, map2, map3] as unknown as OriginalMap[];
 
-/** 可选地图：`null` = 我们自建的 64 格环（默认图，也是全部既有测试与录像的基线） */
-export const MAP_CHOICES: Array<{ id: number | null; name: string; cells: number }> = [
-  { id: null, name: '本岛环线（默认）', cells: 64 },
-  ...ORIGINAL_MAPS.map((m) => ({ id: m.mapId, name: m.name, cells: m.nodeCount })),
-];
+/**
+ * 开局可选地图：只有四张原版图。
+ *
+ * 这里曾经还挂着一个 `{ id: null, name: '本岛环线（默认）' }` —— 我们自己排的 64 格方环。
+ * 它不是地图：没有坐标、形状是硬摊出来的 17×17 外圈，回放盘与小地图都得为它各写一份
+ * 假几何。四张原版图各有 103 / 144 / 110 / 118 格和真实坐标，棋盘形状该由数据决定，
+ * 所以那个选项被删了。`createGame()` 仍接受 `mapId: null`（无坐标的自建盘），
+ * 那是引擎单测的夹具，产品入口不再提供。
+ */
+export const MAP_CHOICES: Array<{ id: number; name: string; cells: number }> =
+  ORIGINAL_MAPS.map((m) => ({ id: m.mapId, name: m.name, cells: m.nodeCount }));
+
+/** 开局缺省地图：产品里不存在「不选图」，一律落到第一张原版图 */
+export const DEFAULT_MAP_ID = MAP_CHOICES[0]!.id;
 
 const GROUP_CYCLE: PropertyGroup[] = ['residential', 'coastal', 'industrial', 'commercial', 'tech', 'financial'];
 

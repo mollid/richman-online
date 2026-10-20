@@ -9,6 +9,7 @@ import {
   characterById,
   characterOfSeat,
   createGame,
+  DEFAULT_MAP_ID,
   nextRandom,
   normalizeGameState,
   type DateSerial,
@@ -119,7 +120,8 @@ export interface HotseatOptions {
   seats?: HotseatSeat[];
   seed?: number;
   maxDays?: number | null;
-  mapId?: number | null;
+  /** 开局地图：产品里只有四张原版图 */
+  mapId?: number;
   initialCash?: number | null;
   /** UI-03 读档：直接沿用存档状态与它自带的动作日志，其余建局参数忽略 */
   resume?: HotseatSave | null;
@@ -170,7 +172,7 @@ export class LocalHotseatSession implements GameSession {
       createGame(players, seed, {
         startDate: resolveStartDate(),
         maxDays: opts.maxDays ?? null,
-        mapId: opts.mapId ?? null,
+        mapId: opts.mapId ?? DEFAULT_MAP_ID,
         initialCash: opts.initialCash ?? null,
       }),
       { type: 'START_GAME' },

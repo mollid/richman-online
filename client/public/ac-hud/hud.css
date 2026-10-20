@@ -514,20 +514,20 @@ body {
 }
 .hud-pop__row span { color: var(--ac-dim); font-weight: 700; text-align: right; }
 
-/* ---------- 方环棋盘（?board=flat 回退） ---------- */
+/* ---------- 平面棋盘（?board=flat / 无 WebGL 回退） ----------
+   按地图坐标绝对定位，不再是 17×17 方环：四张图分别 103 / 144 / 110 / 118 格，
+   形状是沿路线铺开的不规则网，排成方阵只是画了个假棋盘。 */
 .hud-flatbar { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex: none; padding-top: 6px; }
 .hud-ring {
   position: relative;
-  width: 100%;
-  max-width: 900px;
-  aspect-ratio: 1 / 1;
-  display: grid;
-  grid-template: repeat(17, 1fr) / repeat(17, 1fr);
-  gap: 2px;
+  /* 宽高与 --cw（世界 1 单位折多少像素）都由 hud.js 按 view.layout 的包围盒算出并写进来 */
   margin: 0 auto;
+  flex: none;
 }
 .hud-cell {
-  position: relative;
+  position: absolute;
+  width: var(--cw, 40px);
+  height: var(--cw, 40px);
   border-radius: 9px;
   border: 2px solid var(--ac-line);
   background: var(--ac-cream);
@@ -536,9 +536,12 @@ body {
   transition: transform .12s, box-shadow .12s;
 }
 .hud-cell--named { background: color-mix(in srgb, var(--ac-cream) 78%, var(--g, var(--ac-cream2)) 22%); }
-.hud-cell__e { font-size: clamp(10px, 1.35vw, 18px); line-height: 1; }
+/* 格子太小（100+ 格的地图）时只留图标与颜色，名字挤成噪点不如不显示 */
+.hud-ring--tiny .hud-cell { border-width: 1px; border-radius: 5px; }
+.hud-ring--tiny .hud-cell__n { display: none; }
+.hud-cell__e { font-size: calc(var(--cw, 40px) * .42); line-height: 1; }
 .hud-cell__n {
-  font-size: clamp(6.5px, .6vw, 9.5px); font-weight: 800; color: var(--ac-text);
+  font-size: calc(var(--cw, 40px) * .21); font-weight: 800; color: var(--ac-text);
   text-align: center; line-height: 1.1; max-width: 98%; max-height: 2.4em;
   overflow: hidden; word-break: break-all;
 }
@@ -558,12 +561,15 @@ body {
 .hud-cell__pips .hud-pip:only-child { width: 14px; height: 14px; }
 .hud-center {
   position: absolute;
-  grid-area: 3 / 3 / 15 / 15;
+  /* left/top 由 hud.js 设为棋盘质心（layout 已把质心归零），这里只负责居中与尺寸 */
+  transform: translate(-50%, -50%);
+  width: min(42%, 380px);
+  max-height: 70%;
   display: flex; flex-direction: column; gap: 8px;
   padding: 8px; min-width: 0; overflow: hidden;
   justify-content: center;
 }
-/* 环心宽度是「12/17 环宽」，比面板内容窄 —— 不收紧会把面板压到右侧格子上（实测压住 5 列） */
+/* 中心块比棋盘窄 —— 不收紧会把面板压到周围的格子上 */
 .hud-center > * { max-width: 100%; min-width: 0; }
 .hud-center .ac-panel { overflow: hidden; }
 .hud-center .ac-panel__bd { overflow: hidden; }

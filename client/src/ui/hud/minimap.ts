@@ -8,7 +8,7 @@
  * 几何必须与 3D 场景同源：`view.layout` 是 shared 的 `boardLayout` 算出来的世界坐标，
  * 这里按同一个 `spacing` 定标。两处各算一次，取景框就会相对格子偏掉。
  */
-import { miniColor, ringCells, type BoardCell, type BoardLayout } from '@richman/shared';
+import { miniColor, type BoardCell, type BoardLayout } from '@richman/shared';
 
 /** `cell` = 一格边长（CSS 像素），`scale` = 画布倍图，`spacing` 与世界层同口径 */
 export const MINI = { cell: 6, pad: 7, scale: 2, spacing: 2 };
@@ -51,55 +51,33 @@ export interface MiniGeom {
 const hex = (n: number) => `#${n.toString(16).padStart(6, '0')}`;
 
 /**
- * 有 `layout` 就按世界坐标铺（原版图：格数不等、形状不是正方形，画布边长现算）；
- * 没有就退回「外圈方环」—— 那是自建图没带坐标时的兜底，与 3D 层用的是同一个 `ringCells`。
+ * 一律按世界坐标铺，`layout` 缺失就返回 `null`（调用方不画）。
+ *
+ * 这里曾经有个「方环兜底」：拿格号自己排一个 17×17 外圈出来。但产品里四张地图
+ * 每张都自带坐标、格数还各不相同（103 / 144 / 110 / 118），把 144 格硬排成方环只是画个
+ * 假的形状给玩家看。形状是数据的一部分 —— 没有几何就不画，别替数据决定。
  */
-export function miniGeom(board: readonly BoardCell[], layout: BoardLayout | null): MiniGeom {
+export function miniGeom(board: readonly BoardCell[], layout: BoardLayout | null): MiniGeom | null {
   const k = MINI.cell / MINI.spacing;
-  const cells = layout?.cells;
-  if (cells && cells.length === board.length) {
-    const xs = cells.map((p) => p.x);
-    const zs = cells.map((p) => p.z);
-    const midX = (Math.max(...xs) + Math.min(...xs)) / 2;
-    const midZ = (Math.max(...zs) + Math.min(...zs)) / 2;
-    const w = (Math.max(...xs) - Math.min(...xs)) * k + MINI.cell + MINI.pad * 2;
-    const h = (Math.max(...zs) - Math.min(...zs)) * k + MINI.cell + MINI.pad * 2;
-    const px = (x: number) => w / 2 + (x - midX) * k;
-    const pz = (z: number) => h / 2 + (z - midZ) * k;
-    return {
-      w,
-      h,
-      k,
-      at: (id) => {
-        const c = cells[id];
-        return c ? [px(c.x), pz(c.z)] : [w / 2, h / 2];
-      },
-      world: (tx, tz) => [px(tx), pz(tz)],
-    };
-  }
-  const ring = ringCells(board);
-  const L = Math.ceil(board.length / 4) + 1;
-  const d = MINI.cell * L + MINI.pad * 2;
-  /* 方环的世界原点：`world.js:ringPos()` 写的是 `(col - 9) * SPACING`（SPACING=2，与这里
-     MINI.spacing 同口径），所以反函数必须是 `col = x/spacing + 9`。
-     旧小地图在这一行用了 `+8` —— 取景框相对格子整整偏一格，因为近景下画面里本来就只露几格，
-     偏一格的框看着仍然"差不多对"，只有拿坐标反算才看得出来。
-     这里写成 (L+1)/2 而不是硬编码 9：64 格环上两者相同，但万一这张图没带坐标又不是 64 格，
-     它跟着边长走，不会把格子排进负坐标。 */
-  const origin = (L + 1) / 2;
-  const atXY = (col: number, row: number): [number, number] => [
-    MINI.pad + (col - 1) * MINI.cell + MINI.cell / 2,
-    MINI.pad + (row - 1) * MINI.cell + MINI.cell / 2,
-  ];
+  const cells = layout?.cells.length === board.length ? layout.cells : null;
+  if (!cells) return null;
+  const xs = cells.map((p) => p.x);
+  const zs = cells.map((p) => p.z);
+  const midX = (Math.max(...xs) + Math.min(...xs)) / 2;
+  const midZ = (Math.max(...zs) + Math.min(...zs)) / 2;
+  const w = (Math.max(...xs) - Math.min(...xs)) * k + MINI.cell + MINI.pad * 2;
+  const h = (Math.max(...zs) - Math.min(...zs)) * k + MINI.cell + MINI.pad * 2;
+  const px = (x: number) => w / 2 + (x - midX) * k;
+  const pz = (z: number) => h / 2 + (z - midZ) * k;
   return {
-    w: d,
-    h: d,
+    w,
+    h,
     k,
     at: (id) => {
-      const r = ring[id];
-      return r ? atXY(r.col, r.row) : [d / 2, d / 2];
+      const c = cells[id];
+      return c ? [px(c.x), pz(c.z)] : [w / 2, h / 2];
     },
-    world: (tx, tz) => atXY(tx / MINI.spacing + origin, tz / MINI.spacing + origin),
+    world: (tx, tz) => [px(tx), pz(tz)],
   };
 }
 
@@ -116,6 +94,11 @@ export function drawMinimap(cv: HTMLCanvasElement, input: MiniInput): boolean {
   const ctx = cv.getContext('2d');
   if (!ctx) return false;
   const g = miniGeom(input.board, input.layout);
+  /* 没有几何（引擎那份无坐标的自建盘）就什么都不画：以前会伪造一个方环出来 */
+  if (!g) {
+    ctx.clearRect(0, 0, cv.width, cv.height);
+    return false;
+  }
   const wantW = Math.round(g.w * MINI.scale);
   const wantH = Math.round(g.h * MINI.scale);
   if (cv.width !== wantW || cv.height !== wantH) {

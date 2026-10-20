@@ -1,5 +1,5 @@
 import { Client, type Room } from 'colyseus.js';
-import { availableActions, normalizeGameState, type GameState, type PlayerAction } from '@richman/shared';
+import { availableActions, DEFAULT_MAP_ID, normalizeGameState, type GameState, type PlayerAction } from '@richman/shared';
 import type { GameSession } from './session.js';
 import { getSettings } from '../game/settings.js';
 
@@ -64,7 +64,7 @@ export class ColyseusSession implements GameSession {
     roomId?: string;
     seed?: number;
     maxDays?: number | null;
-    mapId?: number | null;
+    mapId?: number;
     /** 私密房：不进大厅列表，只能凭房间码加入。只对建房有效 */
     isPrivate?: boolean;
     /** 起始资金档位：只对建房有效，房主说了算 */
@@ -318,7 +318,8 @@ function emptyState(): GameState {
     turn: 0,
     round: 1,
     seed: 0,
-    mapId: null,
+    // 占位局也报第一张图：产品里没有「无地图」状态
+    mapId: DEFAULT_MAP_ID,
     rngState: 0,
     log: [{ turn: 0, text: '正在同步房间状态…' }],
     winnerId: null,

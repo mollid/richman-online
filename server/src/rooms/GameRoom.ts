@@ -9,6 +9,7 @@ import {
   botDecide,
   characterById,
   createGame,
+  DEFAULT_MAP_ID,
   forceGameOver,
   nextRandom,
   pushLog,
@@ -130,8 +131,9 @@ export class GameRoom extends Room {
     this.game = createGame([], this.seed, {
       startDate: this.startDate,
       maxDays: options.maxDays === undefined ? ONLINE_DEFAULT_MAX_DAYS : resolveMaxDays(options.maxDays),
-      // 地图同理要区分「没传」与「传了 null（自建默认图）」，而 0 号是合法地图
-      mapId: options.mapId ?? null,
+      // 地图同理要区分「没传」与「传了具体图」：没传就落到第一张原版图。
+      // 自建 64 格环（mapId: null）已从产品入口移除，只剩引擎单测在用它当夹具。
+      mapId: options.mapId ?? DEFAULT_MAP_ID,
       // 起始资金：房主在开局面板选的档位。非法值由 `resolveInitialCash` 退回默认档，
       // 后面 `addPlayer` 与贷款上限都读这一份（`game.initialCashPerPlayer`）。
       initialCash: resolveInitialCash(options.initialCash),
