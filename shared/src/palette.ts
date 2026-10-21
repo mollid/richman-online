@@ -14,31 +14,31 @@ import type { BoardCell, PropertyGroup } from './types.js';
  * 漂了会红 —— 至少不再是静默的。
  */
 export const GROUP_HEX: Record<PropertyGroup, number> = {
-  residential: 0x8fd07a,
-  commercial: 0x7ec8ef,
-  industrial: 0xc9b48a,
-  tech: 0xb7a6e6,
-  coastal: 0x7fd8c8,
-  financial: 0xf0b96a,
+  residential: 0xa9dd8f,
+  commercial: 0x8ed1f5,
+  industrial: 0xd7c49c,
+  tech: 0xc2b2ee,
+  coastal: 0x87dfd1,
+  financial: 0xf6c07c,
 };
 
 /** 无集团格型（功能格）的底色 */
 export const TYPE_HEX: Partial<Record<BoardCell['type'], number>> = {
-  start: 0xffe08a,
-  chance: 0xffd0e0,
-  news: 0xdfe9ff,
-  'free-card': 0xe6e0ff,
-  points: 0xfff0b8,
-  lottery: 0xd6f2e6,
-  magic: 0xf0d9ff,
-  tax: 0xe8e2d2,
-  hospital: 0xffe3e3,
-  jail: 0xe3e6ee,
-  game: 0xd9f0ff,
-  shop: 0xffe6c8,
-  bank: 0xf2ead2,
-  god: 0xffd9a8,
-  company: 0xd9c9a3,
+  start: 0xffd98a,
+  chance: 0xffc9dc,
+  news: 0xcfe1ff,
+  'free-card': 0xded4ff,
+  points: 0xffeeb0,
+  lottery: 0xc9f2df,
+  magic: 0xe8d2ff,
+  tax: 0xe5dcc6,
+  hospital: 0xffd9db,
+  jail: 0xd8deea,
+  game: 0xc9ecff,
+  shop: 0xffdfba,
+  bank: 0xf6ecd0,
+  god: 0xffcf95,
+  company: 0xd8c6a0,
 };
 
 /** canvas 要的是 `#rrggbb` 字符串，world 要的是数字 —— 一处定义，两种形态都给出 */

@@ -10,6 +10,7 @@ import path from 'node:path';
 import {
   applyAction,
   availableActions,
+  boardLayout,
   botDecide,
   CARDS,
   createGame,
@@ -20,9 +21,11 @@ import {
   godSummary,
   ITEMS,
   nextRandom,
+  NPC_NAMES,
   allAssetSummaries,
   allStockSummaries,
   priceIndex,
+  TREASURE_POINTS,
 } from '../../../shared/src/index.js';
 import type { GameState, PlayerAction, PlayerDef } from '../../../shared/src/index.js';
 
@@ -39,12 +42,15 @@ const OUT = path.resolve(HERE, '..', arg('out', 'snapshot.js'));
 const map = <T, R>(src: Record<string, T>, f: (v: T) => R): Record<string, R> =>
   Object.fromEntries(Object.entries(src).map(([k, v]) => [k, f(v)]));
 
-/** 岛民名 + 动物森林配色，只为原型好看，与规则无关 */
+/**
+ * 岛民名 + 动物森林配色，只为原型好看，与规则无关。
+ * `characterId` 一并给出：棋子贴图走 `char_<characterId>@v6.png`，缺了它四枚棋子全是兜底圆片。
+ */
 const DEFS: PlayerDef[] = [
-  { id: 'bot-1', name: '阿绿', color: 0x6fbf5a },
-  { id: 'bot-2', name: '阿蓝', color: 0x5fc4e0 },
-  { id: 'bot-3', name: '阿黄', color: 0xffd45e },
-  { id: 'bot-4', name: '阿粉', color: 0xf2909e },
+  { id: 'bot-1', name: '阿绿', color: 0x6fbf5a, characterId: 'afu' },
+  { id: 'bot-2', name: '阿蓝', color: 0x5fc4e0, characterId: 'xiaomei' },
+  { id: 'bot-3', name: '阿黄', color: 0xffd45e, characterId: 'tiexiong' },
+  { id: 'bot-4', name: '阿粉', color: 0xf2909e, characterId: 'huadasao' },
 ];
 
 let state: GameState = applyAction(
@@ -131,6 +137,36 @@ const gods = picked.boardGods.map((bg) => {
   return { ...bg, name: god?.name ?? bg.godId, emoji: god?.emoji ?? '✨', summary: god ? godSummary(god) : '' };
 });
 
+/* 棋盘活物：与 `client/src/game/acSnapshot.ts` 的 `entities` 同形状。
+   这张快照是**冻结**的，所以它必须自己把「谁放的 / 还剩几步」这类说法算全，
+   否则 world.js 的 `syncEntities()` 会拿到 undefined 直接 return（场景里一个实体都不画）。 */
+const nameOf = (pid: string) => picked.players.find((p) => p.id === pid)?.name ?? pid;
+const entities = {
+  obstacles: [
+    ...picked.roadblocks.map((o) => ({ kind: 'roadblock' as const, cellId: o.cellId, ownerId: o.ownerId, ownerName: nameOf(o.ownerId) })),
+    ...picked.mines.map((o) => ({ kind: 'mine' as const, cellId: o.cellId, ownerId: o.ownerId, ownerName: nameOf(o.ownerId) })),
+    ...picked.trapBombs.map((o) => ({ kind: 'bomb' as const, cellId: o.cellId, ownerId: o.ownerId, ownerName: nameOf(o.ownerId) })),
+  ],
+  // 挂身炸弹跟着携带者走；找不到人给 -1，渲染层按「不上屏」处理
+  bombs: picked.bombs.map((b) => ({
+    playerId: b.playerId,
+    cellId: picked.players.find((p) => p.id === b.playerId)?.position ?? -1,
+    stepsLeft: b.stepsLeft,
+    name: nameOf(b.playerId),
+  })),
+  npcs: picked.npcs.map((n) => ({
+    kind: n.kind,
+    cellId: n.position,
+    ownerId: n.ownerId,
+    ownerName: n.ownerId ? nameOf(n.ownerId) : null,
+    jailed: n.jailed,
+    name: NPC_NAMES[n.kind] ?? n.kind,
+  })),
+  beggars: picked.players
+    .filter((p) => p.bankrupt && !p.beggarGone)
+    .map((p) => ({ playerId: p.id, cellId: p.position, name: p.name })),
+};
+
 const snapshot = {
   generatedAt: new Date().toISOString(),
   engine: { turn: picked.turn, round: picked.round, steps, seed: SEED, score: best!.score, scannedTurns: STOP_TURN },
@@ -143,7 +179,13 @@ const snapshot = {
     estates: Object.fromEntries(picked.players.map((p) => [p.id, estateGroups(picked, p)])),
     actions: availableActions(picked),
     owners,
+    /* 地图自带坐标 ⇒ 把世界布局一起带上：否则 world.js 退回「17×17 外圈」兜底算法，
+       3D 场景里的格子落位与真机对不上，和「改前 / 改后」并排看就是两副不同的棋盘。 */
+    layout: boardLayout(picked.board),
     gods,
+    entities,
+    treasureCellId: picked.treasureCellId,
+    treasurePoints: TREASURE_POINTS,
     myPlayerId: me?.id ?? null,
     currentCell: picked.board[me?.position ?? 0],
     /** 原型只要文案，所以把定义表压成 id -> 展示字段，省掉在浏览器里重建 shared */
