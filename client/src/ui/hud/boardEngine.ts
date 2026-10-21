@@ -37,6 +37,8 @@ export interface WorldApi {
   tileAnchor(cellId: number): { x: number; y: number; z: number };
   lastPointer(): { x: number; y: number };
   focusPlayer(pid: string, opts?: unknown): void;
+  /** 把镜头看向某个世界坐标（小地图拖动）。会释放跟随，松手后停在原地直到下次换人聚焦 */
+  panTo(x: number, z: number): void;
   isCameraLocked(): boolean;
   visibleCells(): { count: number };
   cameraState(): CamStateOut;

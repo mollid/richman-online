@@ -15,7 +15,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { AcSnapshot } from '../../game/acSnapshot.js';
-import { drawMinimap } from './minimap.js';
+import { drawMinimap, miniGeom } from './minimap.js';
 
 /** 一次移动演出最多跳几格（0.16 秒/格 ≈ 1.3 秒）；更长的行程只演最后几格 */
 const HOP_MAX_CELLS = 8;
@@ -400,6 +400,62 @@ export function useBoardStage(opts: BoardStageOptions) {
     const known = S.state.players.some((p) => p.id === activePidRef.current);
     if (opts.followCurrent || !known) activePidRef.current = want;
   }, [opts.snapshot, opts.followCurrent]);
+
+  /* ---------- 小地图拖动：按住哪，镜头就看向哪 ----------
+   * 镜头只剩近景之后，小地图是唯一能「看全局」的地方；但光能看还不够 ——
+   * 想瞧一眼岛另一头发生了什么，只能等别人走到那儿，那就等于没这个功能。
+   * 按住拖过去，3D 那边就跟着平移。
+   *
+   * 用 pointer 事件而不是鼠标事件：鼠标、触屏、手写笔同一套。
+   * 按下即 seek（点一下也生效，不必先拖起来）。
+   * setPointerCapture 让指针拖出小地图边界后仍算同一次拖动 ——
+   * 拖快了一滑就出去，不捕获的话画面会在半路停住，读成「卡了」。
+   */
+  useEffect(() => {
+    const cv = miniRef.current;
+    if (!cv) return;
+    let dragging = false;
+
+    const seek = (e: PointerEvent) => {
+      const w = W();
+      if (!w?.panTo) return;
+      const S = o.current.snapshot;
+      const g = miniGeom(S.state.board, S.view.layout);
+      if (!g) return;
+      /* 画布是倍图（width = CSS 宽 × scale），而 getBoundingClientRect 给的是 CSS 像素。
+         先把指针归一到 0→1 再乘几何尺寸，倍图比改了这里也不用动。 */
+      const r = cv.getBoundingClientRect();
+      if (!r.width || !r.height) return;
+      const [x, z] = g.unproject(
+        ((e.clientX - r.left) / r.width) * g.w,
+        ((e.clientY - r.top) / r.height) * g.h,
+      );
+      w.panTo(x, z);
+    };
+    const down = (e: PointerEvent) => {
+      dragging = true;
+      cv.setPointerCapture?.(e.pointerId);
+      seek(e);
+      e.preventDefault();
+    };
+    const move = (e: PointerEvent) => { if (dragging) seek(e); };
+    const up = (e: PointerEvent) => {
+      if (!dragging) return;
+      dragging = false;
+      if (cv.hasPointerCapture?.(e.pointerId)) cv.releasePointerCapture(e.pointerId);
+    };
+
+    cv.addEventListener('pointerdown', down);
+    cv.addEventListener('pointermove', move);
+    cv.addEventListener('pointerup', up);
+    cv.addEventListener('pointercancel', up);
+    return () => {
+      cv.removeEventListener('pointerdown', down);
+      cv.removeEventListener('pointermove', move);
+      cv.removeEventListener('pointerup', up);
+      cv.removeEventListener('pointercancel', up);
+    };
+  }, []);
 
   const apiRef = useRef<StageApi>({ isSettled: () => !globalThis.D25World?.isHopping?.() });
 

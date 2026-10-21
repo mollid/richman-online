@@ -332,6 +332,14 @@
   border-radius: 10px;
   box-shadow: 0 3px 0 var(--mp-ink);
   background: rgba(255, 253, 246, 0.9);
+  /* 拖动导航：按住哪，3D 那边就看向哪。手型光标是唯一能让人看出「这块能拖」的提示 */
+  cursor: grab;
+  /* 触屏上必须挡住默认手势，否则拖动会被浏览器当成滚动页面 */
+  touch-action: none;
+  user-select: none;
+}
+.mp-mini:active {
+  cursor: grabbing;
 }
 .mp-mini[hidden] {
   display: none;

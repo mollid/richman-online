@@ -48,6 +48,8 @@ export interface MiniGeom {
   k: number;
   at: (cellId: number) => [number, number];
   world: (tx: number, tz: number) => [number, number];
+  /** 小地图像素 → 世界坐标。拖动导航要用它：指针落在哪一格，镜头就得看向那片地。 */
+  unproject: (px: number, py: number) => [number, number];
 }
 
 const hex = (n: number) => `#${n.toString(16).padStart(6, '0')}`;
@@ -80,6 +82,9 @@ export function miniGeom(board: readonly BoardCell[], layout: BoardLayout | null
       return c ? [px(c.x), pz(c.z)] : [w / 2, h / 2];
     },
     world: (tx, tz) => [px(tx), pz(tz)],
+    /* px/pz 的逆：拖动小地图时指针位置换成世界坐标。
+       必须与上面两个共享同一套 midX/midZ/k —— 各算一次，拖到的位置和画出来的位置就会差一截。 */
+    unproject: (mx, my) => [(mx - w / 2) / k + midX, (my - h / 2) / k + midZ],
   };
 }
 

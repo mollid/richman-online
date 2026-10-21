@@ -37,6 +37,7 @@ const RENDERER = read('../../client/src/game/BoardRenderer.ts');
 const MINI = read('../../client/src/ui/hud/minimap.ts');
 const HUD_TSX = read('../../client/src/ui/hud/MpHud.tsx');
 const STAGE = read('../../client/src/ui/hud/useBoardStage.ts');
+const HUD_CSS = read('../../client/src/ui/hud/hud.css');
 
 /** 取 `const NAME = { ... }` 里花括号包着的那段（括号配对扫描，正则扛不住嵌套） */
 function objectBody(src: string, name: string): string {
@@ -320,5 +321,26 @@ describe('三个消费方都读皮肤，不再各自写死', () => {
     expect(STAGE, '选目标的可达格必须传给小地图').toContain('reachable: o.current.pick?.cells');
     // 取景框不再有条件：只有一种镜头，框永远该画
     expect(MINI, '取景框不许再按视角模式判断').not.toContain('input.iso');
+  });
+
+  it('小地图能拖动导航：按住哪，镜头就看向哪', () => {
+    /* 只「能看全图」不够：想瞧一眼岛另一头，还得能走过去，否则等于没有这个功能。
+       链路是 小地图指针 → unproject 换世界坐标 → world.panTo。 */
+
+    // 逆变换必须与画图共用同一套 midX/midZ/k —— 各算一次，拖到的位置就和画出来的差一截
+    expect(MINI).toContain('unproject');
+    expect(MINI).toMatch(/unproject: \(mx, my\) => \[\(mx - w \/ 2\) \/ k \+ midX/);
+
+    // panTo 必须**先**释放跟随：跟随状态下每帧把注视点往玩家身上拉，拖过去下一帧就被拽回来
+    expect(WORLD, 'panTo 没有释放跟随 —— 拖了等于没拖').toMatch(/panTo\(x, z\) \{\s*releaseFollow\(\);/);
+
+    // 事件绑在小地图上，并且用 pointer 事件（鼠标 / 触屏 / 手写笔同一套）
+    expect(STAGE).toContain("cv.addEventListener('pointerdown'");
+    expect(STAGE).toMatch(/cv\.setPointerCapture\?\.\(e\.pointerId\)/);
+    expect(STAGE).toContain('w.panTo(x, z)');
+
+    // 触屏下没有 touch-action: none，拖动会被浏览器当成滚页面
+    expect(HUD_CSS).toMatch(/\.mp-mini \{[\s\S]*?touch-action: none/);
+    expect(HUD_CSS, '手型光标是唯一能看出「这块能拖」的提示').toMatch(/\.mp-mini \{[\s\S]*?cursor: grab/);
   });
 });

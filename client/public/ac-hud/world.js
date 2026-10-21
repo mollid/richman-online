@@ -1467,6 +1467,19 @@
     stats() {
       return { fps: clock.fps, calls: renderer ? renderer.info.render.calls : 0, tris: renderer ? renderer.info.render.triangles : 0, cam: { ...cam } };
     },
+    /**
+     * 把镜头看向某个世界坐标 —— 小地图拖动走这里。
+     *
+     * 为什么要先释放跟随：跟随状态下 `stepCamera` 每帧把注视点往玩家身上拉，
+     * 拖过去的注视点下一帧就被拽回来，手指还在拖、画面却不动，读成「功能没做」。
+     * 松手后停在原地（camState='idle'），直到下一次换人聚焦 ——
+     * 那是「该看谁」的权威来源，也是这套 HUD 里仅剩的自动回位时机。
+     */
+    panTo(x, z) {
+      releaseFollow();
+      target.set(x, target.y, z);
+      applyCam();
+    },
     /** 回到默认近景机位。会先释放跟随 —— 否则用户手选的机位下一帧就被跟随逻辑拽回玩家身上 */
     setView() {
       releaseFollow();
