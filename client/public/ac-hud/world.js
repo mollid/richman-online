@@ -33,7 +33,6 @@
   const DEPTH = GEOM.depth;
   /** 地图坐标 → 世界单位的缩放。默认 spacing/mapStep = 1，改 spacing 才真的会铺开 */
   const K = GEOM.spacing / GEOM.mapStep;
-  const money = (n) => Math.round(n).toLocaleString('zh-CN');
   const EMOJI = {
     start: '🏁', property: '🏠', commercial: '🏬', chance: '🎋', news: '📰', 'free-card': '🃏',
     points: '🎟️', lottery: '🎰', magic: '🔮', tax: '💼', hospital: '🏥',
@@ -59,10 +58,6 @@
   const target = new THREE.Vector3(0, 0, 0);
   const clock = { last: performance.now(), fps: 0, frames: 0, at: performance.now() };
   let hooks = {};
-  const pal = {
-    sand: 0xf7ebc9, grass: 0x9ad985, grass2: 0x7fbf68, water: 0x8fd8ef,
-    trunk: 0xb08a55, leaf: 0x4f9440, stone: 0xe8d9b0, rim: 0x7a6547,
-  };
 
   /* ---------- 几何 ---------- */
   function roundedRect(w, h, r) {
@@ -131,26 +126,6 @@
       g.fillStyle = '#7a6547';
       g.fillText(sub, 80, y + ph / 2 + 1);
     }
-    const t = new THREE.CanvasTexture(c);
-    if (THREE.SRGBColorSpace) t.colorSpace = THREE.SRGBColorSpace;
-    t.anisotropy = 4;
-    return t;
-  }
-
-  /* 中央告示牌：木牌上的字也走 canvas 纹理，改文案不用动几何 */
-  function signTexture(lines) {
-    const c = document.createElement('canvas');
-    c.width = 512; c.height = 256;
-    const g = c.getContext('2d');
-    g.fillStyle = '#e8d9b0'; g.fillRect(0, 0, 512, 256);
-    g.fillStyle = '#f7ebc9'; g.fillRect(14, 14, 484, 228);
-    g.textAlign = 'center'; g.textBaseline = 'middle';
-    lines.forEach((tx, i) => {
-      g.font = i === 0 ? '900 64px "M PLUS Rounded 1c","PingFang SC","Microsoft YaHei",system-ui'
-        : '800 44px "Nunito","M PLUS Rounded 1c",system-ui';
-      g.fillStyle = i === 0 ? '#6b5940' : '#8a7548';
-      g.fillText(tx, 256, i === 0 ? 92 : 170 + (i - 1) * 54);
-    });
     const t = new THREE.CanvasTexture(c);
     if (THREE.SRGBColorSpace) t.colorSpace = THREE.SRGBColorSpace;
     t.anisotropy = 4;
@@ -343,49 +318,18 @@
       const sink = groundY - grassTop;
       if (sink > 0) { grass.position.y -= sink; groundY -= sink; }
     }
-    const plaza = new THREE.Mesh(new THREE.CircleGeometry(6.6 * IK, 44), mat(0xf4e8cd, { roughness: 0.94 }));
-    plaza.rotation.x = -Math.PI / 2; plaza.position.y = groundY + 0.012; plaza.receiveShadow = true;
-    scene.add(plaza);
-    const plazaRing = new THREE.Mesh(new THREE.RingGeometry(6.6 * IK, 7.25 * IK, 44), mat(0xdccaa2, { roughness: 0.94 }));
-    plazaRing.rotation.x = -Math.PI / 2; plazaRing.position.y = groundY + 0.009;
-    scene.add(plazaRing);
-    const pathGeo = new THREE.PlaneGeometry(2.3 * IK, 8.0 * IK);
-    pathGeo.rotateX(-Math.PI / 2);
-    const pathMat = mat(0xefe2c4, { roughness: 0.94 });
-    for (let k = 0; k < 4; k++) {
-      const path = new THREE.Mesh(pathGeo, pathMat);
-      path.position.set(0, groundY + 0.006, 0);
-      path.rotation.y = (k / 4) * Math.PI * 2;
-      path.translateZ(10.5);                // 从广场外缘伸到草地边
-      path.receiveShadow = true;
-      scene.add(path);
-    }
-    // 木告示牌：牌面文字走 canvas 纹理，改文案不用动几何
-    const signPost = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.17, 2.4, 8), mat(pal.trunk));
-    signPost.position.set(0, groundY + 1.2, -3.6); signPost.castShadow = true;
-    scene.add(signPost);
-    const postMat = mat(0xb08a55);
-    const signBoard = new THREE.Mesh(new THREE.BoxGeometry(3.2, 1.6, 0.18), [
-      postMat, postMat, postMat, postMat,
-      new THREE.MeshStandardMaterial({ map: signTexture(['中央岛', `奖池 ${money(state.lotteryPool)}`]), roughness: 0.82 }),
-      mat(0xd9c9a3),
-    ]);
-    signBoard.position.set(0, groundY + 2.42, -3.6); signBoard.castShadow = true;
-    scene.add(signBoard);
-
-    /* ---------- 岛内装饰：暂时留空 ----------
-     * 这里原来是一整套写死坐标的布点：环内 7 棵树 + 12 棵环内树带 + 16 棵沙带椰林、
-     * 6 丛灌木、110 株草丛 / 花、6 栋民居、1 口池塘，外加岛外 14 块礁石。
-     * 问题是它们全是按「64 格环」那个假形状排的 —— 换成 103 格的原版图之后，
-     * 路径会穿过内陆，树和房子直接就长在格子上。之前是加了一层「离最近格心 ≥1.1 倍格距」
-     * 的过滤兜住，但过滤只能「躲」，摆出来的东西和地图本身没有关系。
+    /* ---------- 岛心装置：暂时留空 ----------
+     * 这里原来是岛心广场（沙色圆台 + 外环）、四条十字小径、一块写着「中央岛 / 奖池」的木告示牌，
+     * 以及岛内装饰。现在全部清掉，岛心就是一块平的草地 ——
+     * 等按地图数据重新排（广场放哪、路怎么走、牌子立在哪，都该由地图决定）。
      *
-     * 现在整段清掉，等按地图数据重新排：装饰该落在哪，由地图说了算（哪里是街区、哪里有水、
-     * 哪里留出通行带），而不是一张写死的坐标表。清掉之后岛上只剩地形与岛心装置：
-     * 海 / 浅滩 / 浪花 / 沙底 / 草地 + 广场 / 十字小径 / 告示牌。
+     * 保留的只有地形本身：海 / 浅滩 / 浪花 / 沙底 / 草地，加上棋盘与棋子。
+     * `groundY`（草地顶面的实测高度）仍然要算：桌上的骰盘、宝箱、棋子落位都从它推。
      *
+     * 岛内装饰（树 / 灌木 / 草丛 / 民居 / 池塘 / 礁石）在上一版就整段删了：那套坐标是按
+     * 「64 格环」这个假形状排的，换成自带坐标的原版图之后只会长在格子上。
      * 重画时注意两条（都是踩过的）：
-     * - 装饰不许压在格子上：格子压扁后格面只有 0.105 高，树冠压在格子上就把名字价签吞了；
+     * - 装饰不许压在格子上：格子压扁后格面只有 0.105 高，树冠压上去就把名字价签吞了；
      * - 比格子宽的东西（池塘那类）必须最后放，且同时避开格子 / 已有的树 / 房子。
      */
 

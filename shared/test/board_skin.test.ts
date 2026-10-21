@@ -207,20 +207,25 @@ describe('三个消费方都读皮肤，不再各自写死', () => {
     expect(sinkExpr, '草地目标高度必须落在台座顶之下').toContain('GEOM.padTop');
   });
 
-  it('岛内装饰已清空，旧的「64 环布点」不许回来', () => {
-    /* 原来的装饰全是按 64 格环那个假形状排的写死坐标表：环内 7 棵树 + 12 棵环内树带 +
-       16 棵沙带椰林、6 丛灌木、110 株草丛/花、6 栋民居、1 口池塘、14 块礁石。
-       换成自带坐标的原版图之后，它们只能靠「离格心 ≥1.1 倍格距」的过滤去躲格子 ——
-       躲出来的东西和地图没有任何关系。现在整段删掉，等按地图数据重排。
-       这条守卫的意义：别哪天又把那张坐标表粘回来（它会重新长到格子上）。 */
-    for (const dead of [/plantTree\(/, /houseSpots/, /tuftList/, /plantPond\(/, /clearOfCells\(/]) {
-      expect(WORLD, `旧的布点代码不该回来：${dead}`).not.toMatch(dead);
+  it('岛心装置与装饰都已清空，只剩地形 + 棋盘（按地图重画前的地基）', () => {
+    /* 清过两轮：
+     * 1. 岛内装饰（树/灌木/草丛/民居/池塘/礁石）—— 那套坐标按「64 格环」排，换到自带坐标的
+     *    原版图只会长在格子上，靠「离格心 ≥1.1 倍格距」的过滤去躲，躲出来的东西和地图无关。
+     * 2. 岛心装置（广场圆台 + 外环、十字小径、木告示牌）—— 同理，位置是写死的。
+     * 现在岛上只剩地形与棋盘，等按地图数据重排。
+     * 这条守卫的意义：别哪天又把写死坐标的表粘回来。 */
+    for (const dead of [
+      /plantTree\(/, /houseSpots/, /tuftList/, /plantPond\(/, /clearOfCells\(/,
+      /const plaza/, /signBoard/, /signTexture/, /pathGeo/,
+    ]) {
+      expect(WORLD, `清掉的旧布点不该回来：${dead}`).not.toMatch(dead);
     }
-    // 地形与岛心装置要留着：它们不是装饰，是场景本身
+    // 地形要留着：它跟着棋盘半径走，不是写死的布点
+    expect(WORLD).toContain('const sea');
     expect(WORLD).toContain('const shoal');
     expect(WORLD).toContain('const foam');
-    expect(WORLD).toContain('const plaza');
-    expect(WORLD).toContain('signBoard');
+    expect(WORLD).toContain('const grass');
+    expect(WORLD).toContain('const base');
   });
 
   it('海面必须盖满「拉得最远」时的视野（否则露出画布底色 = 穿模）', () => {
