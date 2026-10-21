@@ -255,8 +255,11 @@
        一个已经不渲染的场景里（换局后「进选格态却什么都看不见」就是这么来的）。 */
     pickOverlay = null; pickIds = []; pickPlayerRings.clear();
     scene = new THREE.Scene();
-    perspCam = new THREE.PerspectiveCamera(32, 1, 0.5, 260);
-    orthoCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 400);
+    /* 远裁剪面 700 / 800：海面放大到 384×IK（半边 273）之后，俯视最远机位到海角约 420 单位，
+       远裁剪留在 260 会在屏幕上切出一条直边 —— 那比露底更像「穿模」。
+       近裁剪保持 0.5，深度比 1400，格面与贴花之间 0.012 的间隙还有富余。 */
+    perspCam = new THREE.PerspectiveCamera(32, 1, 0.5, 700);
+    orthoCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 800);
     camera = perspCam;
 
     scene.add(new THREE.HemisphereLight(0xd8f0ff, 0xf0e0bd, 0.95));
@@ -279,8 +282,17 @@
      */
     const seaMap = groundTexture('#5cbbe2', ['#4aa6cf', '#8ed8f2', '#ffffff'], 260);
     /* 海面和岛体都是「一屏铺满」的大面，软件渲染下是纯填充率的账。
-       MeshLambert 比 MeshStandard 省掉整套 PBR 的分段计算，对这种哑光大色块肉眼看不出差别。 */
-    const sea = new THREE.Mesh(new THREE.PlaneGeometry(96 * IK, 96 * IK),
+       MeshLambert 比 MeshStandard 省掉整套 PBR 的分段计算，对这种哑光大色块肉眼看不出差别。
+       ---------- 海面尺寸：按「能拉到的最大机位」反推 ----------
+       原来固定 96×IK（半边长 ~68），只够近景用。滚轮能拉到 130×IK，仰角 38° 时屏幕上半
+       对应的是相机前方 280 单位的地面 —— 海面在 68 处就断了，断口外面露出的是画布背后的
+       舞台底色（浅蓝/浅绿），整块面板看着像「海被切掉了」。这就是「拉远了穿模」。
+       按 el≥38° 的最远角反算：半边长 ≥ 190，取 4 块原贴图宽（半边 273）留余量，
+       顺便把相机远裁剪面抬到 700 —— 否则海面会被远裁剪切出一条直边，比露底更像穿模。
+       贴图 repeat 跟着放大同样的倍数，水纹密度不变。 */
+    const SEA_SPAN = 96 * IK * 4;
+    seaMap.repeat.set(4, 4);
+    const sea = new THREE.Mesh(new THREE.PlaneGeometry(SEA_SPAN, SEA_SPAN),
       new THREE.MeshLambertMaterial({ map: seaMap }));
     sea.rotation.x = -Math.PI / 2; sea.position.y = -0.88; sea.receiveShadow = true;
     scene.add(sea);
@@ -387,17 +399,27 @@
     };
 
     const pond = new THREE.Mesh(new THREE.CylinderGeometry(3.1, 3.4, 0.5, 26), mat(pal.water, { roughness: 0.25, metalness: 0.1 }));
-    /* 池塘半径 3.4 —— 比一格还宽，写死一个位置总会有格子被泡在水下（顶面 0.4 远高于格面）。
-       按固定的候选序列找第一处「叠不到任何格子」的水面；一处都找不到就不画。
-       固定序列 ⇒ 每次刷新一样，截图仍然可比。 */
-    for (const [ox, oz] of [[0, 0], [0, -2.6], [2.8, 0], [0, 2.6], [-2.8, 0], [2.8, -2.8],
-      [-2.8, -2.8], [2.8, 2.8], [-2.8, 2.8], [5.2, 0], [0, 5.2], [-5.2, 0], [0, -5.2]]) {
-      const px = 6.4 + ox, pz = 6.2 + oz;
-      if (!cellSpots.every((p) => Math.hypot(p.x - px, p.z - pz) > 4.3)) continue;
-      pond.position.set(px, groundY + 0.04, pz);   // +0.04：与草地上表面的相对高度保持原样
-      scene.add(pond);
-      break;
-    }
+    /* 池塘比一格还宽（半径 3.4），写死位置总会压到东西 —— 压在格子上格子就瞎了，
+       压到房子就成了「泡在水里的房子」。所以它的摆放放到**最后**做：
+       格子、树、房子都摆完了，才知道哪块地是空的。 */
+    const plantPond = () => {
+      /* 候选按「先试原址、再往外挪」排：树只要不站在水里就行（树干半径 0.26、树冠 1.05），
+         房子是 1.5×1.4 的方块，得让远一点。 */
+      for (const [ox, oz] of [[0, 0], [0, -2.6], [2.8, 0], [0, 2.6], [-2.8, 0], [2.8, -2.8],
+        [-2.8, -2.8], [2.8, 2.8], [-2.8, 2.8], [5.2, 0], [0, 5.2], [-5.2, 0], [0, -5.2],
+        [4.2, 4.2], [-4.2, -4.2], [4.2, -4.2], [-4.2, 4.2], [7.0, 2.4], [-7.0, -2.4],
+        [2.4, 7.0], [-2.4, -7.0]]) {
+        const px = 6.4 + ox, pz = 6.2 + oz;
+        const fits = cellSpots.every((p) => Math.hypot(p.x - px, p.z - pz) > 4.3)   // 别泡住格子
+          && houseSpots.every(([hx, hz]) => Math.hypot(hx - px, hz - pz) > 4.0)     // 别泡住房子
+          && trunkList.every((t) => Math.hypot(t.x - px, t.z - pz) > 1.9);          // 别泡住树干
+        if (!fits) continue;
+        pond.position.set(px, groundY + 0.04, pz);   // +0.04：与草地上表面的相对高度保持原样
+        scene.add(pond);
+        return;
+      }
+      /* 一处都放不下就不画水塘：宁可这块地空着，也不要一片压着格子/房子的水 */
+    };
 
     const trunkGeo = new THREE.CylinderGeometry(0.16, 0.26, 1.7, 8);
     const trunkMat = mat(pal.trunk);
@@ -517,6 +539,9 @@
     /* 四棱锥当屋顶：ConeGeometry 用 4 个径向段就是方锥；+45° 让四个坡面对齐房身四个面 */
     instanced(new THREE.ConeGeometry(1.28, 0.82, 4), mat(0xd9714f, { roughness: 0.8 }),
       houseSpots.map(([x, z, ry]) => ({ x, y: groundY + 1.41, z, ry: ry + Math.PI / 4 })), true);
+
+    /* 池塘最后摆：它比一格还宽，得等格子 / 树 / 房子都落地之后才找得出一块空地 */
+    plantPond();
 
     // 64 格
     geoTile = extrude(TILE, TILE, GEOM.radius, DEPTH, true, GEOM.bevel);

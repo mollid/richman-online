@@ -214,8 +214,27 @@ describe('三个消费方都读皮肤，不再各自写死', () => {
     expect(WORLD).toContain('clearOfCells');
     expect(WORLD, '环内树带要筛').toMatch(/if \(!clearOfCells\(bx \* IK, bz \* IK\)\) continue;/);
     expect(WORLD, '房子要筛').toMatch(/\.filter\(\(\[x, z\]\) => clearOfCells\(x, z\)\)/);
-    // 池塘比一格还宽，得自己找空水面，不许再写死坐标泡住格子
-    expect(WORLD).toContain('cellSpots.every');
+    /* 池塘半径 3.4 比一格还宽，只能等格子 / 树 / 房子都摆完再找空地：
+       早前只躲格子，结果挪一次位就把一栋房子泡进了水里。 */
+    expect(WORLD, '池塘要延后到装饰都摆完再放').toMatch(/plantPond\(\);/);
+    expect(WORLD, '池塘要避开格子').toContain('cellSpots.every');
+    expect(WORLD, '池塘要避开房子').toMatch(/houseSpots\.every/);
+    expect(WORLD, '池塘要避开树干').toMatch(/trunkList\.every/);
+  });
+
+  it('海面必须盖满「拉得最远」时的视野（否则露出画布底色 = 穿模）', () => {
+    /* 海面原来是 96×IK（半边长 ~68），只够近景。滚轮能拉到 130×IK，仰角 38° 时屏幕上沿
+       对应相机前方 280 单位的地面 —— 海面在 68 处就断，断口外露出画布背后的舞台底色，
+       整块面板像「海被切掉了」。按最远角反算需要半边长 ≥190。 */
+    const span = WORLD.match(/const SEA_SPAN = 96 \* IK \* ([\d.]+)/);
+    expect(span, '海面尺寸要按 IK 放大').not.toBeNull();
+    expect(Number(span![1]), '至少 3 块贴图宽才盖得住最远机位').toBeGreaterThanOrEqual(3);
+    // 远裁剪必须跟着放大，否则海面自己在远处被切出一条直边 —— 比露底更像穿模
+    const far = WORLD.match(/new THREE\.PerspectiveCamera\(32, 1, 0\.5, (\d+)\)/);
+    expect(far, '透视相机参数被改过').not.toBeNull();
+    expect(Number(far![1]), '远裁剪要够远').toBeGreaterThanOrEqual(500);
+    expect(WORLD, '海面纹理密度要跟着放大，否则水纹被拉成一团').toMatch(/seaMap\.repeat\.set\(/);
+    expect(WORLD, '旧的 96×IK 海面不许回来').not.toMatch(/PlaneGeometry\(96 \* IK, 96 \* IK\)/);
   });
 
   it('hud.js：小地图尺寸与配色取自皮肤', () => {
