@@ -373,175 +373,21 @@
     signBoard.position.set(0, groundY + 2.42, -3.6); signBoard.castShadow = true;
     scene.add(signBoard);
 
-    // 池塘 + 装饰（位置固定，保证每次渲染一致）
-    /* ---------- 装饰不许落在格子上 ----------
-     * 下面这些坐标是按「64 格环」排的：环内是空地，树怎么摆都不碰格子。
-     * 换成 103 格的原版图之后，路径会**穿过岛的内陆**，于是有一棵树正长在某格中央 ——
-     * 近景里那格连同旁边的名字、价签全被树冠吞掉（主子截的那张就是）。
-     * 这里按「离最近一格的中心 ≥ 1.1 倍格距」筛一遍：树干不会被格子顶穿，树冠也不压字。
-     * 固定坐标 + 固定筛选 ⇒ 每次刷新长得一样，前后对比截图仍然可比。 */
-    const CELL_CLEAR = GEOM.spacing * 1.1;
-    const cellSpots = state.board.map((c) => cellPos(c.id));
-    const clearOfCells = (x, z) => {
-      /* 没有坐标的图（老 64 环）退回 null layout，cellPos 全给 (0,0) —— 拿它筛会把
-         岛心的装饰误删一片，所以那种图干脆不筛（它们的格子本来也在环上、碰不到装饰） */
-      if (!LAYOUT) return true;
-      for (const p of cellSpots) if (Math.hypot(p.x - x, p.z - z) < CELL_CLEAR) return false;
-      return true;
-    };
-    /* 草丛 / 花 / 灌木只有零点几个单位宽，阈值收一点：别把格子周围的绿化整圈剃光，
-       但又不能让它们长在格面上 */
-    const NARROW_CLEAR = GEOM.spacing * 0.62;
-    const clearOfCellsNarrow = (x, z) => {
-      if (!LAYOUT) return true;
-      for (const p of cellSpots) if (Math.hypot(p.x - x, p.z - z) < NARROW_CLEAR) return false;
-      return true;
-    };
-
-    const pond = new THREE.Mesh(new THREE.CylinderGeometry(3.1, 3.4, 0.5, 26), mat(pal.water, { roughness: 0.25, metalness: 0.1 }));
-    /* 池塘比一格还宽（半径 3.4），写死位置总会压到东西 —— 压在格子上格子就瞎了，
-       压到房子就成了「泡在水里的房子」。所以它的摆放放到**最后**做：
-       格子、树、房子都摆完了，才知道哪块地是空的。 */
-    const plantPond = () => {
-      /* 候选按「先试原址、再往外挪」排：树只要不站在水里就行（树干半径 0.26、树冠 1.05），
-         房子是 1.5×1.4 的方块，得让远一点。 */
-      for (const [ox, oz] of [[0, 0], [0, -2.6], [2.8, 0], [0, 2.6], [-2.8, 0], [2.8, -2.8],
-        [-2.8, -2.8], [2.8, 2.8], [-2.8, 2.8], [5.2, 0], [0, 5.2], [-5.2, 0], [0, -5.2],
-        [4.2, 4.2], [-4.2, -4.2], [4.2, -4.2], [-4.2, 4.2], [7.0, 2.4], [-7.0, -2.4],
-        [2.4, 7.0], [-2.4, -7.0]]) {
-        const px = 6.4 + ox, pz = 6.2 + oz;
-        const fits = cellSpots.every((p) => Math.hypot(p.x - px, p.z - pz) > 4.3)   // 别泡住格子
-          && houseSpots.every(([hx, hz]) => Math.hypot(hx - px, hz - pz) > 4.0)     // 别泡住房子
-          && trunkList.every((t) => Math.hypot(t.x - px, t.z - pz) > 1.9);          // 别泡住树干
-        if (!fits) continue;
-        pond.position.set(px, groundY + 0.04, pz);   // +0.04：与草地上表面的相对高度保持原样
-        scene.add(pond);
-        return;
-      }
-      /* 一处都放不下就不画水塘：宁可这块地空着，也不要一片压着格子/房子的水 */
-    };
-
-    const trunkGeo = new THREE.CylinderGeometry(0.16, 0.26, 1.7, 8);
-    const trunkMat = mat(pal.trunk);
-    const leafGeo = new THREE.ConeGeometry(1.05, 0.9, 6);
-    const leafMat = mat(pal.leaf);
-    const hedgeGeo = new THREE.SphereGeometry(0.72, 12, 9);
-    const hedgeMat = mat(pal.grass2);
-    /* 环内 7 棵树 + 6 丛灌木：原来是 42 次 draw call，改实例化后 2 次。
-       摆放位置全部写死 —— 随机化会让每次刷新长得不一样，前后对比截图就失去意义。
-       坐标一律乘 `IK`：岛体随棋盘半径放大了，装饰留在原尺寸就会挤进棋盘路径中间
-       （实测第一版就是这样，环内树带直接长在格子上）。 */
-    const trunkList = [], leafList = [];
-    const plantTree = (bx, bz, s, y0) => {
-      const x = bx * IK, z = bz * IK;
-      trunkList.push({ x, y: y0 + 0.85 * s, z, s });
-      for (let k = 0; k < 5; k++) {
-        leafList.push({ x, y: y0 + 1.75 * s, z, rx: 0.55, ry: (k / 5) * Math.PI * 2, rz: 0.32, s });
-      }
-    };
-    for (const [x, z, s] of [[-8.6, -8.4, 1], [-3.2, -9.4, .85], [4.4, -8.6, .95], [9.2, -2.6, .9], [-9.4, 3.6, 1.05], [-6.2, 9.4, .8], [2.6, 9.6, .9]]) {
-      if (!clearOfCells(x * IK, z * IK)) continue;
-      plantTree(x, z, s, groundY - 0.05);   // 草地顶面；给 0 会让树干整根埋进草里（旧值就是这样）
-    }
-    /* ---------- 环内树带 ----------
-     * 近景跟随镜头只看得到玩家周围 ~5 单位，而环心广场在 18 单位外 —— 所以近景里
-     * 「草地」其实就是贴着棋盘内侧那一圈。这一带原来只有零星草丛，画面会空掉一半。
-     * 沿半径 ~13 补一圈树：角度刻意避开 0/90/180/270（十字小径正压在这四个方向上）。 */
-    for (let k = 0; k < 12; k++) {
-      const a = THREE.MathUtils.degToRad(12 + k * 30);
-      const r = 12.9 + (k % 3) * 0.45;
-      const bx = Math.cos(a) * r, bz = Math.sin(a) * r;
-      if (!clearOfCells(bx * IK, bz * IK)) continue;   // 这一带正好压在环内的格子上，落上就跳过
-      plantTree(bx, bz, 0.8 + (k % 4) * 0.1, groundY - 0.05);
-    }
-
-    /* ---------- 环外椰林 ----------
-     * 环格最大伸到 |16.93|，底座到 |19.5|，中间那条 2.5 单位宽的沙带是「岛」的边界。
-     * 棋子走在环上时镜头朝外看，看到的就是这条沙带和它外面的海 —— 原来是空的一片纯沙。
-     * 椰林贴着沙带外侧摆：近景里正好停在格子后方的上边缘，不挡棋盘，但把岛的轮廓交代清楚。
+    /* ---------- 岛内装饰：暂时留空 ----------
+     * 这里原来是一整套写死坐标的布点：环内 7 棵树 + 12 棵环内树带 + 16 棵沙带椰林、
+     * 6 丛灌木、110 株草丛 / 花、6 栋民居、1 口池塘，外加岛外 14 块礁石。
+     * 问题是它们全是按「64 格环」那个假形状排的 —— 换成 103 格的原版图之后，
+     * 路径会穿过内陆，树和房子直接就长在格子上。之前是加了一层「离最近格心 ≥1.1 倍格距」
+     * 的过滤兜住，但过滤只能「躲」，摆出来的东西和地图本身没有关系。
+     *
+     * 现在整段清掉，等按地图数据重新排：装饰该落在哪，由地图说了算（哪里是街区、哪里有水、
+     * 哪里留出通行带），而不是一张写死的坐标表。清掉之后岛上只剩地形与岛心装置：
+     * 海 / 浅滩 / 浪花 / 沙底 / 草地 + 广场 / 十字小径 / 告示牌。
+     *
+     * 重画时注意两条（都是踩过的）：
+     * - 装饰不许压在格子上：格子压扁后格面只有 0.105 高，树冠压在格子上就把名字价签吞了；
+     * - 比格子宽的东西（池塘那类）必须最后放，且同时避开格子 / 已有的树 / 房子。
      */
-    for (const [x, z, s] of [
-      [-16, 18.2, 1.0], [-8, 18.5, .85], [0, 18.1, .95], [8, 18.5, .9], [16, 18.2, 1.05],
-      [-12, -18.4, .9], [-4, -18.1, 1.0], [4, -18.5, .85], [12, -18.2, .95],
-      [-18.4, -12, .95], [-18.1, -4, .85], [-18.5, 4, 1.0], [-18.2, 12, .9],
-      [18.2, -8, .9], [18.5, 0, 1.05], [18.1, 8, .85],
-    ]) {
-      if (!clearOfCells(x * IK, z * IK)) continue;   // 同一套筛选：沙带上也可能正好铺着格子
-      plantTree(x, z, s, 0.05);        // 0.05 = 沙色底座顶面
-    }
-    instanced(trunkGeo, trunkMat, trunkList, true);
-    instanced(leafGeo, leafMat, leafList, true);
-    instanced(hedgeGeo, hedgeMat, [[-11.5, -11.5], [11.5, -11.5], [-11.5, 11.5], [11.5, 11.5], [2.4, -12.6], [-12.6, 3.2]]
-      .filter(([x, z]) => clearOfCells(x * IK, z * IK))
-      .map(([x, z]) => ({ x: x * IK, y: 0.35, z: z * IK, s: [1.5, 0.8, 1.5] })), true);
-
-    /* 礁石：半沉在浅滩 / 海面里，只露出一角。外侧 10 块沉水、四角 4 块搁在沙带边。
-       y 值分开给：浅滩顶面在 −0.55，沙带顶面在 0.05，混用一个高度会有一半浮空或全淹。 */
-    instanced(new THREE.DodecahedronGeometry(0.62, 0), mat(0xd4c8a9, { roughness: 0.95, flatShading: true }), [
-      { x: -21.9, y: -0.36, z: 4.4, ry: 0.4, s: [1.30, 0.85, 1.10] },
-      { x: -20.5, y: -0.40, z: -6.6, ry: 1.1, s: [0.95, 0.70, 1.00] },
-      { x: -22.7, y: -0.32, z: -2.1, ry: 2.2, s: [1.05, 0.90, 0.95] },
-      { x: 21.3, y: -0.38, z: 6.5, ry: 0.8, s: [1.15, 0.75, 1.20] },
-      { x: 22.5, y: -0.34, z: -3.3, ry: 1.7, s: [0.90, 0.85, 0.95] },
-      { x: 20.7, y: -0.36, z: -11.1, ry: 2.9, s: [1.20, 0.80, 1.05] },
-      { x: 6.3, y: -0.32, z: 21.7, ry: 0.5, s: [1.10, 0.90, 1.15] },
-      { x: -7.5, y: -0.38, z: 22.3, ry: 1.4, s: [1.25, 0.80, 1.00] },
-      { x: 11.9, y: -0.36, z: -21.1, ry: 2.4, s: [0.95, 0.75, 1.05] },
-      { x: -3.3, y: -0.34, z: -21.9, ry: 0.9, s: [1.05, 0.85, 0.95] },
-      { x: 18.1, y: 0.28, z: 17.9, ry: 0.7, s: [0.80, 0.60, 0.85] },
-      { x: -18.3, y: 0.28, z: 17.8, ry: 1.9, s: [0.90, 0.65, 0.80] },
-      { x: 18.2, y: 0.28, z: -18.0, ry: 2.6, s: [0.75, 0.55, 0.90] },
-      { x: -18.0, y: 0.28, z: -18.2, ry: 1.2, s: [0.85, 0.62, 0.78] },
-    ].map((r) => ({ ...r, x: r.x * IK, z: r.z * IK })), true);
-
-    /* ---------- 环内草丛 / 花丛 ----------
-     * 战略俯视下它们只是些小色点，但能让「中间那片草地」不至于是一块纯色板。
-     * 撒在广场外圈（半径 8.6~13.6）—— 环内半径 6.6 是广场、13.6 以外是环格。
-     * 固定种子，每次渲染一致。 */
-    const tuftList = [], bloomList = [], bushList = [];
-    let ts = 0x5bf03635;
-    const trnd = () => { ts = (ts * 1664525 + 1013904223) >>> 0; return ts / 4294967296; };
-    for (let i = 0; i < 110; i++) {
-      const a = trnd() * Math.PI * 2, r = (8.6 + trnd() * 5.0) * IK;
-      const x = Math.cos(a) * r, z = Math.sin(a) * r;
-      if (!clearOfCellsNarrow(x, z)) continue;   // 小株也不能扎在格面上
-      /* 草丛高度要按缩放算：锥体的原点在「体中心」，固定 y 会让大株悬空、小株埋进土里 */
-      const s = 0.55 + trnd() * 0.85;
-      tuftList.push({ x, y: groundY + 0.26 * s, z, ry: trnd() * 6.3, s });
-      if (i % 4 === 0) {
-        /* 花按 3 朵一簇撒：单朵在近景里只占几个像素，看不出是花 */
-        for (let k = 0; k < 3; k++) {
-          bloomList.push({
-            x: x + 0.28 + trnd() * 0.36, y: groundY + 0.20 + trnd() * 0.14,
-            z: z - 0.42 + trnd() * 0.36, s: 0.75 + trnd() * 0.5,
-          });
-        }
-      }
-      if (i % 9 === 0) {
-        const bs = 0.55 + trnd() * 0.5;
-        bushList.push({ x, y: groundY + 0.30 * bs, z, ry: trnd() * 6.3, s: [bs, bs * 0.8, bs] });
-      }
-    }
-    instanced(new THREE.ConeGeometry(0.24, 0.52, 5), mat(pal.grass2, { roughness: 0.95 }), tuftList, false);
-    instanced(new THREE.SphereGeometry(0.44, 9, 7), mat(pal.leaf, { roughness: 0.92 }), bushList, false);
-    instanced(new THREE.SphereGeometry(0.15, 8, 6), mat(0xffc6dd, { roughness: 0.7 }), bloomList, false);
-
-    /* ---------- 岛上民居 ----------
-     * 参考图里草地上散着几栋房子、灯塔、工厂 —— 岛不是一块空地。
-     * 这里放 4 栋民居：房身 + 四坡顶各实例化一次，4 栋 = 2 次 draw call。
-     * 位置刻意避开既有的树 / 灌木 / 池塘 / 十字小径（小径是 2.3 宽、沿 ±X/±Z 轴的）。 */
-    const houseSpots = [
-      [11.6, 6.2, 0.45], [-11.6, -6.0, -0.35], [-6.0, -11.6, 0.90], [6.4, -11.4, -0.80],
-      [10.4, 9.8, 1.35], [-9.2, 11.6, 0.20],   // 补两栋贴近环内的：跟随镜头只看得见这一圈
-    ].filter(([x, z]) => clearOfCells(x, z));   // 房子占地比树大，同样不许压格子
-    instanced(new THREE.BoxGeometry(1.5, 1.0, 1.4), mat(0xfff3dd, { roughness: 0.85 }),
-      houseSpots.map(([x, z, ry]) => ({ x, y: groundY + 0.50, z, ry })), true);
-    /* 四棱锥当屋顶：ConeGeometry 用 4 个径向段就是方锥；+45° 让四个坡面对齐房身四个面 */
-    instanced(new THREE.ConeGeometry(1.28, 0.82, 4), mat(0xd9714f, { roughness: 0.8 }),
-      houseSpots.map(([x, z, ry]) => ({ x, y: groundY + 1.41, z, ry: ry + Math.PI / 4 })), true);
-
-    /* 池塘最后摆：它比一格还宽，得等格子 / 树 / 房子都落地之后才找得出一块空地 */
-    plantPond();
 
     // 64 格
     geoTile = extrude(TILE, TILE, GEOM.radius, DEPTH, true, GEOM.bevel);

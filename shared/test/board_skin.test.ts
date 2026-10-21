@@ -207,19 +207,20 @@ describe('三个消费方都读皮肤，不再各自写死', () => {
     expect(sinkExpr, '草地目标高度必须落在台座顶之下').toContain('GEOM.padTop');
   });
 
-  it('树 / 房子 / 灌木不许落在格子上（树冠会吞掉格面文字）', () => {
-    /* 装饰坐标是按 64 格环排的（环内是空地）。103 格的原版图路径穿过内陆，
-       于是有一棵树正长在某格中央，近景里那格连名字带价签全被树冠吞掉。
-       现在统一走 clearOfCells() 筛一遍：离最近格心 ≥ 1.1 倍格距才种。 */
-    expect(WORLD).toContain('clearOfCells');
-    expect(WORLD, '环内树带要筛').toMatch(/if \(!clearOfCells\(bx \* IK, bz \* IK\)\) continue;/);
-    expect(WORLD, '房子要筛').toMatch(/\.filter\(\(\[x, z\]\) => clearOfCells\(x, z\)\)/);
-    /* 池塘半径 3.4 比一格还宽，只能等格子 / 树 / 房子都摆完再找空地：
-       早前只躲格子，结果挪一次位就把一栋房子泡进了水里。 */
-    expect(WORLD, '池塘要延后到装饰都摆完再放').toMatch(/plantPond\(\);/);
-    expect(WORLD, '池塘要避开格子').toContain('cellSpots.every');
-    expect(WORLD, '池塘要避开房子').toMatch(/houseSpots\.every/);
-    expect(WORLD, '池塘要避开树干').toMatch(/trunkList\.every/);
+  it('岛内装饰已清空，旧的「64 环布点」不许回来', () => {
+    /* 原来的装饰全是按 64 格环那个假形状排的写死坐标表：环内 7 棵树 + 12 棵环内树带 +
+       16 棵沙带椰林、6 丛灌木、110 株草丛/花、6 栋民居、1 口池塘、14 块礁石。
+       换成自带坐标的原版图之后，它们只能靠「离格心 ≥1.1 倍格距」的过滤去躲格子 ——
+       躲出来的东西和地图没有任何关系。现在整段删掉，等按地图数据重排。
+       这条守卫的意义：别哪天又把那张坐标表粘回来（它会重新长到格子上）。 */
+    for (const dead of [/plantTree\(/, /houseSpots/, /tuftList/, /plantPond\(/, /clearOfCells\(/]) {
+      expect(WORLD, `旧的布点代码不该回来：${dead}`).not.toMatch(dead);
+    }
+    // 地形与岛心装置要留着：它们不是装饰，是场景本身
+    expect(WORLD).toContain('const shoal');
+    expect(WORLD).toContain('const foam');
+    expect(WORLD).toContain('const plaza');
+    expect(WORLD).toContain('signBoard');
   });
 
   it('海面必须盖满「拉得最远」时的视野（否则露出画布底色 = 穿模）', () => {
