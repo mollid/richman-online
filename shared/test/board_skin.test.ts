@@ -343,4 +343,30 @@ describe('三个消费方都读皮肤，不再各自写死', () => {
     expect(HUD_CSS).toMatch(/\.mp-mini \{[\s\S]*?touch-action: none/);
     expect(HUD_CSS, '手型光标是唯一能看出「这块能拖」的提示').toMatch(/\.mp-mini \{[\s\S]*?cursor: grab/);
   });
+
+  it('地面与格子同一套材质与明度：不许回到 Lambert + 贴图，浪花不许回到不吃光的 Basic', () => {
+    /* 地面原来四层 MeshLambert（带 map）、浪花 MeshBasic，而格子和棋子是 MeshStandard。
+       同一盏灯下两种响应：地面被照得比格子更「平、亮」，浪花在阴影里也全亮 ——
+       整块地面读成纸板，浪花读成一条贴上去的白胶带。
+       配色上草地 #9ad985 与住宅格 #8fd07a 几乎同色，绿格子踩在草上只能靠奶油台座撑轮廓。
+       现在统一 Standard、地面退到「明度 ≥88 / 饱和 ≤30」。 */
+
+    // 带 map 的 Lambert 只有地面层用过 —— 这个组合再次出现就说明有人把材质改回去了
+    expect(WORLD, '地面不许回到 Lambert + 贴图').not.toMatch(/MeshLambertMaterial\(\{ map:/);
+    for (const layer of ['shoal', 'foam', 'base', 'grass']) {
+      expect(WORLD, `${layer} 必须与格子同一套 Standard 材质`)
+        .toMatch(new RegExp(`const ${layer} = new THREE\\.Mesh\\([\\s\\S]{0,220}MeshStandardMaterial`));
+    }
+    // 浪花靠一点自发光保留亮度，而不是靠「不吃光」
+    expect(WORLD, '浪花的自发光是它受光后仍然发白的唯一理由').toMatch(/emissiveIntensity: 0\.22/);
+
+    /* UV 必须按世界尺度铺开。ExtrudeGeometry 的默认 UV 把顶点坐标直接当 uv（1 单位 1 张图），
+       近景一格约 54 屏幕像素，把 128px 压进去之后 mipmap 一平均就只剩底色 —— 这就是「像纸板」的根。 */
+    expect(WORLD).toContain('const GROUND_UV =');
+    expect(WORLD).toMatch(/const groundUV = \(scale\) =>/);
+    expect(WORLD, '地面层必须把 UV 尺度传进 extrude').toMatch(/extrude\([\s\S]{0,120}GROUND_UV\)/);
+
+    // 草地必须投影：地面提亮之后，格子与地面的分离全靠那圈影子
+    expect(WORLD, '草地不投影，格子就像贴纸').toMatch(/grass\.castShadow = true/);
+  });
 });

@@ -70,10 +70,13 @@
     s.lineTo(x, y + r); s.quadraticCurveTo(x, y, x + r, y);
     return s;
   }
-  const extrude = (w, h, r, d, bevel, bev = 0.05) => {
-    const g = new THREE.ExtrudeGeometry(roundedRect(w, h, r), {
+  const extrude = (w, h, r, d, bevel, bev = 0.05, uvScale = 0) => {
+    const opts = {
       depth: d, bevelEnabled: !!bevel, bevelSize: bev, bevelThickness: bev, bevelSegments: 1, curveSegments: 4,
-    });
+    };
+    /* uvScale > 0 按世界单位平铺贴图（地面层用）；不传就用默认 UV（格子 / 台座不吃贴图） */
+    if (uvScale) opts.UVGenerator = groundUV(uvScale);
+    const g = new THREE.ExtrudeGeometry(roundedRect(w, h, r), opts);
     g.rotateX(-Math.PI / 2);
     return g;
   };
@@ -158,20 +161,79 @@
    * 既不会糊也不会摩尔纹。唯一必须做的是把 wrap 设成 RepeatWrapping ——
    * 形状坐标有负值，不设的话负 UV 会被钳到边缘、拉成放射状条纹。
    */
-  function groundTexture(base, dots, count, cell) {
-    const S = cell || 128;
+  /**
+   * 地面纹理。三种尺度叠在一起，缺一种就露馅：
+   * - **低频色斑**（半径 16~40px）：负责「这一片颜色不匀」。少了它就是一块纯色纸板。
+   * - **中频斑块**（5~16px）：负责「草皮 / 砂粒」的团块感。
+   * - **细颗粒**（0.6~1.8px）：凑近看才有的质感，远处被 mipmap 平均掉也不心疼。
+   *
+   * 为什么原来是三合一的「随机小圆点」却看着像纯色：UV 是 1 个世界单位铺 1 张，
+   * 近景一格约 54 屏幕像素，把 128px 压进去之后 mipmap 一平均，剩下就只有底色。
+   * 现在 UV 由调用方按 `GROUND_UV` 世界单位一张来铺（见 groundUV），
+   * 128px 的图铺在 7 个单位上，色斑才看得见。
+   *
+   * 固定种子的线性同余：`Math.random()` 会让每次刷新长得不一样，前后对比截图就失去意义。
+   */
+  function groundTexture(base, dots, count, size) {
+    const S = size || 256;
     const c = document.createElement('canvas');
     c.width = c.height = S;
     const g = c.getContext('2d');
     g.fillStyle = base; g.fillRect(0, 0, S, S);
-    /* 固定种子的线性同余 —— Math.random() 会让每次刷新长得不一样，前后对比截图就失去意义 */
     let seed = 0x9e3779b9;
     const rnd = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
-    for (let i = 0; i < count; i++) {
-      g.globalAlpha = 0.12 + rnd() * 0.26;
-      g.fillStyle = dots[(rnd() * dots.length) | 0];
-      const x = rnd() * S, y = rnd() * S, r = 0.8 + rnd() * 2.4;
-      g.beginPath(); g.arc(x, y, r, 0, 6.3); g.fill();
+    const blob = (n, rMin, rSpan, aMin, aSpan) => {
+      for (let i = 0; i < n; i++) {
+        g.globalAlpha = aMin + rnd() * aSpan;
+        g.fillStyle = dots[(rnd() * dots.length) | 0];
+        const x = rnd() * S, y = rnd() * S, r = rMin + rnd() * rSpan;
+        g.beginPath(); g.arc(x, y, r, 0, 6.3); g.fill();
+      }
+    };
+    /* 数量按比例分配，这样调用方只调一个 count 就能整体控制"脏度" */
+    /* 大斑给到 20+ 半径就变成「水渍」了 —— 实测 16~40 那版近景像地面脏了。收到 10~22 且调淡。 */
+    blob(Math.max(3, count * 0.06), 10, 12, 0.09, 0.07);
+    blob(Math.max(8, count * 0.30), 4, 8, 0.12, 0.14);
+    blob(count, 0.6, 1.2, 0.12, 0.18);
+    g.globalAlpha = 1;
+    const t = new THREE.CanvasTexture(c);
+    if (THREE.SRGBColorSpace) t.colorSpace = THREE.SRGBColorSpace;
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.anisotropy = 4;
+    return t;
+  }
+
+  /**
+   * 海面纹理。跟陆地不同：水要有**方向性**，一锅随机圆点读成雾气而不是水。
+   * 几道横向弯曲的亮线（波纹）+ 少量反光点，密度靠 `seaMap.repeat` 控制。
+   */
+  function waveTexture(base, tints) {
+    const S = 256;
+    const c = document.createElement('canvas');
+    c.width = c.height = S;
+    const g = c.getContext('2d');
+    g.fillStyle = base; g.fillRect(0, 0, S, S);
+    let seed = 0x2545f491;
+    const rnd = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
+    const rows = 7;
+    for (let k = 0; k < rows; k++) {
+      const y0 = (k + 0.5) * (S / rows);
+      g.strokeStyle = tints[k % tints.length];
+      g.globalAlpha = 0.10 + (k % 3) * 0.05;
+      g.lineWidth = 1.4 + (k % 2) * 0.9;
+      g.beginPath();
+      for (let x = 0; x <= S; x += 3) {
+        const y = y0 + Math.sin((x / S) * Math.PI * 4 + k * 1.7) * 4.2;
+        if (x === 0) g.moveTo(x, y); else g.lineTo(x, y);
+      }
+      g.stroke();
+    }
+    /* 反光点：水面的"碎光"，比圆点小、更亮、更稀 */
+    for (let i = 0; i < 90; i++) {
+      g.globalAlpha = 0.16 + rnd() * 0.22;
+      g.fillStyle = '#ffffff';
+      const x = rnd() * S, y = rnd() * S;
+      g.fillRect(x, y, 1.6 + rnd() * 2.4, 0.9 + rnd() * 0.8);
     }
     g.globalAlpha = 1;
     const t = new THREE.CanvasTexture(c);
@@ -180,6 +242,25 @@
     t.anisotropy = 4;
     return t;
   }
+
+  /** 一张地面贴图铺多少世界单位。7 的话近景（视野 9.6）能看到一块半，色斑正好读得出 */
+  const GROUND_UV = 7;
+
+  /**
+   * ExtrudeGeometry 的默认 UV 直接把顶点坐标当 uv —— 也就是「1 个世界单位 1 张图」，
+   * 这是地面被糊成纯色的直接原因。这里按 `GROUND_UV` 缩小，让贴图铺开。
+   * 顶面用形状坐标（extrude 前还是 XY 平面），侧面用 (x+y, z) 保证环带上有平缓的渐变。
+   */
+  const groundUV = (scale) => ({
+    generateTopUV(geometry, vertices, a, b, c) {
+      return [a, b, c].map((i) => new THREE.Vector2(vertices[i * 3] / scale, vertices[i * 3 + 1] / scale));
+    },
+    generateSideWallUV(geometry, vertices, a, b, c, d) {
+      return [a, b, c, d].map((i) => new THREE.Vector2(
+        (vertices[i * 3] + vertices[i * 3 + 1]) / scale, vertices[i * 3 + 2] / scale,
+      ));
+    },
+  });
 
   /* ---------- 场景 ---------- */
   function mat(hex, opts) {
@@ -236,8 +317,11 @@
     orthoCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 800);
     camera = orthoCam;
 
-    scene.add(new THREE.HemisphereLight(0xd8f0ff, 0xf0e0bd, 0.95));
-    const key = new THREE.DirectionalLight(0xfff3d6, 1.25);
+    /* 环境光从 0.95 压到 0.8、主光 1.25 抬到 1.4：地面提亮之后，格子底下那圈奶油台座
+       与浅色地面几乎同明度，不再靠「台座比地面白」建立分离 —— 只能靠投影。
+       环境光太强会把阴影填平（阴影里也被照亮），压下来之后格子才真的「坐在」地上。 */
+    scene.add(new THREE.HemisphereLight(0xd8f0ff, 0xf0e0bd, 0.80));
+    const key = new THREE.DirectionalLight(0xfff3d6, 1.40);
     key.position.set(16, 30, 12);
     key.castShadow = true;
     key.shadow.mapSize.set(1024, 1024);
@@ -254,47 +338,72 @@
      * 三层的顶面高度必须严格递增，并且浅滩顶要低于底座顶，否则近景下会看到
      * 浅滩的平面「盖住」底座侧面，整座岛读成一张纸。
      */
-    const seaMap = groundTexture('#5cbbe2', ['#4aa6cf', '#8ed8f2', '#ffffff'], 260);
+    const seaMap = waveTexture('#a8d9ea', ['#8ecde3', '#d6eef7', '#ffffff']);
     /* 海面和岛体都是「一屏铺满」的大面，软件渲染下是纯填充率的账。
-       MeshLambert 比 MeshStandard 省掉整套 PBR 的分段计算，对这种哑光大色块肉眼看不出差别。
        ---------- 海面尺寸：按「能拉到的最大视野」反推 ----------
        这块面**必须**比任何一帧能看到的地面都大，否则断口外面露出的是画布背后的舞台底色
        （浅蓝/浅绿），整块面板看着像「海被切掉了」—— 曾经的「拉远穿模」就是这么来的。
        现在视野上限只有 24 单位（≈12 格进深），按理 96×IK 就够；但注视点会被拖到棋盘边角、
        宽屏下横向再乘 1.5，所以仍然留 4 倍（半边 273）。它只是一个平面，铺大点几乎不要钱，
        而算漏一次就是一条横穿屏幕的直边。
-       相机远裁剪面 800 也是为它留的：海面自己在远处被切一条边，比露底更像穿模。
-       贴图 repeat 跟着放大同样的倍数，水纹密度不变。 */
+       相机远裁剪面 800 也是为它留的：海面自己在远处被切一条边，比露底更像穿模。 */
     const SEA_SPAN = 96 * IK * 4;
-    seaMap.repeat.set(4, 4);
+    /* 水纹密度跟陆地同一把尺子：一张 `GROUND_UV` 世界单位。原来写死 repeat 4，
+       等于每 96 单位才铺一张 —— 那是纯色，不是水。 */
+    seaMap.repeat.set(Math.round(SEA_SPAN / GROUND_UV), Math.round(SEA_SPAN / GROUND_UV));
     const sea = new THREE.Mesh(new THREE.PlaneGeometry(SEA_SPAN, SEA_SPAN),
-      new THREE.MeshLambertMaterial({ map: seaMap }));
+      new THREE.MeshStandardMaterial({ map: seaMap, roughness: 0.42, metalness: 0.05 }));
     sea.rotation.x = -Math.PI / 2; sea.position.y = -0.88; sea.receiveShadow = true;
     scene.add(sea);
-    const shoal = new THREE.Mesh(extrude(45 * IK, 45 * IK, 6 * IK, 0.5, true),
-      new THREE.MeshLambertMaterial({ color: 0x9ee0f5 }));
-    shoal.position.y = -1.10; shoal.receiveShadow = true;   // 顶面 ≈ −0.55
+
+    /* ---------- 地面：统一成一套材质与一套明度 ----------
+     * 原来五层各写各的：四层 MeshLambert（纯漫反射，没有粗糙度概念）、浪花 MeshBasic（完全不吃光），
+     * 而格子和棋子是 MeshStandard —— 同一盏灯下地面被照得比格子「平、亮」，
+     * 浪花在阴影里也是全亮的，读成一条贴上去的白胶带。
+     * 现在全改 Standard（roughness 0.95、metalness 0），与格子同一套光照响应；
+     * 浪花保留一点自发光，但不再是 Basic。
+     *
+     * 配色口径：地面一律「明度 ≥88、饱和 ≤30」，退成背景。
+     * 原来草地 #9ad985 与住宅格 #8fd07a 几乎同色 —— 绿格子踩在草上只能靠奶油台座撑轮廓。
+     */
+    const G_ROUGH = 0.95;
+    const shoalMap = groundTexture('#d9eef7', ['#c2e6f2', '#eef9fd', '#ffffff'], 180);
+    const shoal = new THREE.Mesh(extrude(45 * IK, 45 * IK, 6 * IK, 0.5, true, 0.25),
+      new THREE.MeshStandardMaterial({ map: shoalMap, roughness: G_ROUGH, metalness: 0 }));
+    /* 顶面必须仍是 −0.55：bevel 会把顶面抬到 depth + bevel，所以补偿在 position 里 */
+    shoal.position.y = -1.30; shoal.receiveShadow = true;
     scene.add(shoal);
 
-    /* 环岛浪花：贴在浅滩上、比岛体大一圈的白色薄环。
-       岛的轮廓正是靠这一圈白线在近景里「读出来」的 —— 没有它，沙色岛体和青色浅滩会连成一片。 */
-    const foam = new THREE.Mesh(extrude(40.8 * IK, 40.8 * IK, 5 * IK, 0.12, false),
-      new THREE.MeshBasicMaterial({ color: 0xf4fdff, transparent: true, opacity: 0.85 }));
+    /* 环岛浪花：贴在浅滩上、紧贴岛体的一圈白。
+       岛的轮廓靠它在近景里「读出来」—— 没有它，沙色岛体和青色浅滩会连成一片。
+       宽度收到每边 0.55（原来 0.9，近景下是一条死白胶带；先试过 0.4，细到看不见）；材质改 Standard 并带一点自发光，
+       让它受光、但仍然比周围亮，而不再是一块不响应光照的贴纸。 */
+    const foam = new THREE.Mesh(extrude(40.1 * IK, 40.1 * IK, 5 * IK, 0.12, false),
+      new THREE.MeshStandardMaterial({
+        color: 0xfbfeff, roughness: 0.5, metalness: 0,
+        emissive: 0xeaf8ff, emissiveIntensity: 0.22, transparent: true, opacity: 0.9,
+      }));
     foam.position.y = -0.62;         // 顶面 −0.50，略高于浅滩，读成贴着岛的一圈浪
     scene.add(foam);
 
-    /* 沙色底座：铺程序化细砂纹理。纯色在近景下会读成一块塑料板 */
-    const sandMap = groundTexture('#f7ebc9', ['#e8d6a8', '#fff6dd'], 300);
-    geoBase = extrude(39 * IK, 39 * IK, 5 * IK, 1.6, true);
-    const base = new THREE.Mesh(geoBase, new THREE.MeshLambertMaterial({ map: sandMap }));
-    base.position.y = -1.6; base.receiveShadow = true;
+    /* 沙色底座。bevel 0.05 → 0.50：斜面把顶面亮度平滑过渡到侧面的暗度，
+       接缝就不再是「两块色硬拼在一起」。0.35 那版还是太窄，一条边一闪而过；
+       0.5 的斜面在近景里约 27px 宽，才读得出「过渡」。
+       位置要跟着补偿，顶面才能仍是 0.05 —— 0.05 是台座的露出基准，动了它那条奶油边就变厚。 */
+    const sandMap = groundTexture('#f8efdb', ['#eddfc4', '#ffffff', '#f2e6cf'], 260);
+    geoBase = extrude(39 * IK, 39 * IK, 5 * IK, 1.6, true, 0.50, GROUND_UV);
+    const base = new THREE.Mesh(geoBase,
+      new THREE.MeshStandardMaterial({ map: sandMap, roughness: G_ROUGH, metalness: 0 }));
+    base.position.y = -2.05; base.receiveShadow = true;
     scene.add(base);
 
-    // 中央草地
-    const grassMap = groundTexture('#9ad985', ['#7fbf68', '#b6e6a2'], 340);
-    const grass = new THREE.Mesh(extrude(28.6 * IK, 28.6 * IK, 4 * IK, 0.55, true),
-      new THREE.MeshLambertMaterial({ map: grassMap }));
-    grass.position.y = -0.02; grass.receiveShadow = true;
+    /* 中央草地。同样加倒角（0.45），并且**开 castShadow** ——
+       原来它只 receiveShadow，层与层之间只有 0.012 的高差、又投不出影子，
+       于是草地与沙地就是两块色硬碰硬地贴在一起。 */
+    const grassMap = groundTexture('#d5e9bf', ['#c3ddab', '#e8f4d8', '#b9d6a0'], 300);
+    const grass = new THREE.Mesh(extrude(28.6 * IK, 28.6 * IK, 4 * IK, 0.55, true, 0.45, GROUND_UV),
+      new THREE.MeshStandardMaterial({ map: grassMap, roughness: G_ROUGH, metalness: 0 }));
+    grass.position.y = -0.02; grass.receiveShadow = true; grass.castShadow = true;
     scene.add(grass);
 
     /* 中央岛心广场 —— 环内 28×28 原本是一整片空草地（约 60% 的台面没有信息）。
