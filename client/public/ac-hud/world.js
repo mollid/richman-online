@@ -40,7 +40,7 @@
   };
 
   let renderer, scene, camera, host, state, view, S;
-  let perspCam = null, orthoCam = null, keyLight = null;
+  let orthoCam = null, keyLight = null;
   let tileMeshes = [], decalByCell = new Map(), tokenGroups = new Map(), rimGroup = null;
   /* 选格模式（W3）：合法格用一圈实例化的绿环标出，非法格把格面压暗 —— 一帧一次 draw call，
      不能给 64 格各挂一个 mesh（本文件里已经为这件事写过一次教训：软件渲染下 64 次绘制吃掉近一半帧）。 */
@@ -217,10 +217,10 @@
     state = S.state; view = S.view;
     LAYOUT = view.layout && view.layout.cells ? view.layout : null;
     const IK = islandK();
-    /* 俯视的默认距离（70）与滚轮上限（130）都是按 64 环 ≈ 半径 22.6 定的。
-       棋盘放大后不跟着抬，「回到全盘」就只能看到上下两条边 —— 实测潮汕 103 格正是如此。
-       这里用赋值而不是累乘：重新挂载（换局）时不会越乘越远。 */
-    cam.dist = 70 * IK;
+    /* 机位初始化到默认近景（az45 / el35.3 / 视野 9.6）。不再有「俯视距离随棋盘半径放大」
+       那一段 —— 那是为了让全盘装得下，近景不关心棋盘多大，只看周围几格。
+       这里用赋值而不是累乘：重新挂载（换局）时不会越缩越近。 */
+    Object.assign(cam, { az: ISO.az, el: ISO.el, dist: ISO.view });
     /* 重新挂载（dispose 后再 mount）时清空上一轮的容器，否则贴面 / 棋子会逐轮累积 */
     tileMeshes = []; decalByCell = new Map(); tokenGroups = new Map(); rimGroup = null; focusRing = null;
     /* 光环也属于上一轮那个 scene：留着引用会把环画进一个已经不渲染的场景里 */
@@ -230,12 +230,11 @@
        一个已经不渲染的场景里（换局后「进选格态却什么都看不见」就是这么来的）。 */
     pickOverlay = null; pickIds = []; pickPlayerRings.clear();
     scene = new THREE.Scene();
-    /* 远裁剪面 700 / 800：海面放大到 384×IK（半边 273）之后，俯视最远机位到海角约 420 单位，
-       远裁剪留在 260 会在屏幕上切出一条直边 —— 那比露底更像「穿模」。
-       近裁剪保持 0.5，深度比 1400，格面与贴花之间 0.012 的间隙还有富余。 */
-    perspCam = new THREE.PerspectiveCamera(32, 1, 0.5, 700);
+    /* 只有一台正交相机（近景等距）。远裁剪 800 是为了海面：岛外那张水平面半边有 270 多，
+       相机自己摆在 140 之外，留在 260 会在远处切出一条直边 —— 比露底更像穿模。
+       近裁剪 0.1，深度比 8000，格面与贴花之间 0.012 的间隙绰绰有余。 */
     orthoCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 800);
-    camera = perspCam;
+    camera = orthoCam;
 
     scene.add(new THREE.HemisphereLight(0xd8f0ff, 0xf0e0bd, 0.95));
     const key = new THREE.DirectionalLight(0xfff3d6, 1.25);
@@ -258,12 +257,13 @@
     const seaMap = groundTexture('#5cbbe2', ['#4aa6cf', '#8ed8f2', '#ffffff'], 260);
     /* 海面和岛体都是「一屏铺满」的大面，软件渲染下是纯填充率的账。
        MeshLambert 比 MeshStandard 省掉整套 PBR 的分段计算，对这种哑光大色块肉眼看不出差别。
-       ---------- 海面尺寸：按「能拉到的最大机位」反推 ----------
-       原来固定 96×IK（半边长 ~68），只够近景用。滚轮能拉到 130×IK，仰角 38° 时屏幕上半
-       对应的是相机前方 280 单位的地面 —— 海面在 68 处就断了，断口外面露出的是画布背后的
-       舞台底色（浅蓝/浅绿），整块面板看着像「海被切掉了」。这就是「拉远了穿模」。
-       按 el≥38° 的最远角反算：半边长 ≥ 190，取 4 块原贴图宽（半边 273）留余量，
-       顺便把相机远裁剪面抬到 700 —— 否则海面会被远裁剪切出一条直边，比露底更像穿模。
+       ---------- 海面尺寸：按「能拉到的最大视野」反推 ----------
+       这块面**必须**比任何一帧能看到的地面都大，否则断口外面露出的是画布背后的舞台底色
+       （浅蓝/浅绿），整块面板看着像「海被切掉了」—— 曾经的「拉远穿模」就是这么来的。
+       现在视野上限只有 24 单位（≈12 格进深），按理 96×IK 就够；但注视点会被拖到棋盘边角、
+       宽屏下横向再乘 1.5，所以仍然留 4 倍（半边 273）。它只是一个平面，铺大点几乎不要钱，
+       而算漏一次就是一条横穿屏幕的直边。
+       相机远裁剪面 800 也是为它留的：海面自己在远处被切一条边，比露底更像穿模。
        贴图 repeat 跟着放大同样的倍数，水纹密度不变。 */
     const SEA_SPAN = 96 * IK * 4;
     seaMap.repeat.set(4, 4);
@@ -701,19 +701,29 @@
   }
 
   let diceGroup;
-  const DICE_SIZE = 1.15;
+  /* 骰子边长。1.15 是「骰子搁在岛心骰盘里、镜头离得很远」时的尺寸；
+     搬到角色脚边之后，近景把同样的尺寸放大三倍，一颗骰子就顶掉半格、把名字价签全遮住。
+     0.5 约等于四分之一格宽（TILE 1.86）：一眼读得出点数，又不压住整格的名字价签。 */
+  const DICE_SIZE = 0.5;
+  /* 骰子相对角色所在格中心的偏移。0.5 + 半颗骰子(0.25) = 0.75，仍在半格(0.93)之内 ——
+     偏出去就压到邻格的文字上了。方向取 +x/+z：等距投影下那是屏幕右下，正好是角色脚边的空处。 */
+  const DICE_OFFSET = 0.5;
+  /* 落定后停留多久收起来。这颗骰子从「岛心骰盘」搬到角色脚边之后，必然压住某一格的地价 ——
+     棋盘沿路径紧密排列，格子周围没有空地可放。所以它只在「掷」的那一下出场：
+     点数由底部操作条（DiceBar）常驻显示，不需要一颗静止的骰子留在场上占位。 */
+  const DICE_HOLD_SEC = 0.9;
+  let diceHold = 0;
   function buildDice() {
     diceGroup = new THREE.Group();
-    /* 骰盘：把骰子放进中央广场南侧的木盘里。原先是 0.86 的方块埋在草里，
-       在默认镜头下只是中间一个白点。现在放大到 1.15 并抬到草地顶面之上。 */
-    const tray = new THREE.Mesh(new THREE.CircleGeometry(2.5, 36), mat(0xe6d8b6, { roughness: 0.92 }));
-    tray.rotation.x = -Math.PI / 2; tray.position.y = groundY + 0.01;
-    scene.add(tray);
-    const trayRim = new THREE.Mesh(new THREE.RingGeometry(2.5, 2.72, 36), mat(0xc9b48a, { roughness: 0.85 }));
-    trayRim.rotation.x = -Math.PI / 2; trayRim.position.y = groundY + 0.014;
-    scene.add(trayRim);
     fillDice(state.dice ? state.dice.length : 1, state.dice);
-    diceGroup.position.set(0, groundY, 2.7);
+    /* 初始就摆在当前行动者脚边。这里曾经有只岛心正中偏南的沙色骰盘（把骰子搁在棋盘中间）——
+       那套视角已经删了，盘永远落在近景视野之外，留着只是一块谁也看不见的圆片。
+       没有盘之后「盘心」这个概念也不成立了，直接跟人走。 */
+    const p = state.players[state.currentPlayerIndex] || state.players[0];
+    const a = p ? cellPos(p.position) : { x: 0, z: 0 };
+    diceGroup.position.set(a.x + DICE_OFFSET, tileTop, a.z + DICE_OFFSET);
+    /* 开局不显示：这一步还没掷骰，场上摆一颗静止的骰子既没有含义，又占着一格的地方。 */
+    diceGroup.visible = false;
     scene.add(diceGroup);
   }
   /**
@@ -733,7 +743,7 @@
       const mats = [1, 6, 2, 5, 3, 4].map((v) => new THREE.MeshStandardMaterial({ map: pipTexture(v), roughness: 0.5 }));
       const cube = new THREE.Mesh(new THREE.BoxGeometry(DICE_SIZE, DICE_SIZE, DICE_SIZE), mats);
       cube.castShadow = true;
-      cube.position.set((i - (n - 1) / 2) * 1.5, DICE_SIZE / 2 + 0.06, 0);
+      cube.position.set((i - (n - 1) / 2) * DICE_SIZE * 1.3, DICE_SIZE / 2 + 0.06, 0);
       cube.userData.value = values ? (values[i] || 1) : 1;
       settle(cube, cube.userData.value);
       diceGroup.add(cube);
@@ -742,15 +752,16 @@
   /**
    * 把骰子甩出去：颗数按这次真的掷了几颗重建（骰力道具会把一颗变两三颗），
    * 旋转结束后翻向本次掷出的真实点数。
-   * 俯视时骰子留在中央骰盘；近景等距里骰盘在镜头外，就搬到行动者脚下那一格旁边。
+   * 落点是**行动者脚下那一格的旁边**：偏 +0.8/+0.8 是往镜头内侧让开半格，别把棋子压住。
    */
   function throwDice(values, from) {
     if (!diceGroup) return;
     const vals = (values && values.length ? values : [1]).slice(0, 4);
     if (diceGroup.children.length !== vals.length) fillDice(vals.length, null);
-    const near = camMode === 'iso';
-    const a = near ? cellPos(from) : { x: 0, z: 2.7 };
-    diceGroup.position.set(a.x + (near ? 0.8 : 0), near ? tileTop : groundY, a.z + (near ? 0.8 : 0));
+    const a = cellPos(from);
+    diceGroup.position.set(a.x + DICE_OFFSET, tileTop, a.z + DICE_OFFSET);
+    diceGroup.visible = true;
+    diceHold = 0;
     const cubes = diceGroup.children;
     for (let i = 0; i < cubes.length; i++) {
       const cube = cubes[i];
@@ -769,26 +780,28 @@
     cube.rotation.set(r[0], r[1], r[2]);
   }
 
-  /* ---------- 两套镜头 ----------
-   * top（默认）  透视俯视：看全盘，用来做决策。早前为「棋局要看得见」服务。
-   * iso（近景）  正交等距：看角色。参考《環島大富翁》那种「人物站在棋盘上、周围只露几格」的取景。
+  /* ---------- 一台镜头：近景等距 ----------
+   * 这套 HUD 只有一种视角 —— 正交等距近景：看角色，周围只露几格。
+   * 参考《環島大富翁》那种「人物站在棋盘上」的取景。
    *
-   * iso 为什么必须是正交：
+   * 曾经还有一套透视俯视的「看全盘」（四档机位预设 + 一键切换）。已经删掉：
+   * 看全局改由右下角的小地图承担，镜头只负责把当前这一步看清楚。
+   * 两套并存时那些为「互切不跳」而生的换算（等效视野 / frameScale / 机位记忆）也一起删了 ——
+   * 没有第二种视角，就没有「切过去」这件事。
+   *
+   * 为什么必须是正交：
    *   透视投影下越远越小，一张 5 格进深的画面里，近处格子和远处格子尺寸差得明显，
    *   等距菱形也会被扭歪（不是规则 2:1）。正交投影让所有格子一样大，这才是等距棋盘的观感。
-   * iso 的角度：
-   *   az 45° / el 35.264°（= atan(1/√2)）是标准等距角，正方形格子在屏幕上正好投影成 2:1 菱形。
-   * iso 的「距离」用 cam.dist 复用了，但语义换成「正交视野竖直覆盖多少世界单位」。
-   *   复用而不是新开一个变量，是为了让既有的补间状态机（focusPlayer / stepCamera）原样工作。
+   * 角度：az 45° / el 35.264°（= atan(1/√2)）是标准等距角，正方形格子在屏幕上正好投影成 2:1 菱形。
+   * 距离：cam.dist 在这里的语义是「正交视野竖直覆盖多少世界单位」，不是退到多远。
    */
   const ISO = {
     az: 45, el: 35.264,
     view: 9.6,           // 竖直覆盖 9.6 世界单位；SPACING=2 → 约 4.8 格进深（“只显示几格”）
-    /* 视野上下限。上限给到 80 不是为了「近景能拉这么远」，而是为了让两种模式的**互切不跳**：
-       俯视的距离范围是 42~130，换算成等效视野就是 25~78。上限若卡在 22，
-       从默认俯视（等效 42）切进来的那一帧会被夹到 22 —— 肉眼就是「切的一瞬间先猛地推近一次」。
-       给到 80 之后换算值原样落地，后续全靠补间平滑推近。 */
-    viewMin: 7.0, viewMax: 80,
+    /* 视野上下限。上限 24（≈12 格进深）是「退一步看周围」的从容值，不是全盘 ——
+       全盘要 30 单位上下，那正是删掉的那种视角，不能从滚轮这里偷偷爬回来。
+       它现在只受一件事约束：拉到 24 时岛外侧的海面仍要盖满四个角。 */
+    viewMin: 7.0, viewMax: 24,
     depth: 140,          // 正交相机摆多远（平行投影下只影响裁剪，不影响成像）
     shadow: 13,          // 近景阴影相机半宽：收窄换清晰接触阴影
     /* 注视点抬高量。注视点钉在格面（y=0）时，角色的身体整个长在画面中心线**以上** ——
@@ -801,74 +814,44 @@
        但用户那台是 1530×731 ≈ 2.09:1，实测一次铺开 **14 格**，
        「周围只显示几格」被稀释成一条长带。把横向夹到竖直的 1.5 倍，
        多出来的宽度交给海面填充，近景在任何宽高比下都还读得出「近景」。
-       注意只夹横向：竖直视野不动，所以两种模式互切的等效换算（见 viewFromDist）不受影响。 */
+       注意只夹横向：竖直视野不动，所以滚轮推到最近的 7 单位时也不会被横向放大反噬。 */
     maxAspect: 1.5,
   };
-  const TOP_SHADOW = 34;
-  let camMode = 'top';                     // top | iso
-  let topMemory = { az: 0, el: 46, dist: 70 };   // 离开 top 时记下手选机位，回来时恢复
 
-  /* 竖向 fov 固定。舞台早前强制 1:1，宽屏时两侧留出大片空壳；改成铺满之后必须按宽高比补偿：
-     画面比参考更「窄」（竖屏/方屏）时水平可视范围变小，镜头要等比退远，否则棋盘左右会被切。 */
-  const FRAME_ASPECT = 1.0;
-  /* 注意：这里刻意从 host 尺寸算宽高比，而不是读 camera.aspect ——
-     现在有两台相机，谁在前台会变，读数跟着变会让 frameScale 在切换瞬间抖一下。 */
+  /* 宽高比一律从舞台尺寸现算，不读 camera.aspect —— 写宽高比的那条路径只有 resize 一处，
+     从这里读回来只会在「刚 resize 完还没 applyCam」的那一帧拿到旧值。 */
   const viewAspect = () => {
     const w = host ? host.clientWidth : 1, h = host ? host.clientHeight : 1;
     return h > 0 ? w / h : 1;
   };
-  const frameScale = () => {
-    const a = viewAspect();
-    return a >= FRAME_ASPECT ? 1 : FRAME_ASPECT / a;
-  };
-  /* 透视 dist ↔ 正交 view 的等效换算：透视在目标平面上的可视高度 ≈ 2·d·tan(fov/2)·frameScale。
-     两种模式互切时用它做一次换算，否则换相机的那一帧会「跳」一下（70 被当成 70 世界单位的正交视野）。 */
-  const perspHalfTan = () => Math.tan(THREE.MathUtils.degToRad((perspCam ? perspCam.fov : 32) / 2));
-  const viewFromDist = (d) => 2 * d * perspHalfTan() * frameScale();
-  const distFromView = (v) => v / Math.max(1e-4, 2 * perspHalfTan() * frameScale());
   const orthoView = () => Math.min(ISO.viewMax, Math.max(ISO.viewMin, cam.dist));
   /* 近景实际生效的宽高比 = 舞台宽高比，但横向最多 ISO.maxAspect 倍（见 ISO.maxAspect 注释）。
      小地图的取景框必须用这个值而不是舞台宽高比，否则超宽屏下框会比实际视野宽一截。 */
   const isoAspect = () => Math.min(viewAspect(), ISO.maxAspect);
-  /* 俯角下限在两种模式里不一样：俯视要能压到 16°（贴地平视看格子立面），
-     近景等距压太低会让格子的菱形被拉成长条、失去等距的规整感，所以抬到 24°。 */
-  const clampEl = (v) => (camMode === 'iso'
-    ? Math.min(62, Math.max(24, v))
-    : Math.min(78, Math.max(16, v)));
+  /* 俯角只留 24°~62° 一段：再低格子的菱形被拉成长条、失去等距的规整感，
+     再高就看不出「站在棋盘上」，退化成俯视图。 */
+  const clampEl = (v) => Math.min(62, Math.max(24, v));
 
   function applyCam() {
     const el = THREE.MathUtils.degToRad(cam.el), az = THREE.MathUtils.degToRad(cam.az);
     const dx = Math.sin(az) * Math.cos(el), dy = Math.sin(el), dz = Math.cos(az) * Math.cos(el);
-    if (camMode === 'iso') {
-      const h = orthoView(), w = h * isoAspect();
-      orthoCam.left = -w / 2; orthoCam.right = w / 2; orthoCam.top = h / 2; orthoCam.bottom = -h / 2;
-      /* 注视点与相机位姿同步抬高 aimY：方向不变 ⇒ 正交投影下只是整幅画面刚性下移，
-         等距菱形的角度一分不变。见 ISO.aimY 的注释。 */
-      const ay = target.y + ISO.aimY;
-      orthoCam.position.set(target.x + dx * ISO.depth, ay + dy * ISO.depth, target.z + dz * ISO.depth);
-      orthoCam.updateProjectionMatrix();
-      orthoCam.lookAt(target.x, ay, target.z);
-      camera = orthoCam;                      // raycast / project 一直取当前这台
-    } else {
-      const d = cam.dist * frameScale();
-      perspCam.position.set(target.x + dx * d, target.y + dy * d, target.z + dz * d);
-      perspCam.lookAt(target);
-      camera = perspCam;
-      /* 持续记录「俯视机位」。为什么不在切走那一刻才采样：切走的瞬间很可能正处在一次补间中间
-         （刚点完复位 / 刚换完回合就往近景切），这时 cam.dist 是个半途值 ——
-         记下来会让「回到全盘」停在一个不上不下的距离上，棋盘放不满。
-         只在「不在补间里」的时候记，拿到的就一定是一台停稳的机位。 */
-      if (!camTween) topMemory = { az: cam.az, el: cam.el, dist: cam.dist };
-    }
+    const h = orthoView(), w = h * isoAspect();
+    orthoCam.left = -w / 2; orthoCam.right = w / 2; orthoCam.top = h / 2; orthoCam.bottom = -h / 2;
+    /* 注视点与相机位姿同步抬高 aimY：方向不变 ⇒ 正交投影下只是整幅画面刚性下移，
+       等距菱形的角度一分不变。见 ISO.aimY 的注释。 */
+    const ay = target.y + ISO.aimY;
+    orthoCam.position.set(target.x + dx * ISO.depth, ay + dy * ISO.depth, target.z + dz * ISO.depth);
+    orthoCam.updateProjectionMatrix();
+    orthoCam.lookAt(target.x, ay, target.z);
+    camera = orthoCam;                      // raycast / project 一直取这一台
     syncKeyLight();
   }
 
-  /* 阴影相机跟随注视点：默认 ±34 覆盖全盘，1024 的阴影图摊到 68 单位上只有 15px/单位，
-     近景下接触阴影会糊成一片。切到 iso 时收窄到 ±13，同时让光源跟着走 —— 近景只看得到局部，
-     没必要为全盘支付分辨率。 */
+  /* 阴影相机跟随注视点：固定 ±13。近景只看得到局部，1024 的阴影图摊在 26 单位上约 39px/单位，
+     接触阴影才清晰；按全盘（±34）铺就是 15px/单位，脚下那圈阴影会糊成一片。 */
   function syncKeyLight() {
     if (!keyLight) return;
-    const ext = camMode === 'iso' ? ISO.shadow : TOP_SHADOW;
+    const ext = ISO.shadow;
     const sc = keyLight.shadow.camera;
     if (sc.right !== ext) {
       sc.left = -ext; sc.right = ext; sc.top = ext; sc.bottom = -ext;
@@ -881,27 +864,17 @@
 
   /* ---------- 相机系统：回合聚焦 → 跟随 ----------
    * 状态机：
-   *   idle    自由视角，完全由用户拖拽 / 预设掌控
-   *   intro   聚焦入场：注视点与镜头位姿从「当前值」补间到「该玩家 + 近景」，期间 locked=true 屏蔽输入
+   *   idle    自由视角，完全由用户拖拽 / 旋转掌控
+   *   intro   聚焦入场：注视点与镜头位姿从「当前值」补间到「该玩家脚下」，期间 locked=true 屏蔽输入
    *   follow  跟随：注视点以指数平滑追该玩家的棋子，棋子每跳一格都能立刻跟上且不抖
    *
-   * 为什么注视点要 clamp：棋盘 34 单位见方，镜头拉到近景时视野只有 ~29 单位。
-   * 若把注视点直接钉在角落棋子上，棋盘会被甩出画面、玩家没法看局。所以跟随的是
-   * 「朝玩家方向偏移、但离棋盘中心不超过 followClamp」的点 —— 玩家始终在画面偏中位置，
-   * 棋盘其余部分也留住。真正的「这是谁的回合」由地面上的高亮环 + 名牌金底来强调。
+   * 注视点为什么**不**夹取：近景的全部意义就是「人物站在棋盘上」，把注视点夹到离棋盘中心
+   * 多少单位以内，反而会把角落里的角色推出画面。曾经为透视俯视写过一套夹取，那套视角已经删了，
+   * 夹取也就没有存在的理由 —— 现在谁行动，镜头就对准谁。
    */
   const CAM = {
-    focusEl: 43,          // 近景俯角（全局默认 46°）
-    focusDist: 54,        // 近景距离（全局默认 70）—— 数值受「棋盘要装得下」约束，见 resize/frameScale
-    followClamp: 8,       // 注视点离棋盘中心的最大半径
     introMs: 1150,        // 入场时长
     followHalfLife: 0.16, // 跟随平滑半衰期（秒）
-  };
-  const CAM_PRESETS = {
-    reset: { az: 0, el: 46, dist: 70 },
-    top: { az: 0, el: 78, dist: 64 },
-    tilt: { az: 45, el: 38, dist: 88 },
-    side: { az: 30, el: 26, dist: 82 },
   };
   let camState = 'idle';        // idle | intro | follow
   let followPid = null;
@@ -911,22 +884,12 @@
 
   const easeInOutCubic = (k) => (k < 0.5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2);
   const lerp = (a, b, k) => a + (b - a) * k;
-  /* 注视点夹取（只在 top 模式）。近景 iso 下必须原样返回：
-     「人物站在棋盘上」的全部意义就是让他居中，夹取到离环心 8 单位反而会把角色推出画面。
-     两种模式在这里分叉，是因为它们要解决的问题正好相反 —— top 怕棋盘跑出视野，iso 怕角色跑出视野。 */
-  function clampToBoard(x, z) {
-    if (camMode === 'iso') return { x, z };
-    const r = Math.hypot(x, z);
-    if (r <= CAM.followClamp) return { x, z };
-    const s = CAM.followClamp / r;
-    return { x: x * s, z: z * s };
-  }
 
-  /* 从当前模式推默认机位。调用方只给 pid 时，focusPlayer 会落到这套值上。 */
+  /* 调用方只给 pid 时，focusPlayer 会落到这套默认机位：标准等距角 + 默认近景视野。
+     不继承用户手调的角度 —— 换回合要把「谁在行动」交代清楚，机位回到标准角最好认。
+     用户随后拖拽 / 滚轮调的机位照样有效，只是下一次聚焦会重新对齐。 */
   function modeView() {
-    return camMode === 'iso'
-      ? { el: ISO.el, dist: ISO.view, az: ISO.az }
-      : { el: CAM.focusEl, dist: CAM.focusDist, az: cam.az };
+    return { el: ISO.el, dist: ISO.view, az: ISO.az };
   }
 
   function setLocked(v) {
@@ -1009,10 +972,10 @@
   }
 
   /**
-   * 轮到 pid 操作：拉近并聚焦，随后进入跟随。
+   * 轮到 pid 操作：把镜头对到他脚下，随后进入跟随。
    * @param {string} pid
    * @param {{immediate?:boolean, el?:number, dist?:number, az?:number, dur?:number}} [opts]
-   *        immediate 用于首帧 / 无动效偏好；不传 el/dist/az 就落到当前模式的默认机位。
+   *        immediate 用于首帧 / 无动效偏好；不传 el/dist/az 就落到默认近景机位。
    */
   function focusPlayer(pid, opts) {
     const o = opts || {};
@@ -1021,76 +984,32 @@
     const mv = modeView();
     followPid = pid;
     updateFocusRing(pid);
-    const c = clampToBoard(g.position.x, g.position.z);
     const toEl = o.el != null ? o.el : mv.el;
     const toDist = o.dist != null ? o.dist : mv.dist;
     const toAz = o.az != null ? o.az : mv.az;
     if (o.immediate || REDUCED) {
       cam.el = toEl; cam.dist = toDist; cam.az = toAz;
-      target.set(c.x, target.y, c.z);
+      target.set(g.position.x, target.y, g.position.z);
       camTween = null; camState = 'follow';
       applyCam();
       setLocked(false);
       hooks.onCameraSettled && hooks.onCameraSettled(pid);
       return;
     }
-    /* az 也进补间：模式互切时从 0° 平滑转到 45°（等距方位），不是硬切。
+    /* az 也进补间：方位角从当前值平滑转到 45°（等距方位），不是硬切。
        走最短弧 —— 直接 lerp 会在 350°→10° 时反向绕一整圈。 */
     const dAz = (((toAz - cam.az) % 360) + 540) % 360 - 180;
     camTween = {
       t: 0, dur: Math.max(0.15, (o.dur != null ? o.dur : CAM.introMs) / 1000),
-      /* 补齐「哪些参数该动」：用户已经在中意的机位上，focusPlayer 只该挪注视点，
-         不该把俯角/距离一起拽回默认值（那会让人觉得自己调的机位每次换回合都被抹掉）。 */
-      use: {
-        el: o.el != null || camMode === 'iso',
-        dist: o.dist != null || camMode === 'iso',
-        az: o.az != null || camMode === 'iso',
-      },
+      /* 用户手调过机位时（拖过、滚过），换人只该挪注视点，不该把俯角/距离一起拽回默认值 ——
+         那会让人觉得自己调好的角度每次换回合都被抹掉。 */
+      use: { el: o.el != null, dist: o.dist != null, az: o.az != null },
       from: { tx: target.x, tz: target.z, el: cam.el, dist: cam.dist, az: 0 },
-      to: { tx: c.x, tz: c.z, el: toEl, dist: toDist, az: dAz },
+      to: { tx: g.position.x, tz: g.position.z, el: toEl, dist: toDist, az: dAz },
     };
     camState = 'intro';
     setLocked(true);
     applyCam();
-  }
-
-  /**
-   * 切换镜头模式：top（透视战略俯视）↔ iso（正交近景等距）。
-   * 换的是「相机实例」，所以必须把 cam.dist 的语义一起换算过去 ——
-   * 70 在透视里是「退到 70 单位外」，在正交里是「竖直覆盖 70 单位」，直接沿用会跳一大下。
-   * 同时记/恢复手选机位，让用户切来切去不丢自己调好的角度。
-   */
-  function setCamMode(mode, pid) {
-    const m = mode === 'iso' ? 'iso' : 'top';
-    if (m === camMode) return camMode;
-    const who = pid || followPid || (state ? state.players[state.currentPlayerIndex].id : null);
-    if (m === 'iso') {
-      /* topMemory 由 applyCam 在「俯视 + 不在补间」时持续维护，这里不再采样 —— 理由见 applyCam */
-      camMode = 'iso';
-      cam.dist = viewFromDist(cam.dist);     // 等效视野高度，保证换相机那一帧不跳
-    } else {
-      camMode = 'top';
-      cam.dist = distFromView(cam.dist);     // 同样先换成等效透视距离：补间的「起点」才接得上
-      /* 注意：这里刻意**不**把 cam.az / cam.el 直接改成 topMemory 的值。
-         直接改会让「上一帧 45°/35.3° → 下一帧 46°/43°」在换相机那一帧硬跳一下；
-         交给 focusPlayer 的补间去转，才是真正的平滑。 */
-    }
-    /* 切完再 focusPlayer，并且**显式把 el/dist/az 一起交代过去**。
-       不交代的话，focusPlayer 的 `use` 遮罩会跳过 dist —— 因为 top 模式「不传就不改机位」，
-       于是「回到全盘」会把透视相机留在近景的等效距离(≈16)上：按钮点了跟没点一样，
-       棋盘还是放不满。切回 top 时补的 dist 取 topMemory.dist，也就是离开前那台机位的距离，
-       整个动作于是读成一次平滑的拉远，而不是瞬移。 */
-    if (who && tokenGroups.has(who)) {
-      const to = m === 'iso'
-        ? { az: ISO.az }
-        : { az: topMemory.az, el: topMemory.el, dist: topMemory.dist };
-      focusPlayer(who, to);
-    } else {
-      if (m === 'top') { cam.az = topMemory.az; cam.el = topMemory.el; }
-      applyCam(); syncKeyLight();
-    }
-    hooks.onCameraMode && hooks.onCameraMode(camMode);
-    return camMode;
   }
 
   /** 释放跟随、回自由视角（复位按钮 / 手动接管时用） */
@@ -1107,12 +1026,12 @@
       camTween.t += dt;
       const k = Math.min(1, camTween.t / camTween.dur);
       const e = easeInOutCubic(k);
-      const f = camTween.from, to = camTween.to, use = camTween.use;
+      const f = camTween.from, to = camTween.to;
       target.x = lerp(f.tx, to.tx, e);
       target.z = lerp(f.tz, to.tz, e);
-      if (use.el) cam.el = lerp(f.el, to.el, e);
-      if (use.dist) cam.dist = lerp(f.dist, to.dist, e);
-      if (use.az) cam.az += to.az * (e - (camTween.eAz || 0));
+      cam.el = lerp(f.el, to.el, e);
+      cam.dist = lerp(f.dist, to.dist, e);
+      cam.az += to.az * (e - (camTween.eAz || 0));
       camTween.eAz = e;
       applyCam();
       if (k >= 1) {
@@ -1124,10 +1043,9 @@
     } else if (camState === 'follow' && followPid) {
       const g = tokenGroups.get(followPid);
       if (g) {
-        const c = clampToBoard(g.position.x, g.position.z);
         const k = 1 - Math.pow(0.5, dt / CAM.followHalfLife);
-        target.x += (c.x - target.x) * k;
-        target.z += (c.z - target.z) * k;
+        target.x += (g.position.x - target.x) * k;
+        target.z += (g.position.z - target.z) * k;
         applyCam();
       }
     }
@@ -1265,11 +1183,9 @@
       if (locked) return;
       e.preventDefault();
       const s = Math.sign(e.deltaY);
-      /* 近景的「距离」是正交视野高度，量纲完全不同 —— 同一个 ±4 步长在透视里退 4 单位，
-         在近景里会把视野从 10.4 直接推到 14.4（放大率掉 30%），滚一格就跳。所以分开给步长。 */
-      cam.dist = camMode === 'iso'
-        ? Math.min(ISO.viewMax, Math.max(ISO.viewMin, cam.dist + s * 0.7))
-        : Math.min(130 * islandK(), Math.max(42, cam.dist + s * 4));
+      /* 这里的「距离」是正交视野高度，一格滚 0.7：从默认 9.6 推到上限 24（≈12 格进深）大约 20 格。
+         步长给大一点会在近景里一下把放大率打掉三成，看着像跳帧。 */
+      cam.dist = Math.min(ISO.viewMax, Math.max(ISO.viewMin, cam.dist + s * 0.7));
       applyCam();
     }, { passive: false });
     host.addEventListener('keydown', (e) => {
@@ -1277,7 +1193,7 @@
       const K = { ArrowLeft: [1, 0], ArrowRight: [-1, 0], ArrowUp: [0, 1], ArrowDown: [0, -1] }[e.key];
       if (!K) return;
       e.preventDefault();
-      cam.az += K[0] * (camMode === 'iso' ? 5 : 6);   // 近景每次 5°，正好 18 次转一圈
+      cam.az += K[0] * 5;                    // 每次 5°，正好 18 次转一圈
       cam.el = clampEl(cam.el + K[1] * 4);
       applyCam();
     });
@@ -1334,6 +1250,12 @@
         cube.rotation.x += dt * 11; cube.rotation.y += dt * 8;
         if (cube.userData.spin <= 0) settle(cube, cube.userData.value);
       }
+    }
+    /* 全部落定后再停一小会，然后收起来 —— 把画面还给格子（见 DICE_HOLD_SEC 的注释）。
+       只要还有一颗在转就把计时清零，所以「一颗接一颗落定」的节奏不会被提前掐断。 */
+    if (diceGroup.visible) {
+      if (diceGroup.children.some((c) => c.userData.spin > 0)) diceHold = 0;
+      else if ((diceHold += dt) >= DICE_HOLD_SEC) diceGroup.visible = false;
     }
     /* 选中裙边的呼吸：只动自发光强度，不动透明度 —— 半透明的金裙边压在有主的粉裙边上
        会混成第三种颜色，读起来像「这格主人变了」。`prefers-reduced-motion` 下不脉动。 */
@@ -1431,10 +1353,7 @@
       if (!host || !renderer) return;
       const w = host.clientWidth || 600, hgt = host.clientHeight || 600;
       renderer.setSize(w, hgt, false);
-      /* 两台相机都要跟：谁是当前相机由 camMode 决定，漏掉一台会在切换后拿到陈旧的比例 */
-      perspCam.aspect = w / hgt;
-      perspCam.updateProjectionMatrix();
-      applyCam();          // 宽高比变了要重算取景距离（ortho 的左右边界也在这里重算）
+      applyCam();          // 宽高比变了要重算正交的左右边界
     },
     /** 表现层重新上色（买地后调用）：只重画持有者描边，不重跑规则 */
     /** 棋子跟着状态走（换人 / 移动后调用） */
@@ -1507,9 +1426,7 @@
       /* 正交是平行投影，「相机到点的距离」（恒等于 ISO.depth=140）跟看起来多大毫无关系。
          但名牌的缩放正是拿这个 dist 算的 —— 直接回报 140 会让近景里所有名牌缩到最小档。
          所以换一个等效透视距离：取正交视野高度的 4.6 倍，使 labelScale(46/dist) ≈ 1。 */
-      const dist = camMode === 'iso'
-        ? orthoView() * 4.6
-        : camera.position.distanceTo(new THREE.Vector3(x, y, z));
+      const dist = orthoView() * 4.6;
       return {
         x: (v.x * 0.5 + 0.5) * r.width,
         y: (-v.y * 0.5 + 0.5) * r.height,
@@ -1550,26 +1467,21 @@
     stats() {
       return { fps: clock.fps, calls: renderer ? renderer.info.render.calls : 0, tris: renderer ? renderer.info.render.triangles : 0, cam: { ...cam } };
     },
-    /** 预设视角。会先释放跟随 —— 否则用户手选的机位下一帧就被跟随逻辑拽回玩家身上 */
-    setView(preset) {
-      /* 4 个预设是「战略俯视」的机位。在近景里点它 = 想回全盘，所以顺手退出 iso，
-         不然会出现「点了复位但视野还是 5 格宽」的怪状态。 */
-      if (camMode === 'iso') { camMode = 'top'; cam.dist = distFromView(cam.dist); hooks.onCameraMode && hooks.onCameraMode(camMode); }
+    /** 回到默认近景机位。会先释放跟随 —— 否则用户手选的机位下一帧就被跟随逻辑拽回玩家身上 */
+    setView() {
       releaseFollow();
-      const P = CAM_PRESETS[preset] || CAM_PRESETS.reset;
-      // 预设里的距离同样按 64 环定，随棋盘半径一起放大（见 buildWorld 里 cam.dist 那段）
-      Object.assign(cam, { ...P, dist: P.dist * islandK() });
-      topMemory = { az: P.az, el: P.el, dist: cam.dist };
+      Object.assign(cam, { az: ISO.az, el: ISO.el, dist: ISO.view });
       applyCam();
     },
-    /** 切镜头模式：'top' 战略俯视（透视）/ 'iso' 近景等距（正交） */
-    setCamMode(mode, pid) { return setCamMode(mode, pid); },
-    camMode: () => camMode,
+    /** 兼容旧整壳（非 MP_MODE 时加载的 hud.js）留下的切换按钮：这套 HUD 只有近景一种视角，
+        传什么都还是近景，没有「切过去」这件事。 */
+    setCamMode() { return 'iso'; },
+    camMode: () => 'iso',
     /**
-     * 当前模式下的「聚焦机位」（top = 俯视近景 el43/dist54，iso = 等距近景 az45/el35.3/view9.6）。
+     * 默认聚焦机位（等距近景 az45 / el35.3 / view9.6）。
      * 给「镜头巡演」用：它要验收的是「拉近 → 跟随 → 解锁」，必须让机位真的动起来。
-     * focusPlayer 默认不传 el/dist 就不改机位（避免把用户手调的机位拽回默认），
-     * 巡演要是也不传，俯视下就只平移注视点 —— 画面上几乎看不出变化，会被当成按钮坏了。
+     * 带这一份是因为 focusPlayer 不传 el/dist 时会落到它上面 —— 巡演照着它取数，
+     * 才能断言「镜头确实动过」，而不是只看「感觉挺顺」。
      */
     focusView: () => modeView(),
     /**
@@ -1614,11 +1526,11 @@
     cameraState: () => ({
       state: camState, pid: followPid, locked,
       tx: target.x, tz: target.z,
-      mode: camMode, az: cam.az, el: cam.el,
-      view: camMode === 'iso' ? orthoView() : viewFromDist(cam.dist),
-      /* 近景实际生效的横向倍率（已夹 ISO.maxAspect）。小地图取景框要用它，不能自己算舞台宽高比。
-         俯视下如实报原始宽高比 —— 报一个被夹过的值会让人以为俯视也受了限。 */
-      aspect: camMode === 'iso' ? isoAspect() : viewAspect(),
+      mode: 'iso', az: cam.az, el: cam.el,
+      view: orthoView(),
+      /* 实际生效的横向倍率（已夹 ISO.maxAspect）。小地图取景框要用它，不能自己算舞台宽高比 ——
+         超宽屏下框会比实际看得见的宽一截。 */
+      aspect: isoAspect(),
       /* 补间进度（0→1）。演出时长是硬承诺，暴露出来才能被脚本断言，而不是只看「感觉挺顺」 */
       prog: camTween ? camTween.t / camTween.dur : null,
     }),

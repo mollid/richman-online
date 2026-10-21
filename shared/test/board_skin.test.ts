@@ -35,6 +35,8 @@ const WORLD = read('../../client/public/ac-hud/world.js');
 const HUD = read('../../client/public/ac-hud/hud.js');
 const RENDERER = read('../../client/src/game/BoardRenderer.ts');
 const MINI = read('../../client/src/ui/hud/minimap.ts');
+const HUD_TSX = read('../../client/src/ui/hud/MpHud.tsx');
+const STAGE = read('../../client/src/ui/hud/useBoardStage.ts');
 
 /** 取 `const NAME = { ... }` 里花括号包着的那段（括号配对扫描，正则扛不住嵌套） */
 function objectBody(src: string, name: string): string {
@@ -228,16 +230,47 @@ describe('三个消费方都读皮肤，不再各自写死', () => {
     expect(WORLD).toContain('const base');
   });
 
-  it('海面必须盖满「拉得最远」时的视野（否则露出画布底色 = 穿模）', () => {
-    /* 海面原来是 96×IK（半边长 ~68），只够近景。滚轮能拉到 130×IK，仰角 38° 时屏幕上沿
-       对应相机前方 280 单位的地面 —— 海面在 68 处就断，断口外露出画布背后的舞台底色，
-       整块面板像「海被切掉了」。按最远角反算需要半边长 ≥190。 */
+  it('镜头只剩一台正交近景相机：透视全盘、机位预设、切模式都不许回来', () => {
+    /* 产品决定：不再保留全盘视角，只看角色周围几格。看全局交给右下角的小地图。
+       这条守的是「别再偷偷加回第二种视角」——
+       两套镜头并存时，那些为「互切不跳」而生的换算（等效视野、frameScale、机位记忆）
+       会跟着一起回来，是这个文件里最难拆的一坨。 */
+    expect(WORLD, '透视相机已删').not.toMatch(/new THREE\.PerspectiveCamera/);
+    expect(WORLD, '机位预设已删').not.toContain('CAM_PRESETS');
+    expect(WORLD, '不许再有「当前是哪套镜头」的开关变量').not.toMatch(/let camMode/);
+    expect(WORLD, 'camMode 必须恒为近景').toMatch(/camMode: \(\) => 'iso'/);
+    // 视野上限必须落在近景区间：30 单位以上就够看大半个岛，等于把全盘从滚轮偷回来
+    const max = WORLD.match(/viewMin: [\d.]+, viewMax: ([\d.]+)/);
+    expect(max, '视野上下限被改过').not.toBeNull();
+    expect(Number(max![1]), '上限太大 = 全盘视角从滚轮回来了').toBeLessThanOrEqual(30);
+    expect(Number(max![1]), '上限太小会让滚轮白转').toBeGreaterThanOrEqual(16);
+  });
+
+  it('中心骰盘随全盘一起删了：没有「盘心」这个概念，骰子跟人走', () => {
+    /* 骰盘原来是「全景下骰子留在岛心，近景下搬到脚边」。全盘一去，盘永远在镜头外，
+       留着只是一块谁也看不见的沙色圆片。现在骰子一开始就摆在行动者脚边。 */
+    expect(WORLD, '中心骰盘不许回来').not.toMatch(/RingGeometry\(2\.5, 2\.72/);
+    expect(WORLD, '骰子不许再钉在岛心（0, ·, 2.7）').not.toMatch(/diceGroup\.position\.set\(0,/);
+    // 初始落位要按玩家所在格算，不能写死；偏移必须留在半格之内（否则压到邻格的文字上）
+    expect(WORLD).toMatch(/diceGroup\.position\.set\(a\.x \+ DICE_OFFSET, tileTop, a\.z \+ DICE_OFFSET\)/);
+    const off = WORLD.match(/const DICE_OFFSET = ([\d.]+);/);
+    expect(off, '骰子偏移被改过').not.toBeNull();
+    // 半颗骰子 + 偏移 必须小于半格（TILE 1.86 → 0.93）
+    const size = WORLD.match(/const DICE_SIZE = ([\d.]+);/);
+    expect(size, '骰子尺寸被改过').not.toBeNull();
+    expect(Number(off![1]) + Number(size![1]) / 2, '骰子会压到邻格文字上').toBeLessThan(CELL_GEOMETRY.tile / 2);
+  });
+
+  it('海面必须盖满任何一帧能看到的地面（否则露出画布底色 = 穿模）', () => {
+    /* 视野上限收到 24（≈12 格进深）之后，理论上 96×IK 就够；但注视点会被拖到棋盘边角、
+       宽屏下横向再乘 1.5，所以仍然留 4 倍（半边 273）。
+       它只是一个平面，铺大点几乎不要钱，而算漏一次就是一条横穿屏幕的直边。 */
     const span = WORLD.match(/const SEA_SPAN = 96 \* IK \* ([\d.]+)/);
     expect(span, '海面尺寸要按 IK 放大').not.toBeNull();
-    expect(Number(span![1]), '至少 3 块贴图宽才盖得住最远机位').toBeGreaterThanOrEqual(3);
-    // 远裁剪必须跟着放大，否则海面自己在远处被切出一条直边 —— 比露底更像穿模
-    const far = WORLD.match(/new THREE\.PerspectiveCamera\(32, 1, 0\.5, (\d+)\)/);
-    expect(far, '透视相机参数被改过').not.toBeNull();
+    expect(Number(span![1]), '至少 3 块贴图宽才盖得住注视点贴到棋盘边角时的画面').toBeGreaterThanOrEqual(3);
+    // 远裁剪必须够远，否则海面自己在远处被切出一条直边 —— 比露底更像穿模
+    const far = WORLD.match(/new THREE\.OrthographicCamera\(-1, 1, 1, -1, [\d.]+, (\d+)\)/);
+    expect(far, '正交相机参数被改过').not.toBeNull();
     expect(Number(far![1]), '远裁剪要够远').toBeGreaterThanOrEqual(500);
     expect(WORLD, '海面纹理密度要跟着放大，否则水纹被拉成一团').toMatch(/seaMap\.repeat\.set\(/);
     expect(WORLD, '旧的 96×IK 海面不许回来').not.toMatch(/PlaneGeometry\(96 \* IK, 96 \* IK\)/);
@@ -263,5 +296,29 @@ describe('三个消费方都读皮肤，不再各自写死', () => {
 
   it('小地图尺寸只认 shared 那一份', () => {
     expect(MINI).toContain('export const MINI = BOARD_SKIN.mini');
+  });
+
+  it('小地图是唯一的全局视图：常驻、尺寸够读、并且标出可达格子', () => {
+    /* 全盘视角删掉之后，这块从「近景的辅助」变成「看全局的唯一手段」，
+       三条要求一起守，缺一条都会让某一类判断在界面上没有出口。 */
+
+    // 常驻：不许再跟着视角模式显隐（以前是 hidden={!cam.iso}）
+    expect(HUD_TSX).toContain('<canvas className="mp-mini"');
+    expect(HUD_TSX, '小地图不许再按视角显隐').not.toMatch(/mp-mini[^>]*hidden=/);
+    // 「回到全盘 / 近景等距」那个切换按钮已经删了
+    expect(HUD_TSX, '切视角按钮不许回来').not.toContain('回到全盘');
+    expect(HUD_TSX, '切视角按钮不许回来').not.toContain('toggleCamMode');
+    expect(STAGE, '切视角的逻辑已删').not.toContain('toggleCamMode');
+
+    // 一格几像素：6 是量出来的（144 格图 ≈ 229px）。再小就看不清玩家圆点，再大就挤掉棋盘
+    expect(MINI_GEOMETRY.cell, '小地图格子太小就失去导航意义').toBeGreaterThanOrEqual(6);
+    expect(MINI_GEOMETRY.cell, '小地图太大会把棋盘挤小 —— 试过 9，占了近一半屏高').toBeLessThanOrEqual(7);
+
+    /* 可达格子必须真的画出来。近景一次只看得到周围几格，选十几格外的目标时
+       3D 里的绿角标全在屏幕外 —— 那些格子只能在小地图上出现。 */
+    expect(MINI, '可达格子必须交给小地图').toContain('input.reachable');
+    expect(STAGE, '选目标的可达格必须传给小地图').toContain('reachable: o.current.pick?.cells');
+    // 取景框不再有条件：只有一种镜头，框永远该画
+    expect(MINI, '取景框不许再按视角模式判断').not.toContain('input.iso');
   });
 });

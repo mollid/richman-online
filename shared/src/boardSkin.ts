@@ -119,6 +119,11 @@ export const ISO_GEOMETRY: IsoGeometry = {
 };
 
 export const MINI_GEOMETRY: MiniGeometry = {
+  /* cell 6 是量出来的，不是拍的：144 格那张图铺开约 70 世界单位，乘 (6/spacing)=3
+     得到 229px —— 放在 1280×720 的舞台右下角占 18% 宽、32% 高，正好。
+     试过提到 9（同一张图 341×320px），单看形状更清楚，但占掉近一半屏高，
+     把棋盘挤得更小，得不偿失。小地图的价值在「位置关系」，不在格子大小。
+     改这里要同步 `hud.js` 的 FALLBACK_MINI，两份数值漂了守卫会红。 */
   cell: 6,
   pad: 7,
   scale: 2,

@@ -19,19 +19,18 @@ import { drawMinimap } from './minimap.js';
 
 /** 一次移动演出最多跳几格（0.16 秒/格 ≈ 1.3 秒）；更长的行程只演最后几格 */
 const HOP_MAX_CELLS = 8;
-/** 首屏先让人看清全貌，再走向当前玩家 —— 一上来就怼近景会失去方位感 */
+/** 首屏先让人看清全貌，再走向当前玩家 —— 一上来就怼近景会失去方位感。
+ *  「看清全貌」现在由小地图承担（它常驻），镜头仍然从默认近景起步。 */
 const INTRO_DELAY = 420;
 /** 小地图按 ~15fps 重画就够：它是导航辅助，不需要跟满帧 */
 const MINI_TICK_MS = 66;
 
 export interface StageCam {
-  /** 近景等距 / 全盘俯视 */
-  iso: boolean;
   /** 相机状态机：入场补间 / 跟随 / 静止 */
   follow: 'intro' | 'follow' | 'idle';
   /** 镜头正跟着谁（名字，取自快照，world 只给 id） */
   target: string;
-  /** 近景下实际看得见的格数 */
+  /** 视野里实际看得见的格数（滚轮推拉会变） */
   visible: number;
   /** 相机补间期间锁操作 */
   locked: boolean;
@@ -70,10 +69,10 @@ export interface StageApi {
   isSettled: () => boolean;
 }
 
-const CAM0: StageCam = { iso: false, follow: 'idle', target: '', visible: 0, locked: false };
+const CAM0: StageCam = { follow: 'idle', target: '', visible: 0, locked: false };
 
 const sameCam = (a: StageCam, b: StageCam) =>
-  a.iso === b.iso && a.follow === b.follow && a.target === b.target && a.visible === b.visible && a.locked === b.locked;
+  a.follow === b.follow && a.target === b.target && a.visible === b.visible && a.locked === b.locked;
 
 export function useBoardStage(opts: BoardStageOptions) {
   const hostRef = useRef<HTMLDivElement | null>(null);
@@ -105,7 +104,7 @@ export function useBoardStage(opts: BoardStageOptions) {
   const introTimerRef = useRef(0);
   /** 上一次发出去的跟随对象（id 而不是名字）：查名字要遍历 players，不能每帧查 */
   const camPidRef = useRef<string | null>(null);
-  /** 上一次的相机视野宽度：滚轮推拉只改它，不改 iso / pid / follow */
+  /** 上一次的相机视野宽度：滚轮推拉只改它，不改 pid / follow */
   const camViewRef = useRef<number | null>(null);
 
   const W = () => globalThis.D25World;
@@ -264,16 +263,14 @@ export function useBoardStage(opts: BoardStageOptions) {
            整块界面就会永久假死。每帧跟 world 的真实状态对一次，代价只是一次布尔比较。 */
         if (lockedRef.current !== w.isCameraLocked()) setLocked(w.isCameraLocked());
         const S = o.current.snapshot;
-        const iso = c.mode === 'iso';
         /* 先比四把便宜的钥匙，全等就整段跳过 —— 名字要从 players 里 find、格数要调
            visibleCells()（它把所有棋子投影一遍），这两样都不该白付 60 次每秒。
            文件头第 3 条说的是「不许每帧 setState」，但真正的代价在这里：不进调和不等于不干活。 */
         const prev = camRef.current;
-        /* `visible` 也是载荷的一部分，所以它必须进钥匙：近景下滚轮推拉会改 world 的视野宽度，
-           而 iso / locked / follow / pid 四个都不动 —— 少这一把的话「周围 N 格」会冻在第一次
-           进近景时的数字，而它明明是 world 现算出来的。 */
+        /* `visible` 也是载荷的一部分，所以它必须进钥匙：滚轮推拉会改 world 的视野宽度，
+           而 locked / follow / pid 三个都不动 —— 少这一把的话「周围 N 格」会冻在第一次
+           进入近景时的数字，而它明明是 world 现算出来的。 */
         if (
-          prev.iso !== iso ||
           prev.locked !== lockedRef.current ||
           prev.follow !== c.state ||
           camPidRef.current !== c.pid ||
@@ -283,10 +280,9 @@ export function useBoardStage(opts: BoardStageOptions) {
           camViewRef.current = c.view;
           const who = c.pid ? S.state.players.find((p) => p.id === c.pid)?.name ?? '' : '';
           publishCam({
-            iso,
             follow: c.state === 'intro' ? 'intro' : c.state === 'follow' ? 'follow' : 'idle',
             target: who,
-            visible: iso ? w.visibleCells().count : 0,
+            visible: w.visibleCells().count,
             locked: lockedRef.current,
           });
         }
@@ -303,7 +299,9 @@ export function useBoardStage(opts: BoardStageOptions) {
               players: S.state.players.map((p) => ({ id: p.id, position: p.position, color: p.color })),
               treasureCellId: v.treasureCellId,
               activePid: activePidRef.current,
-              iso,
+              /* 选目标时的可达格：近景一次只看得到周围几格，选十几格外的目标时高亮全在屏幕外，
+                 只能靠小地图把这些格子标出来 —— 这不是加分项，是没有全盘视角之后的必需品。 */
+              reachable: o.current.pick?.cells ?? [],
               cam: c,
               stageAspect: (host.clientWidth || 1) / (host.clientHeight || 1),
             });
@@ -405,13 +403,5 @@ export function useBoardStage(opts: BoardStageOptions) {
 
   const apiRef = useRef<StageApi>({ isSettled: () => !globalThis.D25World?.isHopping?.() });
 
-  const toggleCamMode = useCallback(() => {
-    const w = globalThis.D25World;
-    if (!w || !stageRef.current) return;
-    const next = w.camMode() === 'iso' ? 'top' : 'iso';
-    w.setCamMode(next, activePidRef.current ?? undefined);
-    syncStage();
-  }, [syncStage]);
-
-  return { hostRef, stageRef, miniRef, cam, toggleCamMode, apiRef };
+  return { hostRef, stageRef, miniRef, cam, apiRef };
 }

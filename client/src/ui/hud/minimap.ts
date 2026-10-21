@@ -34,7 +34,8 @@ export interface MiniInput {
   treasureCellId: number | null;
   /** 镜头正在跟随的那位：给他一圈金环 */
   activePid: string | null;
-  iso: boolean;
+  /** 选目标时「能点到」的格子。近景一次只看得到周围几格，十几格外的目标只能在这里看见 */
+  reachable: readonly number[];
   cam: MiniCam;
   /** 舞台宽高比，只在 world 没报 `aspect` 时兜底 */
   stageAspect: number;
@@ -146,24 +147,38 @@ export function drawMinimap(cv: HTMLCanvasElement, input: MiniInput): boolean {
     ctx.strokeRect(cx - 2.2, cy + 0.8, 4.4, 3.2);
   }
 
-  if (input.iso) {
-    /* 可视范围 ≈ 宽 × (高/cos 俯角)，再按方位角转一下。世界层报上来的 aspect 已经夹过
-       近景上限，自己按舞台宽高比算会在超宽屏上画出一个比实际看得见更宽的框。 */
-    const aspect = input.cam.aspect || input.stageAspect || 1.4;
-    const view2 = input.cam.view || 10.4;
-    const w = view2 * aspect * g.k;
-    const l = (view2 / Math.cos(ISO_ELEV)) * g.k;
-    const [tx, ty] = g.world(input.cam.tx ?? 0, input.cam.tz ?? 0);
-    ctx.save();
-    ctx.translate(tx, ty);
-    ctx.rotate(((input.cam.az ?? 0) * Math.PI) / 180);
-    ctx.fillStyle = 'rgba(255,196,77,.18)';
-    ctx.strokeStyle = '#e39c17';
-    ctx.lineWidth = 1.6;
-    ctx.fillRect(-w / 2, -l / 2, w, l);
-    ctx.strokeRect(-w / 2, -l / 2, w, l);
-    ctx.restore();
+  /* 选目标时「能点到」的格子。必须画在格型色块之上（否则被盖住），且在取景框之下
+     （取景框是半透明的，压上去会把绿框染浑）。
+     为什么非画不可：镜头只剩近景，一次只看得到周围几格，而选目标常常要指到十几格外的
+     人或地契 —— 那些格子在 3D 画面里根本不在视野内，绿角标也就看不见。 */
+  if (input.reachable.length) {
+    ctx.fillStyle = 'rgba(94,201,124,.55)';
+    ctx.strokeStyle = '#2f8f4a';
+    ctx.lineWidth = 1.2;
+    for (const id of input.reachable) {
+      const [cx, cy] = g.at(id);
+      ctx.fillRect(cx - MINI.cell / 2, cy - MINI.cell / 2, MINI.cell, MINI.cell);
+      ctx.strokeRect(cx - MINI.cell / 2 + 0.6, cy - MINI.cell / 2 + 0.6, MINI.cell - 1.2, MINI.cell - 1.2);
+    }
   }
+
+  /* 当前取景框（黄色斜框）：镜头只剩近景一种，这块框就是「我正在看哪几格」的唯一答案。
+     可视范围 ≈ 宽 × (高/cos 俯角)，再按方位角转一下。世界层报上来的 aspect 已经夹过
+     近景上限，自己按舞台宽高比算会在超宽屏上画出一个比实际看得见更宽的框。 */
+  const aspect = input.cam.aspect || input.stageAspect || 1.4;
+  const view2 = input.cam.view || 10.4;
+  const fx = view2 * aspect * g.k;
+  const fl = (view2 / Math.cos(ISO_ELEV)) * g.k;
+  const [tx, ty] = g.world(input.cam.tx ?? 0, input.cam.tz ?? 0);
+  ctx.save();
+  ctx.translate(tx, ty);
+  ctx.rotate(((input.cam.az ?? 0) * Math.PI) / 180);
+  ctx.fillStyle = 'rgba(255,196,77,.18)';
+  ctx.strokeStyle = '#e39c17';
+  ctx.lineWidth = 1.6;
+  ctx.fillRect(-fx / 2, -fl / 2, fx, fl);
+  ctx.strokeRect(-fx / 2, -fl / 2, fx, fl);
+  ctx.restore();
 
   for (const p of input.players) {
     const [cx, cy] = g.at(p.position);

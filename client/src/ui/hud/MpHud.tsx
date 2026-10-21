@@ -300,13 +300,9 @@ export function MpHud({
             <div className="mp-stagebar">
               <span className="mp-camread">
                 <Icon id="i-cam" size="s" />
-                {cam.iso ? `近景 · 周围 ${cam.visible} 格` : '全盘'}
+                近景 · 周围 {cam.visible} 格
                 {cam.follow === 'intro' ? ' · 聚焦中' : cam.target ? ` · 跟随 ${cam.target}` : ''}
               </span>
-              <button className="mp-btn mp-btn--sm mp-btn--ghost" type="button" onClick={stage.toggleCamMode} disabled={cam.locked}>
-                <Icon id={cam.iso ? 'i-board' : 'i-search'} size="s" />
-                {cam.iso ? '回到全盘' : '近景等距'}
-              </button>
               <button
                 className={`mp-btn mp-btn--sm mp-btn--ghost${legendOpen ? ' mp-btn--accent' : ''}`}
                 type="button"
@@ -328,8 +324,10 @@ export function MpHud({
 
             {legendOpen && <Legend />}
 
-            {/* 近景只露周围几格，方位感全靠这块 —— 不是装饰，所以跟着近景一起显隐 */}
-            <canvas className="mp-mini" ref={stage.miniRef} width={120} height={120} hidden={!cam.iso} />
+            {/* 镜头只剩近景一种，这块就是「看全局」的唯一手段 —— 常驻，不是近景的附属品。
+                选目标时它还把可达格子标出来（见 drawMinimap 的 reachable）：
+                近景一次看不到十几格外的目标，那些格子只能在这里出现。 */}
+            <canvas className="mp-mini" ref={stage.miniRef} width={120} height={120} />
 
             {/* 骰子浮在盘面上，而不是盘外另开一条：大富翁4 原版就是「骰子在盘子上」 */}
             <DiceBar snap={snap} interactive={interactive} camLocked={cam.locked} onFire={onFire} guideMore={showMore} />

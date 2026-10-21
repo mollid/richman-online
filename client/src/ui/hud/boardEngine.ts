@@ -13,7 +13,8 @@ export interface CamStateOut {
   locked: boolean;
   tx: number;
   tz: number;
-  mode: 'top' | 'iso';
+  /** 这套 HUD 只有近景等距一种视角 */
+  mode: 'iso';
   az: number;
   el: number;
   /** 当前相机在地面上的可视宽度（世界单位） */
@@ -35,9 +36,6 @@ export interface WorldApi {
   tokenAnchors(): Array<{ pid: string; x: number; y: number; z: number }>;
   tileAnchor(cellId: number): { x: number; y: number; z: number };
   lastPointer(): { x: number; y: number };
-  setView?(preset: string): void;
-  setCamMode(mode: 'top' | 'iso', pid?: string | null): void;
-  camMode(): 'top' | 'iso';
   focusPlayer(pid: string, opts?: unknown): void;
   isCameraLocked(): boolean;
   visibleCells(): { count: number };
