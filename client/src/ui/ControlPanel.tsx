@@ -43,10 +43,19 @@ export function ControlPanel({
   game,
   onAction,
   interactive = true,
+  onExitToLobby,
+  onRestart,
+  onWatchReplay,
 }: {
   game: GameState;
   onAction: (action: PlayerAction) => void;
   interactive?: boolean;
+  /** 终局出口「回大厅」：走宿主的退出通道（销毁会话回 LobbyScreen） */
+  onExitToLobby?: () => void;
+  /** 终局出口「再来一局」：热座用上次的开局配置原样重开；联机没有这个语义，传 null 隐藏 */
+  onRestart?: (() => void) | null;
+  /** 终局出口「看回放」：取刚落盘的那份本地回放；联机局回放不在本地，传 null 隐藏 */
+  onWatchReplay?: (() => void) | null;
 }) {
   const actions = availableActions(game);
   // R4：落格窗的那个出口（不在窗口里就是 null，按钮整颗不出现）
@@ -366,6 +375,27 @@ export function ControlPanel({
               </div>
             ))}
           </div>
+          {/* FE-25：终局面板曾被 forced 锁死（无关闭键、Esc 无效、遮罩不响应），
+             打完一局只能刷新页面。出口必须长在面板里，而不是指望玩家发现 Esc 能用。 */}
+          {(onWatchReplay || onRestart || onExitToLobby) && (
+            <div className="settlement-exit">
+              {onWatchReplay && (
+                <button className="mp-btn mp-btn--ghost" type="button" onClick={onWatchReplay}>
+                  看回放
+                </button>
+              )}
+              {onRestart && (
+                <button className="mp-btn mp-btn--accent" type="button" onClick={onRestart}>
+                  再来一局
+                </button>
+              )}
+              {onExitToLobby && (
+                <button className="mp-btn mp-btn--ghost" type="button" onClick={onExitToLobby}>
+                  回大厅
+                </button>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>

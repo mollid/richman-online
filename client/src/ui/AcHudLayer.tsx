@@ -272,6 +272,8 @@ export function AcHudLayer({
   onSetReady,
   onSetCharacter,
   onKick,
+  onRestart,
+  onWatchReplay,
 }: {
   game: GameState;
   myPlayerId: string | null;
@@ -296,6 +298,10 @@ export function AcHudLayer({
   onSetCharacter?: (characterId: string) => void;
   /** 联机大厅：房主把某人请出房间 */
   onKick?: (playerId: string) => void;
+  /** 终局面板「再来一局」：热座用上次的开局配置原样重开；联机没有这个语义，传 null 隐藏 */
+  onRestart?: (() => void) | null;
+  /** 终局面板「看回放」：取刚落盘的那份本地回放；联机局回放不在本地，传 null 隐藏 */
+  onWatchReplay?: (() => void) | null;
 }) {
   const [ready, setReady] = useState(false);
   const [loadError, setLoadError] = useState('');
@@ -589,6 +595,12 @@ export function AcHudLayer({
     return null;
   }, [ready, game.phase]);
 
+  /* 终局是唯一的例外：结算仍然强制弹出（信息必须被看到），但必须可关 ——
+     FE-25 那版把它和小游戏 / 拍卖一起锁死，打完一局只能刷新页面。
+     关掉之后回棋盘自由查看，出口按钮长在结算面板里（见 ControlPanel 的 settlement-exit）。 */
+  const gameOver = game.phase === 'game_over';
+  const closable = !forced || gameOver;
+
   // 阶段离开时，把手动打开的面板也收掉，避免残留在无事可做的界面
   useEffect(() => {
     if (game.phase === 'lobby') setPanel(null);
@@ -677,9 +689,10 @@ export function AcHudLayer({
     document.body.style.overflow = 'hidden';
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
-      /* 强制弹层（等待小游戏 / 拍卖 / 结算）没有可关的余地，Esc 一律吞掉不外传 */
+      /* 强制弹层（等待小游戏 / 拍卖 / 舍弃手牌）没有可关的余地，Esc 吞掉不外传；
+         终局例外 —— 结算看完要能走（见 closable）。 */
       e.stopPropagation();
-      if (!forced) setPanel(null);
+      if (closable) setPanel(null);
     };
     window.addEventListener('keydown', onKey, true);
     modalRef.current?.focus();
@@ -688,7 +701,7 @@ export function AcHudLayer({
       document.body.style.overflow = prevOverflow;
       returnFocusRef.current?.focus?.();
     };
-  }, [active, forced]);
+  }, [active, closable]);
 
   const panelBody = (() => {
     switch (active) {
@@ -710,7 +723,16 @@ export function AcHudLayer({
         return <AuctionPanel game={game} onAction={onAction} myPlayerId={myPlayerId} />;
       case 'control':
       case 'surrender':
-        return <ControlPanel game={game} onAction={onAction} interactive={interactive} />;
+        return (
+          <ControlPanel
+            game={game}
+            onAction={onAction}
+            interactive={interactive}
+            onExitToLobby={onExit}
+            onRestart={onRestart ?? null}
+            onWatchReplay={onWatchReplay ?? null}
+          />
+        );
       default:
         return null;
     }
@@ -910,7 +932,7 @@ export function AcHudLayer({
           /* mp 弹层：遮罩用 `overflow:auto + margin:auto`（居中容器一旦内容超高，place-items
              会把顶部推出滚动区），面板本体沿用 tokens.css 那套描边与街沿阴影。
              标题不再写 emoji —— 上屏的 emoji 已统一换成 sprite 里的 SVG。 */
-          <div className="mp-scrim" onClick={forced ? undefined : () => setPanel(null)}>
+          <div className="mp-scrim" onClick={closable ? () => setPanel(null) : undefined}>
             <div
               ref={modalRef}
               className={`mp-panel mp-dialog${PANEL_SIZE[active] === 'wide' ? ' mp-dialog--wide' : ''}`}
@@ -923,7 +945,7 @@ export function AcHudLayer({
               <div className="mp-panel__hd">
                 <Icon id={PANEL_META[active]?.icon ?? 'i-book'} size="s" />
                 <span>{PANEL_META[active]?.title ?? active}</span>
-                {!forced && (
+                {closable && (
                   <button className="mp-dialog__x" type="button" aria-label="关闭" onClick={() => setPanel(null)}>
                     <Icon id="i-x" size="s" />
                   </button>
@@ -933,7 +955,7 @@ export function AcHudLayer({
             </div>
           </div>
         ) : (
-          <div className="ac-sheet-scrim" onClick={forced ? undefined : () => setPanel(null)}>
+          <div className="ac-sheet-scrim" onClick={closable ? () => setPanel(null) : undefined}>
             <div
               ref={modalRef}
               className={`ac-sheet ac-sheet--${PANEL_SIZE[active] ?? 'md'}`}
@@ -945,7 +967,7 @@ export function AcHudLayer({
             >
               <div className="ac-sheet__hd">
                 <span>{PANEL_TITLE[active] ?? active}</span>
-                {!forced && (
+                {closable && (
                   <button className="ac-btn ac-btn--cream ac-btn--sm" onClick={() => setPanel(null)}>
                     关闭 <span className="ac-sheet__esc">Esc</span>
                   </button>

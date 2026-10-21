@@ -350,3 +350,11 @@
   background: var(--mp-paper);
   color: var(--mp-ink-2);
 }
+
+/* FE-25：终局面板的出口按钮排（看回放 / 再来一局 / 回大厅） */
+:is(.mp-panel .mp-panel__bd) .settlement-exit {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  margin-top: 16px;
+}

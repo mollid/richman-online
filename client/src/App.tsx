@@ -4,7 +4,7 @@ import { sfx } from './game/sfx.js';
 import { loadHotseatGame, LocalHotseatSession, type GameSession, type HotseatOptions } from './net/session.js';
 import { ColyseusSession, hasSavedSession } from './net/remote.js';
 import { fetchMe, logout as apiLogout, type AuthUser, type ReplayRecord } from './net/auth.js';
-import { saveLocalReplay } from './net/localReplays.js';
+import { getLocalReplay, listLocalReplays, saveLocalReplay } from './net/localReplays.js';
 import { ReplayScreen } from './ui/ReplayScreen.js';
 import { AcHudLayer } from './ui/AcHudLayer.js';
 import { confirmAction } from './ui/landingExit.js';
@@ -42,11 +42,30 @@ export default function App() {
     });
   }, []);
 
+  /** 热座「再来一局」的凭据：记住上次的开局配置，终局面板里原样重开（FE-26） */
+  const lastLocalOptsRef = useRef<HotseatOptions | null>(null);
+
   const startLocal = (opts: HotseatOptions) => {
+    lastLocalOptsRef.current = opts;
     session?.destroy();
     setConnectError('');
     setConnectNotice('');
     setSession(new LocalHotseatSession(opts));
+  };
+
+  /** 终局面板「再来一局」。联机对局没有这个语义（重开要走服务端），按钮在联机时隐藏 */
+  const restartLocal = () => {
+    const opts = lastLocalOptsRef.current;
+    if (opts) startLocal(opts);
+  };
+
+  /** 终局面板「看回放」：单人局在终局那一刻已落本地回放（见 GameScreen 的 effect），
+     取该账号最新的一条 —— 就是刚打完的这局。联机局回放不在本地，按钮隐藏 */
+  const watchLastReplay = () => {
+    if (!user) return;
+    const latest = listLocalReplays(user.username)[0];
+    if (!latest) return;
+    setReplayRecord(getLocalReplay(user.username, latest.id));
   };
 
   // UI-03 存储 / 读取：手动存 / 读档（仅单人模式）
@@ -166,6 +185,8 @@ export default function App() {
         onOpenHelp={() => setShowHelp(true)}
         onSaveGame={saveGame}
         onLoadGame={loadGame}
+        onRestart={restartLocal}
+        onWatchReplay={watchLastReplay}
       />
       {overlays}
     </>
@@ -182,11 +203,17 @@ function GameScreen({
   onOpenHelp,
   onSaveGame,
   onLoadGame,
+  onRestart,
+  onWatchReplay,
 }: {
   session: GameSession;
   /** 登录账号：单人局打完用它当本地回放的归属键 */
   userName: string | null;
   onExit: () => void;
+  /** 终局「再来一局」：热座才有；联机传 null（重开要走服务端，另一回事） */
+  onRestart?: (() => void) | null;
+  /** 终局「看回放」：联机传 null（联机回放不在本地） */
+  onWatchReplay?: (() => void) | null;
   /** 被弹回大厅时带一句话（被踢）；不传就只是安静地退出 */
   onNotice?: (text: string) => void;
   registerAction: (name: string, fn: () => void) => () => void;
@@ -304,6 +331,8 @@ function GameScreen({
       onSaveGame={onSaveGame}
       onLoadGame={onLoadGame}
       onExit={onExit}
+      onRestart={isRemote ? null : onRestart}
+      onWatchReplay={isRemote ? null : onWatchReplay}
       onStartGame={() => session.startGame?.()}
       onAddBot={() => session.addBot?.()}
       onSetReady={(ready) => session.setReady?.(ready)}
