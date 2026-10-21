@@ -339,6 +339,19 @@ describe('三个消费方都读皮肤，不再各自写死', () => {
     expect(STAGE).toMatch(/cv\.setPointerCapture\?\.\(e\.pointerId\)/);
     expect(STAGE).toContain('w.panTo(x, z)');
 
+    /* 旋转补偿。小地图是轴对齐画的（x 向右、z 向下），3D 相机是 az=45° 等距 ——
+       世界 +x 在屏幕上跑的是「右下」。不补的话手指横着划、画面斜着飘。
+       判据是「拖动时把屏幕位移逆投影成世界位移」，也就是出现 cos/sin(az) 那两个旋转项。 */
+    expect(STAGE, '拖动没有做逆投影补偿').toMatch(/const az = .*cameraState\(\)\.az/);
+    expect(STAGE, '拖动位移没按方位角旋转').toMatch(
+      /w\.panTo\(drag\.tx \+ sx \* c \+ sy \* s, drag\.tz - sx \* s \+ sy \* c\)/,
+    );
+    // 位移必须相对「按下时的锚点」算：逐帧累加会飘，拖回去也回不到原点
+    expect(STAGE, '拖动位移必须相对锚点').toContain('drag.tx');
+    // 单击与拖动分叉：小位移仍走绝对定位，否则「点哪去哪」就没了
+    expect(STAGE).toContain('CLICK_SLOP');
+    expect(STAGE).toMatch(/if \(!drag\.moved\) seekAbs\(e\)/);
+
     // 触屏下没有 touch-action: none，拖动会被浏览器当成滚页面
     expect(HUD_CSS).toMatch(/\.mp-mini \{[\s\S]*?touch-action: none/);
     expect(HUD_CSS, '手型光标是唯一能看出「这块能拖」的提示').toMatch(/\.mp-mini \{[\s\S]*?cursor: grab/);
