@@ -401,48 +401,27 @@ export function useBoardStage(opts: BoardStageOptions) {
     if (opts.followCurrent || !known) activePidRef.current = want;
   }, [opts.snapshot, opts.followCurrent]);
 
-  /* ---------- 小地图拖动：按住拖，画面跟着手指走 ----------
+  /* ---------- 小地图拖动：按住哪，镜头就看向哪 ----------
    * 镜头只剩近景之后，小地图是唯一能「看全局」的地方；但光能看还不够 ——
    * 想瞧一眼岛另一头发生了什么，只能等别人走到那儿，那就等于没这个功能。
-   *
-   * 两种手势，各管一件事：
-   * - **单击**（位移 < 3px）：绝对定位，指针指到哪就把视野搬到哪。
-   * - **拖动**：按位移平移，并且**要转一次**（见下），让手指方向与画面方向一致。
-   *
-   * 为什么拖动必须补偿 45°：小地图是轴对齐画的（x 向右、z 向下），
-   * 而 3D 相机是 az=45° 的等距视角 —— 世界 +x 在屏幕上跑的是「右下」方向。
-   * 不补偿的话，手指在小地图上横着划一条直线，画面却斜着飘，读成「拖不准」。
-   * 做法是把「屏幕位移」逆投影回世界位移：
-   *   屏幕右 = (cos az, −sin az)，屏幕下 = (sin az, cos az)（都在世界 x/z 平面上）
-   * 于是 (dx, dz) 世界位移 → 屏幕 (dx·cos−dz·sin, dx·sin+dz·cos)。
-   * 反过来解，就得到下面那两行。
-   *
-   * 为什么不让小地图自己转 45°：那样确实能一步到位（地图与画面同朝向、指针位置就是取景框位置），
-   * 但旋转后的包围盒会大出 √2 倍（229×215 → 约 314），又要把画布撑大一圈；
-   * 而且小地图一转，玩家就得重新建立「哪边是上」的方位感。保持正方向、只在拖动时补偿更划算。
+   * 按住拖过去，3D 那边就跟着平移。
    *
    * 用 pointer 事件而不是鼠标事件：鼠标、触屏、手写笔同一套。
+   * 按下即 seek（点一下也生效，不必先拖起来）。
    * setPointerCapture 让指针拖出小地图边界后仍算同一次拖动 ——
    * 拖快了一滑就出去，不捕获的话画面会在半路停住，读成「卡了」。
    */
   useEffect(() => {
     const cv = miniRef.current;
     if (!cv) return;
-    /** 一次拖动的锚点：按下时的指针位置 + 那一刻的注视点。位移始终相对它算，不做累加 —— 累加会飘 */
-    let drag: { px: number; py: number; tx: number; tz: number; moved: boolean } | null = null;
-    /** 拖了多远才算「拖动」而不是「单击」，单位是 CSS 像素 */
-    const CLICK_SLOP = 3;
+    let dragging = false;
 
-    const geomNow = () => {
-      const S = o.current.snapshot;
-      return miniGeom(S.state.board, S.view.layout);
-    };
-
-    /** 绝对定位：指针位置 → 世界坐标 → 视点搬过去（单击走这条） */
-    const seekAbs = (e: PointerEvent) => {
+    const seek = (e: PointerEvent) => {
       const w = W();
-      const g = geomNow();
-      if (!w?.panTo || !g) return;
+      if (!w?.panTo) return;
+      const S = o.current.snapshot;
+      const g = miniGeom(S.state.board, S.view.layout);
+      if (!g) return;
       /* 画布是倍图（width = CSS 宽 × scale），而 getBoundingClientRect 给的是 CSS 像素。
          先把指针归一到 0→1 再乘几何尺寸，倍图比改了这里也不用动。 */
       const r = cv.getBoundingClientRect();
@@ -453,37 +432,16 @@ export function useBoardStage(opts: BoardStageOptions) {
       );
       w.panTo(x, z);
     };
-
-    /** 拖动：屏幕位移 → 世界位移（逆投影），叠到锚点上 */
-    const seekDrag = (e: PointerEvent) => {
-      const w = W();
-      const g = geomNow();
-      if (!w?.panTo || !g || !drag) return;
-      const dx = e.clientX - drag.px;
-      const dy = e.clientY - drag.py;
-      if (Math.abs(dx) + Math.abs(dy) > CLICK_SLOP) drag.moved = true;
-      const az = (((w.cameraState().az ?? 45) * Math.PI) / 180);
-      const c = Math.cos(az), s = Math.sin(az);
-      /* 先当「屏幕位移」看：小地图的 x 就是屏幕右、y 就是屏幕下，除以 k 换成世界单位。
-         取负号是「拖纸张」的手感 —— 手指往右拖，地图像被带着往右走，视野中心相对往左。 */
-      const sx = -dx / g.k, sy = -dy / g.k;
-      w.panTo(drag.tx + sx * c + sy * s, drag.tz - sx * s + sy * c);
-    };
-
     const down = (e: PointerEvent) => {
-      const w = W();
-      if (!w?.panTo) return;
-      const c = w.cameraState();
-      drag = { px: e.clientX, py: e.clientY, tx: c.tx, tz: c.tz, moved: false };
+      dragging = true;
       cv.setPointerCapture?.(e.pointerId);
+      seek(e);
       e.preventDefault();
     };
-    const move = (e: PointerEvent) => { if (drag) seekDrag(e); };
+    const move = (e: PointerEvent) => { if (dragging) seek(e); };
     const up = (e: PointerEvent) => {
-      if (!drag) return;
-      /* 没动过 = 单击：这时才做绝对定位（按下就走绝对定位的话，拖动的第一步画面会先跳一下） */
-      if (!drag.moved) seekAbs(e);
-      drag = null;
+      if (!dragging) return;
+      dragging = false;
       if (cv.hasPointerCapture?.(e.pointerId)) cv.releasePointerCapture(e.pointerId);
     };
 
